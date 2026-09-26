@@ -1850,11 +1850,15 @@ nowpayments.io
                         'askBlupalCardNumber' => '💳 请输入 Blupal 的16位收款卡号。此项可选；发送 0 可清除。
 
 当前卡号：<code>%s</code>',
-                        'blupalWebhookInfo' => '🔗 Blupal Webhook 地址：
+                        'blupalWebhookInfo' => '🔷 <b>Blupal 接入地址</b>
 
+↩️ <b>Callback URL</b> — Blupal 面板必填：
 <code>%s</code>
 
-请在 Blupal Webhook 设置中注册此地址。',
+⚡ <b>Webhook URL</b>：
+<code>%s</code>
+
+请准确注册这两个 HTTPS 地址。',
                         'askZarinpalMerchant' => '💳 从 ZarinPal 获取您的商户代码并在此部分输入
         
 您当前的商户代码：%s',
@@ -4186,7 +4190,7 @@ f,n.n2',
                 'blupalGateway' => 'Blupal',
                 'blupalApiKey' => '🔑 Blupal API 密钥',
                 'blupalCardNumber' => '💳 Blupal 卡号',
-                'blupalWebhookUrl' => '🔗 Blupal Webhook 地址',
+                'blupalWebhookUrl' => '🔗 Blupal Callback / Webhook',
                 'cashbackBlupal' => '🎁 Blupal 返现',
                 'minAmountBlupal' => '⬇️ Blupal 最低金额',
                 'maxAmountBlupal' => '⬆️ Blupal 最高金额',
