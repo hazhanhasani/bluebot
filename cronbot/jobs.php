@@ -4,7 +4,7 @@ function mirza_cron_jobs(): array
 {
     return [
         ['job' => 'croncard', 'schedule' => '*/1 * * * *', 'title' => 'تأیید خودکار رسید کارت به کارت'],
-        ['job' => 'NoticationsService', 'schedule' => '*/1 * * * *', 'title' => 'ارسال اعلان‌های ربات'],
+        ['job' => 'NotificationsService', 'schedule' => '*/1 * * * *', 'title' => 'ارسال اعلان‌های ربات'],
         ['job' => 'sendmessage', 'schedule' => '*/1 * * * *', 'title' => 'صف ارسال پیام همگانی'],
         ['job' => 'activeconfig', 'schedule' => '*/1 * * * *', 'title' => 'فعال‌سازی سرویس‌های خریداری‌شده'],
         ['job' => 'disableconfig', 'schedule' => '*/1 * * * *', 'title' => 'غیرفعال‌سازی سرویس‌های منقضی'],

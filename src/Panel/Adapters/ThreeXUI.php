@@ -1,6 +1,6 @@
 <?php
-require_once 'config.php';
-require_once 'request.php';
+require_once dirname(__DIR__, 3) . '/config.php';
+require_once dirname(__DIR__, 3) . '/request.php';
 ini_set('error_log', 'error_log');
 
 function xuiRequest(array $panel, string $method, string $path, ?array $payload = null): array

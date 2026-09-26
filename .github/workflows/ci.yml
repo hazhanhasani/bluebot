@@ -58,6 +58,9 @@ jobs:
       - name: Panel API compatibility contracts
         run: php tests/panel_compat_contract.php
 
+      - name: Project structure contract
+        run: php tests/project_structure_contract.php
+
       - name: Lint panel JavaScript
         shell: bash
         run: |

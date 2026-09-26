@@ -1,5 +1,7 @@
 <?php
-include('config.php');
+require_once dirname(__DIR__, 3) . '/config.php';
+require_once dirname(__DIR__, 3) . '/request.php';
+require_once dirname(__DIR__, 3) . '/src/Support/Logger.php';
 ini_set('error_log', 'error_log');
 
 

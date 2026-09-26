@@ -1,6 +1,6 @@
 <?php
-require_once __DIR__ . '/src/Support/Logger.php';
-require_once __DIR__ . '/request.php';
+require_once dirname(__DIR__, 3) . '/src/Support/Logger.php';
+require_once dirname(__DIR__, 3) . '/request.php';
 
 function mikrotikRequest(array $panel, string $method, string $path, ?array $payload = null): array
 {

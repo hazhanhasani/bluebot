@@ -1,6 +1,6 @@
 <?php
-require_once __DIR__ . '/config.php';
-require_once __DIR__ . '/request.php';
+require_once dirname(__DIR__, 3) . '/config.php';
+require_once dirname(__DIR__, 3) . '/request.php';
 
 function token_panelm($code_panel)
 {

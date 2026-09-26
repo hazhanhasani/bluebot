@@ -1025,8 +1025,9 @@ function addBalance($userId, $amount)
     $stmt = $pdo->prepare("UPDATE user SET Balance = Balance + ? WHERE id = ?");
     $stmt->execute([$amount, $userId]);
 }
-function DirectPayment($order_id, $image = 'images.jpg')
+function DirectPayment($order_id, $image = null)
 {
+    $image = $image ?: bluebotQrBackgroundPath();
     global $pdo, $ManagePanel, $textbotlang, $keyboardextendfnished, $keyboard, $Confirm_pay, $from_id, $message_id;
     $buyreport = select("topicid", "idreport", "report", "buyreport", "select")['idreport'];
     $admin_ids = select("admin", "id_admin", null, null, "FETCH_COLUMN");
@@ -1661,6 +1662,26 @@ function outtypepanel($typepanel, $message)
     } elseif ($typepanel == "rebecca") {
         sendmessage($from_id, $message, $optionrebecca, 'HTML');
     }
+}
+
+function bluebotQrBackgroundPath(): string
+{
+    $runtime = __DIR__ . '/storage/qr/background.jpg';
+    if (is_file($runtime)) {
+        return $runtime;
+    }
+
+    return __DIR__ . '/assets/images/qr-background.jpg';
+}
+
+function bluebotStoreQrBackground(string $content): bool
+{
+    $directory = __DIR__ . '/storage/qr';
+    if (!is_dir($directory) && !@mkdir($directory, 0775, true) && !is_dir($directory)) {
+        return false;
+    }
+
+    return @file_put_contents($directory . '/background.jpg', $content, LOCK_EX) !== false;
 }
 
 function addBackgroundImage($urlimage, $qrCodeResult, $backgroundPath)
@@ -2481,8 +2502,9 @@ function isBase64($string)
     }
     return false;
 }
-function sendMessageService($panel_info, $config, $sub_link, $username_service, $reply_markup, $caption, $invoice_id, $user_id = null, $image = 'images.jpg')
+function sendMessageService($panel_info, $config, $sub_link, $username_service, $reply_markup, $caption, $invoice_id, $user_id = null, $image = null)
 {
+    $image = $image ?: bluebotQrBackgroundPath();
     global $setting, $from_id, $textbotlang;
     if (!check_active_btn($setting['keyboardmain'], "text_help"))
         $reply_markup = null;

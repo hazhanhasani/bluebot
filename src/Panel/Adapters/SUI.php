@@ -1,6 +1,6 @@
 <?php
-require_once 'config.php';
-require_once __DIR__ . '/src/Support/Logger.php';
+require_once dirname(__DIR__, 3) . '/config.php';
+require_once dirname(__DIR__, 3) . '/src/Support/Logger.php';
 ini_set('error_log', 'error_log');
 
 function suiCurlJson($curl): array

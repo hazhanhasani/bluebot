@@ -6,7 +6,7 @@ ini_set('error_log', 'error_log');
 ini_set('memory_limit', '512M');
 require_once 'config.php';
 require_once 'botapi.php';
-require_once 'jdf.php';
+require_once __DIR__ . '/src/Support/JalaliDate.php';
 require_once 'function.php';
 bluebotEnsureInstallerRemoved();
 require_once 'keyboard.php';
@@ -1192,7 +1192,7 @@ if ($text == "/start" || $datain == "start" || $text == "start") {
             sendmessage($from_id, $textsub, $bakinfos, 'HTML');
             return;
         }
-        addBackgroundImage($urlimage, $qrCode, 'images.jpg');
+        addBackgroundImage($urlimage, $qrCode, bluebotQrBackgroundPath());
         telegram('sendphoto', [
             'chat_id' => $from_id,
             'photo' => new CURLFile($urlimage),
@@ -1281,7 +1281,7 @@ if ($text == "/start" || $datain == "start" || $text == "start") {
                 sendmessage($from_id, "<code>{$DataUserOut['links'][$i]}</code>", null, 'HTML');
                 continue;
             }
-            addBackgroundImage($urlimage, $qrCode, 'images.jpg');
+            addBackgroundImage($urlimage, $qrCode, bluebotQrBackgroundPath());
             telegram('sendphoto', [
                 'chat_id' => $from_id,
                 'photo' => new CURLFile($urlimage),
@@ -1299,7 +1299,7 @@ if ($text == "/start" || $datain == "start" || $text == "start") {
         sendmessage($from_id, "<code>{$DataUserOut['links'][$dataget[2]]}</code>", null, 'HTML');
         return;
     }
-    addBackgroundImage($urlimage, $qrCode, 'images.jpg');
+    addBackgroundImage($urlimage, $qrCode, bluebotQrBackgroundPath());
     telegram('sendphoto', [
         'chat_id' => $from_id,
         'photo' => new CURLFile($urlimage),

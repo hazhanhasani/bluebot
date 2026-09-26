@@ -1,4 +1,6 @@
 <?php
+require_once dirname(__DIR__, 3) . '/config.php';
+require_once dirname(__DIR__, 3) . '/request.php';
 #-----------------------------#
 function getuser_rebecca($username_account, $location)
 {
