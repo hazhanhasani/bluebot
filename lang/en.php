@@ -4530,7 +4530,7 @@ We hope you had a good experience with the ease and speed of your service. If yo
                 'productFieldVolumeGb' => 'Operation',
                 'productFiftyValue' => '۵۰',
                 'productNameExample' => 'e.g.: 50 GB one month',
-                'productNameExists' => 'A product with this name is already registered.',
+                'productNameExists' => 'A product with this name is already registered for this panel.',
                 'productNameRequired' => 'Product name is required.',
                 'productNoProductFound' => 'Volume',
                 'productNoProductYet' => 'Duration',
