@@ -1,0 +1,43 @@
+<?php
+
+return [
+    'create' => <<<SQL
+        id VARCHAR(36) PRIMARY KEY,
+        event_key VARCHAR(80) NOT NULL DEFAULT '',
+        user_id VARCHAR(500) NULL,
+        invoice_id VARCHAR(200) NULL,
+        order_id VARCHAR(200) NULL,
+        phone VARCHAR(30) NOT NULL DEFAULT '',
+        params_json TEXT NULL,
+        dedupe_key VARCHAR(64) NOT NULL DEFAULT '',
+        status VARCHAR(30) NOT NULL DEFAULT 'pending',
+        attempts INT NOT NULL DEFAULT 0,
+        max_attempts INT NOT NULL DEFAULT 3,
+        provider_message_id VARCHAR(200) NOT NULL DEFAULT '',
+        response_json TEXT NULL,
+        last_error TEXT NULL,
+        next_attempt_at BIGINT NULL,
+        sending_started_at BIGINT NULL,
+        sent_at BIGINT NULL,
+        created_at BIGINT NOT NULL
+        SQL,
+    'columns' => [
+        ['event_key', '', 'VARCHAR(80) NOT NULL DEFAULT \'\''],
+        ['user_id', null, 'VARCHAR(500) NULL'],
+        ['invoice_id', null, 'VARCHAR(200) NULL'],
+        ['order_id', null, 'VARCHAR(200) NULL'],
+        ['phone', '', 'VARCHAR(30) NOT NULL DEFAULT \'\''],
+        ['params_json', null, 'TEXT NULL'],
+        ['dedupe_key', '', 'VARCHAR(64) NOT NULL DEFAULT \'\''],
+        ['status', 'pending', 'VARCHAR(30) NOT NULL DEFAULT \'pending\''],
+        ['attempts', '0', 'INT NOT NULL DEFAULT 0'],
+        ['max_attempts', '3', 'INT NOT NULL DEFAULT 3'],
+        ['provider_message_id', '', 'VARCHAR(200) NOT NULL DEFAULT \'\''],
+        ['response_json', null, 'TEXT NULL'],
+        ['last_error', null, 'TEXT NULL'],
+        ['next_attempt_at', null, 'BIGINT NULL'],
+        ['sending_started_at', null, 'BIGINT NULL'],
+        ['sent_at', null, 'BIGINT NULL'],
+        ['created_at', null, 'BIGINT NOT NULL'],
+    ],
+];
