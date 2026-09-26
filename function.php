@@ -1387,10 +1387,14 @@ function DirectPayment($order_id, $image = 'images.jpg')
         $dateacc = date('Y/m/d H:i:s');
         $type = "extra_user";
         $extra_volume = $ManagePanel->extra_volume($nameloc['username'], $marzban_list_get['code_panel'], $volume);
-        if ($extra_volume['status'] == false) {
-            $extra_volume['msg'] = json_encode($extra_volume['msg']);
-            $textreports = sprintf($textbotlang['Admin']['reportgroup']['errorExtraVolumeFn'], $marzban_list_get['name_panel'], $nameloc['username'], $extra_volume['msg']);
-            sendmessage($nameloc['id_user'], $textbotlang['users']['extraVolume']['serviceError'], null, 'HTML');
+        if (!is_array($extra_volume) || ($extra_volume['status'] ?? false) == false) {
+            $extraVolumeError = is_array($extra_volume) ? ($extra_volume['msg'] ?? $extra_volume) : $extra_volume;
+            $extraVolumeError = json_encode($extraVolumeError, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+            $refundBalance = intval($Balance_id['Balance']) + intval($Payment_report['price']);
+            update("user", "Balance", $refundBalance, "id", $Balance_id['id']);
+            $textreports = sprintf($textbotlang['Admin']['reportgroup']['errorExtraVolumeFn'], $marzban_list_get['name_panel'], $nameloc['username'], $extraVolumeError);
+            sendmessage($Balance_id['id'], $textbotlang['users']['extraVolume']['serviceError'], null, 'HTML');
+            sendmessage($Balance_id['id'], sprintf($textbotlang['users']['Balance']['refundAddonFailed'], number_format($refundBalance)), $keyboard, 'HTML');
             if (strlen($setting['Channel_Report']) > 0) {
                 telegram('sendmessage', [
                     'chat_id' => $setting['Channel_Report'],
@@ -1459,10 +1463,14 @@ function DirectPayment($order_id, $image = 'images.jpg')
         $dateacc = date('Y/m/d H:i:s');
         $type = "extra_time_user";
         $extra_time = $ManagePanel->extra_time($nameloc['username'], $marzban_list_get['code_panel'], $tmieextra);
-        if ($extra_time['status'] == false) {
-            $extra_time['msg'] = json_encode($extra_time['msg']);
-            $textreports = sprintf($textbotlang['Admin']['reportgroup']['errorExtraTimeFn'], $marzban_list_get['name_panel'], $nameloc['username'], $extra_time['msg']);
-            sendmessage($from_id, $textbotlang['users']['extraVolume']['serviceError'], null, 'HTML');
+        if (!is_array($extra_time) || ($extra_time['status'] ?? false) == false) {
+            $extraTimeError = is_array($extra_time) ? ($extra_time['msg'] ?? $extra_time) : $extra_time;
+            $extraTimeError = json_encode($extraTimeError, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+            $refundBalance = intval($Balance_id['Balance']) + intval($Payment_report['price']);
+            update("user", "Balance", $refundBalance, "id", $Balance_id['id']);
+            $textreports = sprintf($textbotlang['Admin']['reportgroup']['errorExtraTimeFn'], $marzban_list_get['name_panel'], $nameloc['username'], $extraTimeError);
+            sendmessage($Balance_id['id'], $textbotlang['users']['extraVolume']['serviceError'], null, 'HTML');
+            sendmessage($Balance_id['id'], sprintf($textbotlang['users']['Balance']['refundAddonFailed'], number_format($refundBalance)), $keyboard, 'HTML');
             if (strlen($setting['Channel_Report']) > 0) {
                 telegram('sendmessage', [
                     'chat_id' => $setting['Channel_Report'],
