@@ -247,6 +247,16 @@ $keyboardvariza = json_encode([
         [['text' => $textbotlang['keyboard']['backToGateways'], 'callback_data' => "paygwlist"]],
     ]
 ]);
+$keyboardblupal = json_encode([
+    'inline_keyboard' => [
+        [['text' => $textbotlang['keyboard']['blupalApiKey'], 'callback_data' => "paygwopt-blupalApiKey"], ['text' => $textbotlang['keyboard']['blupalCardNumber'], 'callback_data' => "paygwopt-blupalCardNumber"]],
+        [['text' => $textbotlang['keyboard']['blupalWebhookUrl'], 'callback_data' => "paygwopt-blupalWebhookUrl"]],
+        [['text' => $textbotlang['keyboard']['cashbackBlupal'], 'callback_data' => "paygwopt-cashbackBlupal"]],
+        [['text' => $textbotlang['keyboard']['minAmountBlupal'], 'callback_data' => "paygwopt-minAmountBlupal"], ['text' => $textbotlang['keyboard']['maxAmountBlupal'], 'callback_data' => "paygwopt-maxAmountBlupal"]],
+        [['text' => $textbotlang['keyboard']['setEducationBlupal'], 'callback_data' => "paygwopt-setEducationBlupal"]],
+        [['text' => $textbotlang['keyboard']['backToGateways'], 'callback_data' => "paygwlist"]],
+    ]
+]);
 $aqayepardakht = json_encode([
     'inline_keyboard' => [
         [['text' => $textbotlang['keyboard']['setAqayePardakhtMerchant'], 'callback_data' => "paygwopt-setAqayePardakhtMerchant"], ['text' => $textbotlang['keyboard']['cashbackAqayePardakht'], 'callback_data' => "paygwopt-cashbackAqayePardakht"]],
@@ -293,6 +303,7 @@ $abangateway4 = getPaySettingValue("statusiranpay4", "offiranpay4");
 $paymentstatussnotverify = getPaySettingValue("paymentstatussnotverify");
 $paymentsstartelegram = getPaySettingValue("statusstar");
 $payment_status_nowpayment = getPaySettingValue("statusnowpayment");
+$blupalStatus = getPaySettingValue("blupal_status", "offblupal");
 $step_payment = [
     'inline_keyboard' => []
 ];
@@ -360,6 +371,11 @@ if ($PaySettingaqayepardakht == "onaqayepardakht") {
 if ($zarinpal == "onzarinpal") {
     $step_payment['inline_keyboard'][] = [
         ['text' => $textbotlang['textbot']['zarinPal'], 'callback_data' => "zarinpal"]
+    ];
+}
+if ($blupalStatus === "onblupal" && function_exists('bluebotBlupalConfigured') && bluebotBlupalConfigured()) {
+    $step_payment['inline_keyboard'][] = [
+        ['text' => $textbotlang['textbot']['blupal'], 'callback_data' => "blupal"]
     ];
 }
 $variza = getPaySettingValue("variza_status", "offvariza");
@@ -1764,6 +1780,7 @@ $paymentGateways = [
     'aqayepardakht' => ['label' => $textbotlang['keyboard']['aqayePardakhtGateway'], 'setting' => 'statusaqayepardakht', 'on' => 'onaqayepardakht', 'off' => 'offaqayepardakht', 'keyboard' => $aqayepardakht],
     'zarinpal' => ['label' => $textbotlang['keyboard']['zarinPalGateway'], 'setting' => 'zarinpalstatus', 'on' => 'onzarinpal', 'off' => 'offzarinpal', 'keyboard' => $keyboardzarinpal],
     'variza' => ['label' => $textbotlang['keyboard']['varizaGateway'], 'setting' => 'variza_status', 'on' => 'onvariza', 'off' => 'offvariza', 'keyboard' => $keyboardvariza],
+    'blupal' => ['label' => $textbotlang['keyboard']['blupalGateway'], 'setting' => 'blupal_status', 'on' => 'onblupal', 'off' => 'offblupal', 'keyboard' => $keyboardblupal],
     'digi' => ['label' => $textbotlang['keyboard']['cryptoOfflinePayment'], 'setting' => 'digistatus', 'on' => 'ondigi', 'off' => 'offdigi', 'keyboard' => $tronnowpayments],
     'star' => ['label' => 'Star Telegram', 'setting' => 'statusstar', 'on' => '1', 'off' => '0', 'keyboard' => $Startelegram],
 ];
