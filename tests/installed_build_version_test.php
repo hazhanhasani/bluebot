@@ -5,11 +5,10 @@ declare(strict_types=1);
 $root = dirname(__DIR__);
 $stateDir = $root . '/storage/update';
 $stateFile = $stateDir . '/build.json';
-$backup = null;
+$versionFile = $root . '/version';
 
-if (is_file($stateFile)) {
-    $backup = file_get_contents($stateFile);
-}
+$stateBackup = is_file($stateFile) ? file_get_contents($stateFile) : null;
+$versionBackup = is_file($versionFile) ? file_get_contents($versionFile) : null;
 
 if (!is_dir($stateDir)) {
     mkdir($stateDir, 0775, true);
@@ -17,43 +16,49 @@ if (!is_dir($stateDir)) {
 
 require_once $root . '/src/Support/UpdateManager.php';
 
-$base = trim((string) file_get_contents($root . '/version'));
+$base = trim((string) $versionBackup);
+$base = preg_replace('/-beta\+[0-9a-f]{7,40}$/i', '', $base) ?? $base;
 $betaRef = '1234567890abcdef1234567890abcdef12345678';
 
-file_put_contents($stateFile, json_encode([
-    'channel' => 'beta',
-    'ref' => $betaRef,
-    'label' => 'main@1234567',
-    'base_version' => $base,
-    'installed_at' => gmdate(DATE_ATOM),
-], JSON_PRETTY_PRINT));
+try {
+    $beta = bluebotWriteInstalledBuildState('beta', $betaRef);
+    $expectedBeta = $base . '-beta+1234567';
 
-$betaVersion = bluebotUpdateCurrentVersion();
-$expectedBeta = $base . '-beta+1234567';
-if ($betaVersion !== $expectedBeta) {
-    fwrite(STDERR, "Expected {$expectedBeta}, got {$betaVersion}\n");
-    exit(1);
-}
+    if (($beta['display_version'] ?? '') !== $expectedBeta) {
+        throw new RuntimeException('Beta state display version was not persisted.');
+    }
 
-file_put_contents($stateFile, json_encode([
-    'channel' => 'release',
-    'ref' => 'v0.6.0',
-    'label' => 'v0.6.0',
-    'base_version' => $base,
-    'installed_at' => gmdate(DATE_ATOM),
-], JSON_PRETTY_PRINT));
+    if (bluebotUpdateCurrentVersion() !== $expectedBeta) {
+        throw new RuntimeException('Build-aware version resolver did not return the Beta build.');
+    }
 
-$releaseVersion = bluebotUpdateCurrentVersion();
-if ($releaseVersion !== '0.6.0') {
-    fwrite(STDERR, "Expected stable tag 0.6.0, got {$releaseVersion}\n");
-    exit(1);
-}
+    if (trim((string) file_get_contents($versionFile)) !== $expectedBeta) {
+        throw new RuntimeException('Runtime version file did not sync to the Beta build.');
+    }
 
-if ($backup !== null) {
-    file_put_contents($stateFile, $backup);
-} else {
-    @unlink($stateFile);
-    @rmdir($stateDir);
+    $release = bluebotWriteInstalledBuildState('release', 'v0.6.0');
+    if (($release['display_version'] ?? '') !== '0.6.0') {
+        throw new RuntimeException('Stable release tag was not normalized.');
+    }
+
+    if (bluebotUpdateCurrentVersion() !== '0.6.0') {
+        throw new RuntimeException('Build-aware version resolver did not return the Stable tag.');
+    }
+
+    if (trim((string) file_get_contents($versionFile)) !== '0.6.0') {
+        throw new RuntimeException('Runtime version file did not sync to the Stable tag.');
+    }
+} finally {
+    if ($versionBackup !== null) {
+        file_put_contents($versionFile, $versionBackup);
+    }
+
+    if ($stateBackup !== null) {
+        file_put_contents($stateFile, $stateBackup);
+    } else {
+        @unlink($stateFile);
+        @rmdir($stateDir);
+    }
 }
 
 echo "Installed build version tests OK.\n";

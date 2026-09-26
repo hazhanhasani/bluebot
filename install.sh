@@ -796,32 +796,18 @@ get_installed_build_field() {
 }
 
 get_installed_version() {
-    local base channel ref short
+    local display
+    display=$(get_installed_build_field display_version)
+    if [ -n "$display" ]; then
+        echo "$display"
+        return 0
+    fi
+
     if [ -f "$BOT_DIR_DEFAULT/version" ]; then
-        base=$(tr -d ' \t\r\n' < "$BOT_DIR_DEFAULT/version")
+        tr -d ' \t\r\n' < "$BOT_DIR_DEFAULT/version"
     else
-        base=""
+        echo ""
     fi
-
-    channel=$(get_installed_build_field channel)
-    ref=$(get_installed_build_field ref)
-
-    if [ "$channel" = "beta" ] && [ -n "$ref" ]; then
-        short="${ref:0:7}"
-        if [ -n "$base" ]; then
-            echo "${base}-beta+${short}"
-        else
-            echo "beta+${short}"
-        fi
-        return 0
-    fi
-
-    if [ "$channel" = "release" ] && [ -n "$ref" ]; then
-        echo "${ref#v}"
-        return 0
-    fi
-
-    echo "$base"
 }
 
 get_main_commit_sha() {
@@ -838,9 +824,30 @@ get_main_commit_sha() {
 record_installed_build() {
     local channel="$1" ref="$2" label="$3"
     local state_dir="$BOT_DIR_DEFAULT/storage/update"
-    local base=""
+    local base="" display="" short=""
 
-    [ -f "$BOT_DIR_DEFAULT/version" ] && base=$(tr -d ' \t\r\n' < "$BOT_DIR_DEFAULT/version")
+    if [ -f "$BOT_DIR_DEFAULT/version" ]; then
+        base=$(tr -d ' \t\r\n' < "$BOT_DIR_DEFAULT/version")
+        base=$(printf '%s' "$base" | sed -E 's/-beta\+[0-9a-fA-F]{7,40}$//')
+    fi
+
+    case "$channel" in
+        beta)
+            short="${ref:0:7}"
+            if [ -n "$base" ]; then
+                display="${base}-beta+${short}"
+            else
+                display="beta+${short}"
+            fi
+            ;;
+        release)
+            display="${ref#v}"
+            ;;
+        *)
+            display="$base"
+            ;;
+    esac
+
     mkdir -p "$state_dir" || return 1
 
     php -r '
@@ -849,14 +856,21 @@ record_installed_build() {
             "ref" => $argv[3],
             "label" => $argv[4],
             "base_version" => $argv[5],
+            "display_version" => $argv[6],
             "installed_at" => gmdate(DATE_ATOM),
         ];
         $json = json_encode($payload, JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES|JSON_PRETTY_PRINT);
-        exit(file_put_contents($argv[1], $json . PHP_EOL, LOCK_EX) === false ? 1 : 0);
-    ' "$state_dir/build.json" "$channel" "$ref" "$label" "$base" || return 1
+        if (file_put_contents($argv[1], $json . PHP_EOL, LOCK_EX) === false) {
+            exit(1);
+        }
+        if ($argv[6] !== '' && file_put_contents($argv[7], $argv[6] . PHP_EOL, LOCK_EX) === false) {
+            exit(2);
+        }
+    ' "$state_dir/build.json" "$channel" "$ref" "$label" "$base" "$display" "$BOT_DIR_DEFAULT/version" || return 1
 
-    chown www-data:www-data "$state_dir/build.json" 2>/dev/null || true
+    chown www-data:www-data "$state_dir/build.json" "$BOT_DIR_DEFAULT/version" 2>/dev/null || true
     chmod 0640 "$state_dir/build.json" 2>/dev/null || true
+    chmod 0644 "$BOT_DIR_DEFAULT/version" 2>/dev/null || true
 }
 
 

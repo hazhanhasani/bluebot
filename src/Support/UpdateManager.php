@@ -7,6 +7,55 @@ function bluebotUpdateRepository(): string
     return 'hazhanhasani/bluebot';
 }
 
+
+function bluebotWriteInstalledBuildState(string $channel, string $ref): array
+{
+    $root = dirname(__DIR__, 2);
+    $channel = bluebotUpdateNormalizeChannel($channel);
+    $ref = trim($ref);
+
+    if ($channel === 'auto') {
+        $channel = 'release';
+    }
+
+    $versionPath = $root . '/version';
+    $base = is_file($versionPath) ? trim((string) file_get_contents($versionPath)) : '';
+    $base = preg_replace('/-beta\+[0-9a-f]{7,40}$/i', '', $base) ?? $base;
+
+    if ($channel === 'beta' && $ref !== '') {
+        $display = ($base !== '' ? $base . '-' : '') . 'beta+' . substr($ref, 0, 7);
+    } elseif ($channel === 'release' && $ref !== '') {
+        $display = ltrim($ref, 'vV');
+    } else {
+        $display = $base;
+    }
+
+    $directory = $root . '/storage/update';
+    if (!is_dir($directory) && !@mkdir($directory, 0775, true) && !is_dir($directory)) {
+        return [];
+    }
+
+    $payload = [
+        'channel' => $channel,
+        'ref' => $ref,
+        'label' => $channel === 'beta' ? 'main@' . substr($ref, 0, 7) : $ref,
+        'base_version' => $base,
+        'display_version' => $display,
+        'installed_at' => gmdate(DATE_ATOM),
+    ];
+
+    $encoded = json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT);
+    if ($encoded === false || @file_put_contents($directory . '/build.json', $encoded . PHP_EOL, LOCK_EX) === false) {
+        return [];
+    }
+
+    if ($display !== '') {
+        @file_put_contents($versionPath, $display . PHP_EOL, LOCK_EX);
+    }
+
+    return $payload;
+}
+
 function bluebotInstalledBuildState(): array
 {
     $root = dirname(__DIR__, 2);
@@ -22,22 +71,15 @@ function bluebotInstalledBuildState(): array
 
 function bluebotUpdateCurrentVersion(): string
 {
+    $build = bluebotInstalledBuildState();
+    $display = trim((string) ($build['display_version'] ?? ''));
+    if ($display !== '') {
+        return $display;
+    }
+
     $root = dirname(__DIR__, 2);
     $basePath = $root . '/version';
-    $base = is_file($basePath) ? trim((string) file_get_contents($basePath)) : '';
-    $build = bluebotInstalledBuildState();
-    $channel = bluebotUpdateNormalizeChannel($build['channel'] ?? 'release');
-    $ref = trim((string) ($build['ref'] ?? ''));
-
-    if ($channel === 'beta' && $ref !== '') {
-        return ($base !== '' ? $base . '-' : '') . 'beta+' . substr($ref, 0, 7);
-    }
-
-    if ($channel === 'release' && $ref !== '') {
-        return ltrim($ref, 'vV');
-    }
-
-    return $base;
+    return is_file($basePath) ? trim((string) file_get_contents($basePath)) : '';
 }
 
 function bluebotUpdateNormalizeChannel($channel): string
@@ -225,35 +267,12 @@ function bluebotUpdateMarkInstalled(string $channel, string $ref): void
     $channel = bluebotUpdateNormalizeChannel($channel);
     $ref = trim($ref);
 
-    update('setting', 'update_installed_channel', $channel);
-    update('setting', 'update_installed_ref', $ref);
-    update('setting', 'update_last_notified', $ref);
+    bluebotWriteInstalledBuildState($channel, $ref);
 
-    if ($ref === '') {
-        return;
-    }
-
-    $root = dirname(__DIR__, 2);
-    $directory = $root . '/storage/update';
-    if (!is_dir($directory)) {
-        @mkdir($directory, 0775, true);
-    }
-
-    if (is_dir($directory)) {
-        $basePath = $root . '/version';
-        $payload = [
-            'channel' => $channel,
-            'ref' => $ref,
-            'label' => $channel === 'beta' ? 'main@' . substr($ref, 0, 7) : $ref,
-            'base_version' => is_file($basePath) ? trim((string) file_get_contents($basePath)) : '',
-            'installed_at' => gmdate(DATE_ATOM),
-        ];
-
-        @file_put_contents(
-            $directory . '/build.json',
-            json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT) . PHP_EOL,
-            LOCK_EX
-        );
+    if (function_exists('update')) {
+        update('setting', 'update_installed_channel', $channel);
+        update('setting', 'update_installed_ref', $ref);
+        update('setting', 'update_last_notified', $ref);
     }
 }
 
