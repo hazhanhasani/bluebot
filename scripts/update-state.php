@@ -28,11 +28,17 @@ if ($state === []) {
 try {
     require_once dirname(__DIR__) . '/config.php';
     require_once dirname(__DIR__) . '/function.php';
+    require_once dirname(__DIR__) . '/botapi.php';
+    require_once dirname(__DIR__) . '/src/Support/MiniApp.php';
 
     if (function_exists('update')) {
         update('setting', 'update_installed_channel', $channel);
         update('setting', 'update_installed_ref', $ref);
         update('setting', 'update_last_notified', $ref);
+    }
+
+    if (function_exists('bluebotEnsureMiniAppMenuButton')) {
+        bluebotEnsureMiniAppMenuButton(true);
     }
 } catch (Throwable $error) {
     // The build state is already persisted; runtime DB sync can recover later.
