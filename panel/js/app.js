@@ -124,7 +124,7 @@ document.querySelectorAll('[data-confirm]').forEach(function (el) {
 });
 
 var _THEME_BG = {
-    navy: '#0F172A', purple: '#180D2E', emerald: '#0A1F1C',
+    bluebot: '#071426', navy: '#0F172A', purple: '#180D2E', emerald: '#0A1F1C',
     sunset: '#1A0D0D', slate: '#080808', light: '#F1F5F9',
     linen: '#FAF7F2', mint: '#F0FDF4', lavender: '#FAF5FF'
 };
@@ -133,7 +133,7 @@ var _LIGHT_THEMES = ['light', 'linen', 'mint', 'lavender'];
 window.applyTheme = function (t) {
     var root = document.documentElement;
     root.setAttribute('data-theme', t);
-    root.style.backgroundColor = _THEME_BG[t] || '#0F172A';
+    root.style.backgroundColor = _THEME_BG[t] || '#071426';
     root.style.colorScheme     = _LIGHT_THEMES.indexOf(t) >= 0 ? 'light' : 'dark';
     localStorage.setItem('panel-theme', t);
     var mtc = document.getElementById('mtc');
