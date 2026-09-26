@@ -8,12 +8,12 @@ $contracts = [
     'Marzban.php' => [
         'rawurlencode((string) $username)',
         'Marzban delete returned an error after successful deletion',
-        "$data['group_ids'] = $inbounds",
+        '$data[\'group_ids\'] = $inbounds',
         '"proxy_settings" => json_decode',
     ],
     'marzneshin.php' => [
-        "$data['expire_strategy'] = 'never'",
-        "\$data['expire_strategy'] = 'start_on_first_use'",
+        '$data[\'expire_strategy\'] = \'never\'',
+        '$data[\'expire_strategy\'] = \'start_on_first_use\'',
         'date(DATE_ATOM',
         "'/api/admins/token'",
     ],
@@ -24,7 +24,7 @@ $contracts = [
     ],
     'x-ui_single.php' => [
         '?keepTraffic=0',
-        "'inboundIds' => \$ids",
+        '\'inboundIds\' => $ids',
         'array_replace($current, $config)',
         "'/panel/api/clients/update/'",
     ],
