@@ -136,6 +136,9 @@ function check_login_rate(string $ip): bool
         return false;
     $data[] = $now;
     @file_put_contents($file, json_encode(array_values($data)), LOCK_EX);
+    if (is_file($file)) {
+        @chmod($file, 0600);
+    }
     return true;
 }
 
