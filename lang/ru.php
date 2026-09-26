@@ -4402,6 +4402,7 @@ ID пользователя : %s
                 'auditAllEvents' => 'Все события',
                 'auditSearchPlaceholder' => 'Поиск по событию или деталям',
                 'auditFilter' => 'Фильтр',
+                'auditExport' => 'Экспорт CSV',
                 'auditLimit' => 'Последние события',
                 'diagnosticsNav' => 'Диагностика',
                 'diagnosticsTitle' => 'Состояние BlueBot',
