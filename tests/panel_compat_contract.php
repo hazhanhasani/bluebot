@@ -8,12 +8,12 @@ $contracts = [
     'Marzban.php' => [
         'rawurlencode((string) $username)',
         'Marzban delete returned an error after successful deletion',
-        "'group_ids' => $inbounds",
+        "'group_ids' => \$inbounds",
         '"proxy_settings" => json_decode',
     ],
     'marzneshin.php' => [
         "'expire_strategy' => 'never'",
-        "$data['expire_strategy'] = 'start_on_first_use'",
+        "\$data['expire_strategy'] = 'start_on_first_use'",
         'date(DATE_ATOM',
         "'/api/admins/token'",
     ],
@@ -24,7 +24,7 @@ $contracts = [
     ],
     'x-ui_single.php' => [
         '?keepTraffic=0',
-        "'inboundIds' => $ids",
+        "'inboundIds' => \$ids",
         'array_replace($current, $config)',
         "'/panel/api/clients/update/'",
     ],
@@ -40,17 +40,18 @@ $contracts = [
     ],
     's_ui.php' => [
         "'/apiv2/save'",
-        "json_encode(array('id' => (int) $data_user['id']))",
-        "empty($response['success'])",
+        "json_encode(array('id' => (int) \$data_user['id']))",
+        "empty(\$response['success'])",
     ],
     'WGDashboard.php' => [
         'function wgDashboardRequest',
         "'wg-dashboard-apikey: '",
-        'rawurlencode((string) $panel[\'inboundid\'])',
+        "rawurlencode((string) \$panel['inboundid'])",
     ],
     'mikrotik.php' => [
-        "mikrotikRequest($panel, 'PUT', 'user-manager/user'",
-        "mikrotikRequest(\n        $panel,\n        'DELETE'",
+        'function mikrotikRequest',
+        "'PUT', 'user-manager/user'",
+        "'DELETE'",
         "'user-manager/user/print'",
     ],
     'ibsng.php' => [
