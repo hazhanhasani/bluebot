@@ -24,6 +24,7 @@ if (isset($data['payment_status']) && $data['payment_status'] == "finished") {
             DirectPayment($Payment_report['id_order'], "../images.jpg");
         } catch (Throwable $directPaymentError) {
             error_log("DirectPayment failed for order {$Payment_report['id_order']}: " . $directPaymentError->getMessage());
+            markPaymentDeliveryError($Payment_report['id_order'], $directPaymentError->getMessage());
             return;
         }
         $pricecashback = select("PaySetting", "ValuePay", "NamePay", "cashbacknowpayment", "select")['ValuePay'];
