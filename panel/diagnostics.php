@@ -31,6 +31,16 @@ $healthItems = [
         'value' => (bool) $diagnostics['installer_removed'],
         'type' => 'bool',
     ],
+    [
+        'label' => $textbotlang['panel']['diagnosticsWebhook'],
+        'value' => (bool) $diagnostics['webhook_protected'],
+        'type' => 'bool',
+    ],
+    [
+        'label' => $textbotlang['panel']['diagnosticsApiToken'],
+        'value' => (bool) $diagnostics['api_token_configured'],
+        'type' => 'bool',
+    ],
 ];
 
 include __DIR__ . '/inc/layout_head.php';
@@ -111,6 +121,12 @@ include __DIR__ . '/inc/layout_head.php';
           <tr>
             <td><?= htmlspecialchars($textbotlang['panel']['diagnosticsFreeDisk']) ?></td>
             <td class="cell-mono" style="text-align:end"><?= htmlspecialchars((string) $diagnostics['free_disk']) ?></td>
+          </tr>
+          <tr>
+            <td><?= htmlspecialchars($textbotlang['panel']['diagnosticsReviewed']) ?></td>
+            <td style="text-align:end">
+              <span class="tag tag-plain"><?= number_format(max(0, (int) $diagnostics['delivery_reviewed'])) ?></span>
+            </td>
           </tr>
           <tr>
             <td><?= htmlspecialchars($textbotlang['panel']['diagnosticsDeliveryErrors']) ?></td>
