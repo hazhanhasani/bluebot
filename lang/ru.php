@@ -3907,6 +3907,7 @@ ID пользователя : %s
                 'freeLimit' => '🆓 Бесплатный лимит',
                 'generalLimit' => '↙️ Общий лимит',
                 'generalSettings' => '⚙️ Общие настройки',
+                'updateCenter' => '🔄 Обновление BlueBot',
                 'getAllConfigs' => '⚙️ Получить все конфиги',
                 'getConfig' => 'Получить конфиг',
                 'getConfigBtn' => '🔗 Кнопка получения конфига',
