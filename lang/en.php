@@ -1853,11 +1853,15 @@ Current key: <code>%s</code>',
                         'askBlupalCardNumber' => '💳 Enter the 16-digit destination card number for Blupal. This is optional; send 0 to clear it.
 
 Current card: <code>%s</code>',
-                        'blupalWebhookInfo' => '🔗 Blupal webhook URL:
+                        'blupalWebhookInfo' => '🔷 <b>Blupal integration URLs</b>
 
+↩️ <b>Callback URL</b> — required in Blupal panel:
 <code>%s</code>
 
-Register this URL in your Blupal webhook settings.',
+⚡ <b>Webhook URL</b>:
+<code>%s</code>
+
+Register both HTTPS URLs exactly as shown.',
                         'askMerchant' => '💳 Obtain your merchant code and enter it in this section
         
 Your current merchant code: %s',
@@ -4187,7 +4191,7 @@ We hope you had a good experience with the ease and speed of your service. If yo
                 'blupalGateway' => 'Blupal',
                 'blupalApiKey' => '🔑 Blupal API key',
                 'blupalCardNumber' => '💳 Blupal card number',
-                'blupalWebhookUrl' => '🔗 Blupal webhook URL',
+                'blupalWebhookUrl' => '🔗 Blupal Callback / Webhook',
                 'cashbackBlupal' => '🎁 Blupal cashback',
                 'minAmountBlupal' => '⬇️ Blupal minimum',
                 'maxAmountBlupal' => '⬆️ Blupal maximum',
