@@ -34,7 +34,7 @@ function claimPaymentPaid($order_id)
             $paymentStmt->execute([$order_id]);
             $payment = $paymentStmt->fetch(PDO::FETCH_ASSOC) ?: null;
             if (is_array($payment) && !empty($payment['id_user'])) {
-                BluebotSms::queueAndDispatchForUser(
+                BluebotSms::queueForUser(
                     'payment_success',
                     (string) $payment['id_user'],
                     [
