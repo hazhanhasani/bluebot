@@ -31,14 +31,26 @@ function bluebotCollectDiagnostics(PDO $pdo, array $setting): array
         $deliveryErrors = (int) $pdo
             ->query("SELECT COUNT(*) FROM Payment_report WHERE payment_Status = 'delivery_error'")
             ->fetchColumn();
+        $deliveryReviewed = (int) $pdo
+            ->query("SELECT COUNT(*) FROM Payment_report WHERE payment_Status = 'delivery_reviewed'")
+            ->fetchColumn();
     } catch (Throwable $error) {
         $deliveryErrors = -1;
+        $deliveryReviewed = -1;
         bluebotLog('error', 'Debug payment check failed', [
             'exception' => get_class($error),
             'reason' => $error->getMessage(),
         ]);
     }
 
+    $apiEnvToken = getenv('BLUEBOT_API_TOKEN');
+    $apiHashFile = $root . '/api/hash.txt';
+    $apiFileToken = is_file($apiHashFile) && is_readable($apiHashFile)
+        ? trim((string) file_get_contents($apiHashFile))
+        : '';
+    $apiTokenConfigured = (is_string($apiEnvToken) && trim($apiEnvToken) !== '') || $apiFileToken !== '';
+
+    $webhookProtected = trim((string) ($setting['webhook_secret'] ?? '')) !== '';
     $freeBytes = @disk_free_space($root);
 
     return [
@@ -49,7 +61,10 @@ function bluebotCollectDiagnostics(PDO $pdo, array $setting): array
         'storage_writable' => is_dir($root . '/storage/cache') && is_writable($root . '/storage/cache'),
         'vendor_ready' => is_file($root . '/vendor/autoload.php'),
         'installer_removed' => !is_dir($root . '/install'),
+        'webhook_protected' => $webhookProtected,
+        'api_token_configured' => $apiTokenConfigured,
         'delivery_errors' => $deliveryErrors,
+        'delivery_reviewed' => $deliveryReviewed,
         'free_disk' => $freeBytes === false ? 'unknown' : number_format($freeBytes / 1073741824, 2) . ' GB',
         'bot_status' => (string) ($setting['Bot_Status'] ?? 'unknown'),
         'time' => date('Y-m-d H:i:s T'),
@@ -63,7 +78,8 @@ function bluebotCollectDiagnostics(PDO $pdo, array $setting): array
 function bluebotBuildDebugReport(PDO $pdo, array $setting, array $webhookSecret = []): string
 {
     $diagnostics = bluebotCollectDiagnostics($pdo, $setting);
-    $webhookProtected = trim((string) ($webhookSecret['secret'] ?? '')) !== '';
+    $webhookProtected = trim((string) ($webhookSecret['secret'] ?? '')) !== ''
+        || (bool) ($diagnostics['webhook_protected'] ?? false);
 
     $status = static fn(bool $ok): string => $ok ? '✅' : '❌';
     $escape = static fn(string $value): string => htmlspecialchars(
@@ -85,7 +101,9 @@ function bluebotBuildDebugReport(PDO $pdo, array $setting, array $webhookSecret 
         . 'Composer vendor: ' . $status((bool) $diagnostics['vendor_ready']) . "\n"
         . 'Webhook protection: ' . $status($webhookProtected) . "\n"
         . 'Installer removed: ' . $status((bool) $diagnostics['installer_removed']) . "\n"
+        . 'Dedicated API token: ' . $status((bool) $diagnostics['api_token_configured']) . "\n"
         . 'Delivery errors: <code>' . $escape($deliveryText) . "</code>\n"
+        . 'Reviewed delivery errors: <code>' . $escape((string) max(0, (int) $diagnostics['delivery_reviewed'])) . "</code>\n"
         . 'Free disk: <code>' . $escape((string) $diagnostics['free_disk']) . "</code>\n"
         . 'Bot status: <code>' . $escape((string) $diagnostics['bot_status']) . "</code>\n"
         . 'Time: <code>' . $escape((string) $diagnostics['time']) . "</code>\n\n"
