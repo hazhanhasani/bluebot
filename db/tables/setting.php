@@ -63,7 +63,11 @@ return [
         cron_status TEXT NOT NULL,
         text_edit JSON NULL,
         limitnumber varchar(200) NULL,
-        webhook_secret varchar(200) NOT NULL DEFAULT ''
+        webhook_secret varchar(200) NOT NULL DEFAULT '',
+        update_channel varchar(20) NOT NULL DEFAULT 'release',
+        update_last_notified varchar(128) NOT NULL DEFAULT '',
+        update_installed_channel varchar(20) NOT NULL DEFAULT 'release',
+        update_installed_ref varchar(128) NOT NULL DEFAULT ''
         SQL,
     'seedOnCreate' => [
         [
@@ -109,6 +113,10 @@ return [
             'timeauto_not_verify' => '1',
             'status_keyboard_config' => '0',
             'cron_status' => $cronStatus,
+            'update_channel' => 'release',
+            'update_last_notified' => '',
+            'update_installed_channel' => 'release',
+            'update_installed_ref' => '',
         ],
     ],
     'columns' => [
@@ -159,5 +167,9 @@ return [
         ['cron_status', $cronStatus, 'TEXT'],
         ['text_edit', '{}', 'JSON'],
         ['webhook_secret', null, "VARCHAR(200) NOT NULL DEFAULT ''"],
+        ['update_channel', 'release', "VARCHAR(20) NOT NULL DEFAULT 'release'"],
+        ['update_last_notified', '', "VARCHAR(128) NOT NULL DEFAULT ''"],
+        ['update_installed_channel', 'release', "VARCHAR(20) NOT NULL DEFAULT 'release'"],
+        ['update_installed_ref', '', "VARCHAR(128) NOT NULL DEFAULT ''"],
     ],
 ];
