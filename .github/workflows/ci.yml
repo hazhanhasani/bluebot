@@ -78,8 +78,13 @@ jobs:
         run: |
           set -euo pipefail
           test "$(grep -Fc "include __DIR__ . '/inc/layout_foot.php'" panel/payment.php)" -eq 1
-          last_nonempty="$(awk 'NF { line=$0 } END { print line }' panel/payment.php)"
-          test "$last_nonempty" = "<?php include __DIR__ . '/inc/layout_foot.php'; ?>"
+          payment_last="$(awk 'NF { line=$0 } END { print line }' panel/payment.php)"
+          test "$payment_last" = "<?php include __DIR__ . '/inc/layout_foot.php'; ?>"
+
+          test "$(grep -Fc "include __DIR__ . '/inc/layout_foot.php'" panel/index.php)" -eq 1
+          dashboard_last="$(awk 'NF { line=$0 } END { print line }' panel/index.php)"
+          test "$dashboard_last" = "<?php include __DIR__ . '/inc/layout_foot.php'; ?>"
+
           echo "Panel page integrity OK."
 
       - name: Verify BlueBot safety contracts
