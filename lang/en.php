@@ -371,6 +371,7 @@ Use the button below to pay👇🏻',
 💰 Amount:  %s Toman',
                         'refundCreateFailed' => '💎  Dear user, because the service was not created, an amount of %s Toman was added to your wallet.',
                         'refundRenewFailed' => '💎  Dear user, because the service was not renewed, an amount of %s Toman was added to your wallet.',
+                        'refundAddonFailed' => '💎 Dear user, the service add-on could not be applied. Your wallet balance was restored to %s Toman.',
                         'transactionCreated' => '✅ Your transaction was created
         
 🛒 Tracking code:  <code>%s</code> 
