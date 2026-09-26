@@ -73,11 +73,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 time(),
             ]);
 
+            $message = 'تنظیمات پیامک ذخیره شد.';
             if ($apiRaw !== '') {
                 @unlink(__DIR__ . '/../storage/cache/sms_patterns.json');
+                try {
+                    $sync = BluebotSms::refreshPatterns(true);
+                    $smart = BluebotSms::smartAssignPatterns((array) ($sync['patterns'] ?? []), false);
+                    $message .= ' ' . number_format((int) ($sync['count'] ?? 0)) .
+                        ' پترن فعال همگام شد و ' . number_format((int) ($smart['assigned'] ?? 0)) .
+                        ' پترن خالی هوشمند جایگذاری شد.';
+                } catch (Throwable $syncError) {
+                    $message .= ' تنظیمات ذخیره شد اما Sync اولیه پترن‌ها انجام نشد: ' . $syncError->getMessage();
+                }
             }
 
-            sms_redirect('تنظیمات پیامک ذخیره شد.');
+            sms_redirect($message);
         }
 
         if ($action === 'refresh_patterns') {
@@ -333,6 +343,13 @@ include __DIR__ . '/inc/layout_head.php';
                         <td>
                             <select class="select" name="pattern[<?= htmlspecialchars((string) $template['event_key']) ?>]" style="min-width:260px">
                                 <option value="">— بدون پترن —</option>
+                                <?php
+                                $currentPattern = trim((string) ($template['pattern_code'] ?? ''));
+                                if ($currentPattern !== '' && !isset($patternByCode[$currentPattern])): ?>
+                                    <option value="<?= htmlspecialchars($currentPattern) ?>" selected>
+                                        <?= htmlspecialchars($currentPattern) ?> — انتخاب فعلی (خارج از Cache)
+                                    </option>
+                                <?php endif; ?>
                                 <?php foreach ($providerPatterns as $pattern):
                                     $code = (string) ($pattern['code'] ?? '');
                                     $label = trim((string) (($pattern['description'] ?? '') ?: ($pattern['text'] ?? '')));
