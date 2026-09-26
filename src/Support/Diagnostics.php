@@ -4,12 +4,7 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/Logger.php';
 
-/**
- * Build the admin-only BlueBot diagnostic report.
- *
- * Secrets, credentials and raw webhook values must never be included here.
- */
-function bluebotBuildDebugReport(PDO $pdo, array $setting, array $webhookSecret = []): string
+function bluebotCollectDiagnostics(PDO $pdo, array $setting): array
 {
     $root = dirname(__DIR__, 2);
 
@@ -32,15 +27,6 @@ function bluebotBuildDebugReport(PDO $pdo, array $setting, array $webhookSecret 
         return $value !== '' ? $value : 'unknown';
     };
 
-    $version = $readVersion($root . '/version');
-    $miniVersion = $readVersion($root . '/app/version');
-
-    $storagePath = $root . '/storage/cache';
-    $storageOk = is_dir($storagePath) && is_writable($storagePath);
-    $vendorOk = is_file($root . '/vendor/autoload.php');
-    $installerPresent = is_dir($root . '/install');
-    $webhookProtected = trim((string) ($webhookSecret['secret'] ?? '')) !== '';
-
     try {
         $deliveryErrors = (int) $pdo
             ->query("SELECT COUNT(*) FROM Payment_report WHERE payment_Status = 'delivery_error'")
@@ -54,9 +40,30 @@ function bluebotBuildDebugReport(PDO $pdo, array $setting, array $webhookSecret 
     }
 
     $freeBytes = @disk_free_space($root);
-    $freeDisk = $freeBytes === false
-        ? 'unknown'
-        : number_format($freeBytes / 1073741824, 2) . ' GB';
+
+    return [
+        'version' => $readVersion($root . '/version'),
+        'mini_version' => $readVersion($root . '/app/version'),
+        'php_version' => PHP_VERSION,
+        'database_ok' => $dbOk,
+        'storage_writable' => is_dir($root . '/storage/cache') && is_writable($root . '/storage/cache'),
+        'vendor_ready' => is_file($root . '/vendor/autoload.php'),
+        'installer_removed' => !is_dir($root . '/install'),
+        'delivery_errors' => $deliveryErrors,
+        'free_disk' => $freeBytes === false ? 'unknown' : number_format($freeBytes / 1073741824, 2) . ' GB',
+        'bot_status' => (string) ($setting['Bot_Status'] ?? 'unknown'),
+        'time' => date('Y-m-d H:i:s T'),
+    ];
+}
+
+/**
+ * Build the admin-only Telegram diagnostic report.
+ * Secrets, credentials and raw webhook values must never be included here.
+ */
+function bluebotBuildDebugReport(PDO $pdo, array $setting, array $webhookSecret = []): string
+{
+    $diagnostics = bluebotCollectDiagnostics($pdo, $setting);
+    $webhookProtected = trim((string) ($webhookSecret['secret'] ?? '')) !== '';
 
     $status = static fn(bool $ok): string => $ok ? '✅' : '❌';
     $escape = static fn(string $value): string => htmlspecialchars(
@@ -65,20 +72,22 @@ function bluebotBuildDebugReport(PDO $pdo, array $setting, array $webhookSecret 
         'UTF-8'
     );
 
-    $deliveryText = $deliveryErrors < 0 ? 'unknown' : (string) $deliveryErrors;
+    $deliveryText = $diagnostics['delivery_errors'] < 0
+        ? 'unknown'
+        : (string) $diagnostics['delivery_errors'];
 
     return "<b>🔵 BlueBot /debug</b>\n\n"
-        . 'Version: <code>' . $escape($version) . "</code>\n"
-        . 'Mini App: <code>' . $escape($miniVersion) . "</code>\n"
-        . 'PHP: <code>' . $escape(PHP_VERSION) . "</code>\n"
-        . 'Database: ' . $status($dbOk) . "\n"
-        . 'Storage writable: ' . $status($storageOk) . "\n"
-        . 'Composer vendor: ' . $status($vendorOk) . "\n"
+        . 'Version: <code>' . $escape((string) $diagnostics['version']) . "</code>\n"
+        . 'Mini App: <code>' . $escape((string) $diagnostics['mini_version']) . "</code>\n"
+        . 'PHP: <code>' . $escape((string) $diagnostics['php_version']) . "</code>\n"
+        . 'Database: ' . $status((bool) $diagnostics['database_ok']) . "\n"
+        . 'Storage writable: ' . $status((bool) $diagnostics['storage_writable']) . "\n"
+        . 'Composer vendor: ' . $status((bool) $diagnostics['vendor_ready']) . "\n"
         . 'Webhook protection: ' . $status($webhookProtected) . "\n"
-        . 'Installer removed: ' . $status(!$installerPresent) . "\n"
+        . 'Installer removed: ' . $status((bool) $diagnostics['installer_removed']) . "\n"
         . 'Delivery errors: <code>' . $escape($deliveryText) . "</code>\n"
-        . 'Free disk: <code>' . $escape($freeDisk) . "</code>\n"
-        . 'Bot status: <code>' . $escape((string) ($setting['Bot_Status'] ?? 'unknown')) . "</code>\n"
-        . 'Time: <code>' . $escape(date('Y-m-d H:i:s T')) . "</code>\n\n"
+        . 'Free disk: <code>' . $escape((string) $diagnostics['free_disk']) . "</code>\n"
+        . 'Bot status: <code>' . $escape((string) $diagnostics['bot_status']) . "</code>\n"
+        . 'Time: <code>' . $escape((string) $diagnostics['time']) . "</code>\n\n"
         . '<i>No secrets are included in this report.</i>';
 }
