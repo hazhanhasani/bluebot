@@ -7,6 +7,7 @@ if (isset($_SERVER['SCRIPT_FILENAME']) && realpath($_SERVER['SCRIPT_FILENAME']) 
 
 require_once __DIR__ . '/../config.php';
 require_once __DIR__ . '/../function.php';
+require_once __DIR__ . '/../src/Support/ApiToken.php';
 
 if (!function_exists('getallheaders')) {
     function getallheaders(): array
@@ -66,23 +67,11 @@ function apiTokens()
 {
     global $APIKEY;
 
-    $tokens = [];
-
     // Prefer a dedicated API credential so the Telegram bot token does not need
     // to double as an administrative API secret. Existing installations remain
-    // compatible through hash.txt and the legacy fallback below.
-    $envToken = getenv('BLUEBOT_API_TOKEN');
-    if (is_string($envToken) && trim($envToken) !== '') {
-        $tokens[] = trim($envToken);
-    }
-
-    $hashFile = __DIR__ . '/hash.txt';
-    if (is_file($hashFile)) {
-        $fileToken = trim((string) file_get_contents($hashFile));
-        if ($fileToken !== '') {
-            $tokens[] = $fileToken;
-        }
-    }
+    // compatible with the legacy Telegram-token fallback until a dedicated
+    // credential is explicitly created.
+    $tokens = bluebotDedicatedApiTokens();
 
     if (empty($tokens) && isset($APIKEY) && $APIKEY !== '') {
         $tokens[] = (string) $APIKEY;
