@@ -148,6 +148,11 @@ $initials = mb_strtoupper(mb_substr($currentUser, 0, 1, 'UTF-8'), 'UTF-8');
             <span class="nav-icon"><?= icon('settings') ?></span><span
               class="nav-label"><?= $textbotlang['panel']['layoutProfileMenuLabel'] ?></span>
           </a>
+          <a href="sms.php" class="nav-item <?= $activeNav === 'sms' ? 'active' : '' ?>"
+            title="پیامک و اعلان‌ها">
+            <span class="nav-icon"><?= icon('card') ?></span><span
+              class="nav-label">پیامک و اعلان‌ها</span>
+          </a>
           <a href="diagnostics.php" class="nav-item <?= $activeNav === 'diagnostics' ? 'active' : '' ?>"
             title="<?= htmlspecialchars($textbotlang['panel']['diagnosticsTitle']) ?>">
             <span class="nav-icon"><?= icon('server') ?></span><span
