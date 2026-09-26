@@ -7,10 +7,37 @@ function bluebotUpdateRepository(): string
     return 'hazhanhasani/bluebot';
 }
 
+function bluebotInstalledBuildState(): array
+{
+    $root = dirname(__DIR__, 2);
+    $path = $root . '/storage/update/build.json';
+
+    if (!is_file($path)) {
+        return [];
+    }
+
+    $decoded = json_decode((string) file_get_contents($path), true);
+    return is_array($decoded) ? $decoded : [];
+}
+
 function bluebotUpdateCurrentVersion(): string
 {
-    $path = dirname(__DIR__, 2) . '/version';
-    return is_file($path) ? trim((string) file_get_contents($path)) : '';
+    $root = dirname(__DIR__, 2);
+    $basePath = $root . '/version';
+    $base = is_file($basePath) ? trim((string) file_get_contents($basePath)) : '';
+    $build = bluebotInstalledBuildState();
+    $channel = bluebotUpdateNormalizeChannel($build['channel'] ?? 'release');
+    $ref = trim((string) ($build['ref'] ?? ''));
+
+    if ($channel === 'beta' && $ref !== '') {
+        return ($base !== '' ? $base . '-' : '') . 'beta+' . substr($ref, 0, 7);
+    }
+
+    if ($channel === 'release' && $ref !== '') {
+        return ltrim($ref, 'vV');
+    }
+
+    return $base;
 }
 
 function bluebotUpdateNormalizeChannel($channel): string
@@ -178,7 +205,11 @@ function bluebotUpdateAvailable(array $target, ?array $settings = null): bool
         return $latest !== $current;
     }
 
+    $build = bluebotInstalledBuildState();
     $installedRef = trim((string) ($settings['update_installed_ref'] ?? ''));
+    if ($installedRef === '') {
+        $installedRef = trim((string) ($build['ref'] ?? ''));
+    }
     $targetRef = trim((string) ($target['ref'] ?? ''));
 
     return $targetRef !== '' && ($installedRef === '' || !hash_equals($installedRef, $targetRef));
