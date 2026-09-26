@@ -1,6 +1,7 @@
 <?php
 require_once __DIR__ . '/inc/config.php';
 require_once __DIR__ . '/inc/icons.php';
+require_once __DIR__ . '/../src/Support/Diagnostics.php';
 require_auth();
 
 $totalUsers = 0;
@@ -9,6 +10,29 @@ $totalRevenue = 0;
 $activeNow = 0;
 $pendingPay = 0;
 $txToday = 0;
+$dashboardDiagnostics = null;
+$dashboardHealthNeedsReview = false;
+
+try {
+    $dashboardSetting = select("setting", "*");
+    $dashboardDiagnostics = bluebotCollectDiagnostics(
+        $pdo,
+        is_array($dashboardSetting) ? $dashboardSetting : []
+    );
+    $dashboardHealthNeedsReview =
+        !(bool) ($dashboardDiagnostics['database_ok'] ?? false)
+        || !(bool) ($dashboardDiagnostics['storage_writable'] ?? false)
+        || !(bool) ($dashboardDiagnostics['vendor_ready'] ?? false)
+        || !(bool) ($dashboardDiagnostics['installer_removed'] ?? false)
+        || !(bool) ($dashboardDiagnostics['webhook_protected'] ?? false)
+        || !(bool) ($dashboardDiagnostics['api_token_configured'] ?? false)
+        || (int) ($dashboardDiagnostics['delivery_errors'] ?? 0) > 0;
+} catch (Throwable $healthError) {
+    $dashboardHealthNeedsReview = true;
+    bluebotLog('warning', 'Dashboard health check failed', [
+        'reason' => $healthError->getMessage(),
+    ]);
+}
 
 try {
     $totalUsers = db_count($pdo, "SELECT COUNT(*) FROM user");
@@ -90,6 +114,20 @@ include __DIR__ . '/inc/layout_head.php';
         </div>
     </div>
 </div>
+
+<?php if ($dashboardHealthNeedsReview): ?>
+  <div class="notice notice-warn" style="margin-bottom:24px;display:flex;justify-content:space-between;gap:12px;align-items:center;flex-wrap:wrap">
+    <div>
+      <strong><?= htmlspecialchars($textbotlang['panel']['diagnosticsTitle']) ?></strong>
+      · <?= htmlspecialchars($textbotlang['panel']['diagnosticsProblem']) ?>
+      <?php if (is_array($dashboardDiagnostics) && (int) ($dashboardDiagnostics['delivery_errors'] ?? 0) > 0): ?>
+        · <?= htmlspecialchars($textbotlang['panel']['diagnosticsDeliveryErrors']) ?>:
+        <?= number_format((int) $dashboardDiagnostics['delivery_errors']) ?>
+      <?php endif; ?>
+    </div>
+    <a href="diagnostics.php" class="btn-link"><?= htmlspecialchars($textbotlang['panel']['diagnosticsNav']) ?></a>
+  </div>
+<?php endif; ?>
 
 <div class="two-col">
     <div class="card fade-up d1">
