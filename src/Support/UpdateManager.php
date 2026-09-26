@@ -314,12 +314,15 @@ function bluebotQueueUpdate($adminId): array
         ];
     }
 
+    $installedChannel = !empty($target['version']) ? 'release' : 'beta';
+
     $payload = [
         'status' => 'queued',
         'requested_at' => gmdate(DATE_ATOM),
         'requested_by' => (string) $adminId,
         'chat_id' => (string) $adminId,
         'channel' => $channel,
+        'installed_channel' => $installedChannel,
         'ref' => (string) ($target['ref'] ?? ''),
         'label' => (string) ($target['label'] ?? ''),
     ];
