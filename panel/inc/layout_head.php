@@ -153,6 +153,11 @@ $initials = mb_strtoupper(mb_substr($currentUser, 0, 1, 'UTF-8'), 'UTF-8');
             <span class="nav-icon"><?= icon('server') ?></span><span
               class="nav-label"><?= htmlspecialchars($textbotlang['panel']['diagnosticsNav']) ?></span>
           </a>
+          <a href="audit.php" class="nav-item <?= $activeNav === 'audit' ? 'active' : '' ?>"
+            title="<?= htmlspecialchars($textbotlang['panel']['auditTitle']) ?>">
+            <span class="nav-icon"><?= icon('invoice') ?></span><span
+              class="nav-label"><?= htmlspecialchars($textbotlang['panel']['auditNav']) ?></span>
+          </a>
           <a href="logout.php" class="nav-item" title="<?= $textbotlang['panel']['layoutPageTitleLogout'] ?>">
             <span class="nav-icon"><?= icon('logout') ?></span><span
               class="nav-label"><?= $textbotlang['panel']['layoutNotificationsLabel'] ?></span>
