@@ -4391,6 +4391,7 @@ ID пользователя : %s
                 'paymentStatusUnpaid' => 'Не оплачено',
                 'paymentStatusWaiting' => 'В ожидании',
                 'paymentStatusDeliveryError' => 'Ошибка выдачи сервиса',
+                'paymentDeliveryErrorHint' => 'Требуется проверка администратора',
                 'paymentTransactionsHeading' => 'Сумма успешных транзакций',
                 'paymentTransactionsSubtitle' => 'Отчёт обо всех финансовых транзакциях панели.',
                 'paymentTransactionsTitle' => 'Транзакции',
