@@ -47,7 +47,17 @@ try {
     $pdo,
     "SELECT COUNT(*) FROM Payment_report
      WHERE time LIKE ?
-        OR (time REGEXP '^[0-9]{10,13}
+        OR (time REGEXP '^[0-9]+$' AND CAST(time AS UNSIGNED) >= ?)",
+    [$todayPrefix, $todayTimestamp]
+  );
+
+  $deliveryErrorCount = db_count(
+    $pdo,
+    "SELECT COUNT(*) FROM Payment_report WHERE payment_Status = 'delivery_error'"
+  );
+} catch (Exception $e) {
+  error_log("Payment dashboard stats failed: " . $e->getMessage());
+}
 
 $statusMap = [
   'paid' => ['tag-ok', $textbotlang['panel']['paymentStatusPaid']],
