@@ -100,8 +100,11 @@ jobs:
           grep -Fq "BLUEBOT_VERIFY_PANEL_TLS" request.php
           grep -Fq "bluebotBuildDebugReport" admin.php
           grep -Fq "bluebotCollectDiagnostics" panel/diagnostics.php
+          grep -Fq "bluebotRecordDiagnosticsSnapshot" panel/diagnostics.php
+          grep -Fq "bluebotReadDiagnosticsHistory" src/Support/Diagnostics.php
           grep -Fq "bluebotAuditLogPath" src/Support/Logger.php
           grep -Fq "bluebotReadAuditLog" panel/audit.php
+          grep -Fq "auditSearchPlaceholder" panel/audit.php
           grep -Fq "admin.payment_delivery_review" panel/payment.php
           grep -Fq "bluebotRedactLogValue" api/utils.php
           grep -Fq "admin.login_success" panel/login.php
