@@ -103,6 +103,9 @@ jobs:
           grep -Fq "bluebotAuditLogPath" src/Support/Logger.php
           grep -Fq "bluebotReadAuditLog" panel/audit.php
           grep -Fq "admin.payment_delivery_review" panel/payment.php
+          grep -Fq "bluebotRedactLogValue" api/utils.php
+          grep -Fq "admin.login_success" panel/login.php
+          grep -Fq "admin.logout" panel/logout.php
           grep -Fq "api_token_configured" src/Support/Diagnostics.php
           grep -Fq "webhook_protected" src/Support/Diagnostics.php
           grep -Fq "Admin reviewed payment delivery error" panel/payment.php
