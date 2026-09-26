@@ -304,6 +304,7 @@ bluebot/
 │   │   └── Adapters/       # All external VPN panel integrations
 │   ├── Payment/            # Payment domain helpers
 │   └── Support/            # Logging, diagnostics and runtime support
+├── assets/                 # Static project assets and defaults
 ├── app/                    # Telegram Mini App
 ├── panel/                  # Web administration panel
 ├── api/                    # Internal/API endpoints
