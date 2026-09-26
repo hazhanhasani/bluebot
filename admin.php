@@ -122,6 +122,15 @@ if ($isGatewayOptionClick || $isGatewaySettingStep) {
 }
 if ($text === "/debug") {
     $debugText = bluebotBuildDebugReport($pdo, $setting, is_array($webhookSecret ?? null) ? $webhookSecret : []);
+    $miniAppHealth = bluebotMiniAppHealth();
+    $miniAppState = (string) ($miniAppHealth['state'] ?? 'unknown');
+    $miniAppStatus = !empty($miniAppHealth['ok']) ? '✅' : '❌';
+    $debugText .= "\nMini App route: {$miniAppStatus} <code>"
+        . htmlspecialchars($miniAppState, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8')
+        . "</code>";
+    if ($miniAppState === 'cloudflare_empty_worker') {
+        $debugText .= "\n⚠️ Cloudflare Worker/Route روی دامنه Mini App فعال است اما Deployment معتبر ندارد.";
+    }
     sendmessage($from_id, $debugText, null, 'HTML');
     return;
 } elseif ($datain == "paygwback") {
