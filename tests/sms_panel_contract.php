@@ -22,23 +22,35 @@ $monitor = $read('cronbot/NotificationsService.php');
 $paymentState = $read('src/Payment/PaymentState.php');
 $functions = $read('function.php');
 $userPanel = $read('panel/user.php');
+$bot = $read('index.php');
+$farazDocs = $read('docs/FARAZSMS_PATTERNS.md');
 
 $checks = [
     [$tables, "'sms_settings'", 'sms_settings is not registered in the schema.'],
     [$tables, "'sms_templates'", 'sms_templates is not registered in the schema.'],
     [$tables, "'sms_deliveries'", 'sms_deliveries is not registered in the schema.'],
+    [$tables, "'sms_otp_challenges'", 'sms_otp_challenges is not registered in the schema.'],
     [$indexes, 'uniq_sms_dedupe', 'SMS outbox dedupe index is missing.'],
     [$userTable, 'sms_enabled TINYINT(1)', 'Per-user SMS preference is missing.'],
     [$sms, "https://api.iranpayamak.com/ws/v1", 'Official FarazSMS/IranPayamak API base is missing.'],
     [$sms, "aes-256-gcm", 'SMS API key must be encrypted at rest with AES-256-GCM.'],
     [$sms, "function refreshPatterns", 'Provider pattern synchronization is missing.'],
+    [$sms, "'/patterns?' . $query", 'Pattern synchronization must walk provider pages.'],
+    [$sms, "'complete' => true", 'Pattern synchronization must mark complete caches.'],
+    [$sms, "function refreshLines", 'Automatic sender-line discovery is missing.'],
+    [$sms, "'/lines/accessible'", 'Official accessible-lines endpoint is missing.'],
     [$sms, "function smartAssignPatterns", 'Smart pattern assignment is missing.'],
     [$sms, "function queueAndDispatchForUser", 'Foreground durable SMS dispatch is missing.'],
     [$sms, "function processQueue", 'SMS retry queue processor is missing.'],
     [$sms, "function syncServiceStatus", 'Live service reminder integration is missing.'],
+    [$sms, "function requestPhoneOtp", 'FarazSMS phone OTP request flow is missing.'],
+    [$sms, "function verifyPhoneOtp", 'FarazSMS phone OTP verification flow is missing.'],
     [$panel, "مدیریت کامل فراز اس‌ام‌اس / ایران‌پیامک", 'Web SMS management page is missing.'],
     [$panel, "save_templates", 'SMS template management is missing from the panel.'],
     [$panel, "refresh_patterns", 'Pattern refresh action is missing from the panel.'],
+    [$panel, "refresh_lines", 'Sender-line refresh action is missing from the panel.'],
+    [$panel, 'name="otp_active"', 'OTP enable control is missing from the SMS panel.'],
+    [$panel, "متن دقیق برای ثبت در فراز SMS", 'FarazSMS pattern registration guidance is missing from the panel.'],
     [$panel, "broadcast", 'Broadcast SMS action is missing from the panel.'],
     [$layout, 'href="sms.php"', 'SMS center is not linked from the web panel sidebar.'],
     [$jobs, "['job' => 'sms'", 'SMS cron worker is not scheduled.'],
@@ -49,6 +61,11 @@ $checks = [
     [$functions, "'service_renewed'", 'Service renewal SMS hook is missing.'],
     [$userPanel, "'wallet_charged'", 'Admin wallet charge SMS hook is missing.'],
     [$userPanel, "toggle_sms", 'Per-user SMS control is missing from the panel.'],
+    [$bot, "BluebotSms::requestPhoneOtp", 'Telegram contact flow does not request FarazSMS OTP.'],
+    [$bot, "verify_phone_otp", 'Telegram phone OTP step is missing.'],
+    [$bot, "BluebotSms::verifyPhoneOtp", 'Telegram phone OTP verification is missing.'],
+    [$farazDocs, "phone_verification", 'FarazSMS pattern documentation is missing.'],
+    [$farazDocs, "code`: int, max 6", 'OTP variable type/length is not documented.'],
 ];
 
 foreach ($checks as [$source, $needle, $message]) {
@@ -78,6 +95,7 @@ if (BluebotSms::normalizePhone('not-a-phone') !== '') {
 
 $catalog = BluebotSms::catalog();
 foreach ([
+    'phone_verification',
     'service_activated',
     'service_renewed',
     'subscription_reminder',
