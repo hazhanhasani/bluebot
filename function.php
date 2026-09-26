@@ -586,23 +586,61 @@ function generateUUID()
 
     return $uuid;
 }
-function rate_arze()
+function rate_arze(array $requiredSymbols = [])
 {
-    $ch = curl_init('https://demo.mirzabot.com/b.php');
-    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-    curl_setopt($ch, CURLOPT_TIMEOUT, 10);
-    curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 5);
+    $url = getenv('BLUEBOT_RATE_API_URL');
+    if (!is_string($url) || trim($url) === '') {
+        // Compatibility fallback. Production deployments may override this with
+        // BLUEBOT_RATE_API_URL without changing application code.
+        $url = 'https://demo.mirzabot.com/b.php';
+    }
+
+    $ch = curl_init($url);
+    curl_setopt_array($ch, [
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_TIMEOUT => 10,
+        CURLOPT_CONNECTTIMEOUT => 5,
+        CURLOPT_FOLLOWLOCATION => true,
+        CURLOPT_MAXREDIRS => 3,
+        CURLOPT_SSL_VERIFYPEER => true,
+        CURLOPT_SSL_VERIFYHOST => 2,
+        CURLOPT_HTTPHEADER => ['Accept: application/json'],
+        CURLOPT_USERAGENT => 'BlueBot/0.5',
+    ]);
+
     $response = curl_exec($ch);
     if ($response === false) {
-        error_log('rate_arze failed: ' . curl_error($ch));
+        $error = curl_error($ch);
+        curl_close($ch);
+        error_log('rate_arze failed: ' . $error);
         return null;
     }
+
+    $httpCode = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    curl_close($ch);
+
+    if ($httpCode < 200 || $httpCode >= 300) {
+        error_log('rate_arze: unexpected HTTP status ' . $httpCode);
+        return null;
+    }
+
     $decoded = json_decode($response, true);
     if (!is_array($decoded) || !isset($decoded['result']) || !is_array($decoded['result'])) {
         error_log('rate_arze: unexpected response');
         return null;
     }
-    return $decoded['result'];
+
+    $rates = $decoded['result'];
+    $symbols = $requiredSymbols === [] ? ['TRX', 'USD'] : $requiredSymbols;
+    foreach ($symbols as $symbol) {
+        if (!array_key_exists($symbol, $rates) || !is_numeric($rates[$symbol]) || (float) $rates[$symbol] <= 0) {
+            error_log('rate_arze: missing or invalid rate for ' . $symbol);
+            return null;
+        }
+        $rates[$symbol] = (float) $rates[$symbol];
+    }
+
+    return $rates;
 }
 function updatePaymentMessageId($response, $orderId)
 {
@@ -2506,7 +2544,7 @@ function createPayVariza($price, $order_id)
         CURLOPT_POSTFIELDS => json_encode([
             'amount' => (int) $price,
             'return_url' => 'https://' . $domainhosts . '/payment/variza.php?order=' . $order_id,
-            'title' => 'Mirza order ' . $order_id,
+            'title' => 'BlueBot order ' . $order_id,
             'expires_in' => '1h',
         ], JSON_UNESCAPED_UNICODE),
     ]);
@@ -2685,6 +2723,6 @@ function mirzaEnsureInstallerRemoved()
     }
 
     if (!mirzaRemoveInstallerPath($installerDirectory)) {
-        mirzaStopForInstaller('Mirza install folder still exists and could not be removed automatically; delete it manually to enable the bot.');
+        mirzaStopForInstaller('BlueBot install folder still exists and could not be removed automatically; delete it manually to enable the bot.');
     }
 }
