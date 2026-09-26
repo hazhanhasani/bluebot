@@ -61,6 +61,9 @@ contractContains($index, <<<'PHP'
 $datain == "blupal"
 PHP, 'Blupal buyer checkout branch is missing.', $failures);
 contractContains($index, <<<'PHP'
+"variza", "blupal", "plisio"
+PHP, 'Blupal is missing from the payment callback dispatch allow-list.', $failures);
+contractContains($index, <<<'PHP'
 'blupal', $invoice
 PHP, 'Blupal payment report method is missing.', $failures);
 contractContains($index, <<<'PHP'
