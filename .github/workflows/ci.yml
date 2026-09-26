@@ -93,7 +93,7 @@ jobs:
           test -f panel/audit.php
           grep -Fq "delivery_reviewed" src/Payment/PaymentState.php
           grep -Fq "NOT IN ('paid', 'delivery_error', 'delivery_reviewed')" src/Payment/PaymentState.php
-          php -r '$s=file_get_contents("src/Payment/PaymentState.php"); $a=strpos($s,"function markPaymentDeliveryReviewed"); $b=strpos($s,"Payment delivery marked reviewed"); if ($a===false || $b===false || $b<$a) exit(1);'
+          php -r '$s=file_get_contents("src/Payment/PaymentState.php"); $a=strpos($s,"function markPaymentDeliveryReviewed"); $b=strpos($s,"payment.delivery_reviewed"); if ($a===false || $b===false || $b<$a) exit(1);'
           grep -Fq "review_delivery" panel/payment.php
           grep -Fq "csrf_check_post();" panel/payment.php
           grep -Fq "CURLPROTO_HTTP | CURLPROTO_HTTPS" request.php
