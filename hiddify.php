@@ -1,106 +1,115 @@
 <?php
-require_once 'config.php';
-require_once 'request.php';
-#-----------------------------#
+require_once __DIR__ . '/config.php';
+require_once __DIR__ . '/request.php';
+
+function hiddifyRequest(string $location, string $method, string $path, ?array $payload = null): array
+{
+    $panel = select("marzban_panel", "*", "name_panel", $location, "select");
+    if (!is_array($panel) || empty($panel['url_panel']) || empty($panel['secret_code'])) {
+        return ['status' => null, 'body' => null, 'error' => 'Hiddify panel configuration is incomplete'];
+    }
+
+    $url = rtrim((string) $panel['url_panel'], '/') . '/' . ltrim($path, '/');
+    $json = $payload === null
+        ? null
+        : json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+
+    $send = static function (array $headers) use ($url, $method, $json): array {
+        $req = new CurlRequest($url);
+        $req->setHeaders($headers);
+        switch (strtoupper($method)) {
+            case 'GET':
+                return $req->get();
+            case 'POST':
+                return $req->post($json ?? '{}');
+            case 'PATCH':
+                return $req->PATCH($json ?? '{}');
+            case 'DELETE':
+                return $req->delete($json);
+            default:
+                return ['status' => null, 'body' => null, 'error' => 'unsupported Hiddify method'];
+        }
+    };
+
+    // Hiddify v2 documentation recommends the admin UUID in Hiddify-API-Key.
+    $headers = [
+        'Accept: application/json',
+        'Content-Type: application/json',
+        'Hiddify-API-Key: ' . $panel['secret_code'],
+    ];
+    $response = $send($headers);
+
+    // Older Hiddify Manager builds accepted Basic auth on some GET endpoints.
+    // Keep a fallback so upgrading BlueBot does not break those installations.
+    if (in_array((int) ($response['status'] ?? 0), [401, 403], true)) {
+        $response = $send([
+            'Accept: application/json',
+            'Content-Type: application/json',
+            'Authorization: Basic ' . base64_encode($panel['secret_code'] . ':'),
+        ]);
+    }
+
+    return $response;
+}
+
 function getdatauser($username, $location)
 {
-    $marzban_list_get = select("marzban_panel", "*", "name_panel", $location, "select");
-    $url = $marzban_list_get['url_panel'] . '/api/v2/admin/user/';
-    $ch = curl_init();
-    curl_setopt($ch, CURLOPT_URL, $url);
-    curl_setopt($ch, CURLOPT_HTTPGET, true);
-    curl_setopt($ch, CURLOPT_TIMEOUT_MS, ($GLOBALS['request_exec_timeout'] ?? null) ?: 4000);
-    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-    curl_setopt($ch, CURLOPT_HTTPHEADER, array(
-        'Authorization: Basic ' . base64_encode("{$marzban_list_get['secret_code']}:")
-    ));
-
-    $output = curl_exec($ch);
-    $curlError = $output === false ? curl_error($ch) : '';
-    curl_close($ch);
-
-    if ($output === false) {
+    $response = hiddifyRequest($location, 'GET', '/api/v2/admin/user/');
+    if (!empty($response['error'])) {
         bluebotLog('warning', 'Hiddify user request failed', [
             'panel' => (string) $location,
-            'error' => $curlError,
+            'error' => (string) $response['error'],
         ]);
         return [];
     }
 
-    $data_useer = json_decode($output, true);
-    if (isset($data_useer['message']))
-        return $data_useer;
-    if (!isset($data_useer) || count($data_useer) == 0)
+    $data = json_decode((string) ($response['body'] ?? ''), true);
+    if (!is_array($data)) {
         return [];
-    foreach ($data_useer as $data) {
-        if (!isset($data['name']))
-            continue;
-        if ($data['name'] == $username) {
-            return $data;
+    }
+    if (isset($data['message'])) {
+        return $data;
+    }
+
+    foreach ($data as $user) {
+        if (is_array($user) && (string) ($user['name'] ?? '') === (string) $username) {
+            return $user;
         }
     }
+
     return null;
 }
+
 function serverstatus($location)
 {
-    $marzban_list_get = select("marzban_panel", "*", "name_panel", $location, "select");
-    $url = $marzban_list_get['url_panel'] . '/api/v2/admin/server_status/';
-    $headers = array(
-        'Authorization: Basic ' . base64_encode("{$marzban_list_get['secret_code']}:")
-    );
-    $req = new CurlRequest($url);
-    $req->setHeaders($headers);
-    $response = $req->get();
-    return $response;
+    return hiddifyRequest($location, 'GET', '/api/v2/admin/server_status/');
 }
-// #-----------------------------#
+
 function adduserhi($location, array $data)
 {
-    $marzban_list_get = select("marzban_panel", "*", "name_panel", $location, "select");
-    $url = $marzban_list_get['url_panel'] . '/api/v2/admin/user/';
-    $payload = json_encode($data, true);
-    $headers = array(
-        'Accept: application/json',
-        'Content-Type: application/json',
-        'Hiddify-API-Key: ' . $marzban_list_get['secret_code']
-    );
-    $req = new CurlRequest($url);
-    $req->setHeaders($headers);
-    $response = $req->post($payload);
-    return $response;
+    return hiddifyRequest($location, 'POST', '/api/v2/admin/user/', $data);
 }
-// #-----------------------------#
+
 function updateuserhi($username, $location, array $data)
 {
-    $marzban_list_get = select("marzban_panel", "*", "name_panel", $location, "select");
     $paneldata = getdatauser($username, $location);
     if (!is_array($paneldata) || empty($paneldata['uuid'])) {
         return ['status' => null, 'body' => null, 'error' => 'user not found on panel'];
     }
-    $url = $marzban_list_get['url_panel'] . '/api/v2/admin/user/' . $paneldata['uuid'] . "/";
-    $payload = json_encode($data, true);
-    $headers = array(
-        'Accept: application/json',
-        'Content-Type: application/json',
-        'Hiddify-API-Key: ' . $marzban_list_get['secret_code']
+
+    return hiddifyRequest(
+        $location,
+        'PATCH',
+        '/api/v2/admin/user/' . rawurlencode((string) $paneldata['uuid']) . '/',
+        $data
     );
-    $req = new CurlRequest($url);
-    $req->setHeaders($headers);
-    $response = $req->PATCH($payload);
-    return $response;
 }
-//----------------------------------
+
 function removeuserhi($location, $uuid)
 {
-    $marzban_list_get = select("marzban_panel", "*", "name_panel", $location, "select");
-    $url = $marzban_list_get['url_panel'] . "/api/v2/admin/user/$uuid/";
-    $headers = array(
-        'Accept: application/json',
-        'Content-Type: application/json',
-        'Hiddify-API-Key: ' . $marzban_list_get['secret_code']
+    return hiddifyRequest(
+        $location,
+        'DELETE',
+        '/api/v2/admin/user/' . rawurlencode((string) $uuid) . '/'
     );
-    $req = new CurlRequest($url);
-    $req->setHeaders($headers);
-    $response = $req->delete();
-    return $response;
 }
