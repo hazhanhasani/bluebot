@@ -100,6 +100,7 @@ try {
     DirectPayment($order_id, "../images.jpg");
 } catch (Throwable $error) {
     error_log("iranpay4: DirectPayment failed for {$order_id}: " . $error->getMessage());
+    markPaymentDeliveryError($order_id, $error->getMessage());
     iranpay4_finish(false, $failedTitle, 'پرداخت تایید شد ولی تحویل سرویس خطا داد. با پشتیبانی تماس بگیرید.');
 }
 
