@@ -55,7 +55,7 @@ _step_eta() {
         "Configuring firewall"*)             echo 15 ;;
         "Restarting Apache"*)                echo 5  ;;
         "Setting PHP as the active"*|"Setting PHP "*) echo 6  ;;
-        "Downloading Mirza"*)                echo 20 ;;
+        "Downloading BlueBot"*)                echo 20 ;;
         "Extracting source files"*)          echo 5  ;;
         "Configuring MySQL root access"*)    echo 10 ;;
         "Opening firewall ports"*)           echo 4  ;;
@@ -170,7 +170,7 @@ _drule()  { printf "  ${C_BORDER}%s${CR}\n" "$(_repeat "━" "$UI_W")"; }
 banner()  {
     echo
     _drule
-    printf "  ${C_OK}▌${CR} ${C_TITLE}MIRZA${CR}  ${C_DIM}— VPN Subscription Management${CR}\n"
+    printf "  ${C_OK}▌${CR} ${C_TITLE}BLUEBOT${CR}  ${C_DIM}— VPN Subscription Management${CR}\n"
     _drule
 }
 # Menu item row: [n] label  (left-aligned, no right border)
@@ -212,16 +212,19 @@ _link_mirza() {
     if [ ! -e "$link" ] || [ "$(readlink -f "$link" 2>/dev/null)" != "$(readlink -f "$master" 2>/dev/null)" ]; then
         ln -sf "$master" "$link"
     fi
-    chmod +x "$link" 2>/dev/null
+    # BlueBot is the canonical command. Keep the legacy command for existing installs.
+    ln -sf "$master" /usr/local/bin/bluebot 2>/dev/null || true
+    ln -sf "$master" /usr/local/bin/mirza 2>/dev/null || true
+    chmod +x "$link" /usr/local/bin/bluebot /usr/local/bin/mirza 2>/dev/null
 }
 
 # Self-update: every run, fetch the latest script from GitHub, validate it,
 # install it to /root/install.sh, link it into /usr/local/bin, and re-exec.
 function self_update_script() {
     local MASTER_PATH="/root/install.sh"
-    local BIN_LINK="/usr/local/bin/mirza"
-    local URL="https://raw.githubusercontent.com/mahdiMGF2/mirzabot/main/install.sh"
-    local TEMP_FILE="/tmp/mirzabot_update.sh"
+    local BIN_LINK="/usr/local/bin/bluebot"
+    local URL="https://raw.githubusercontent.com/hazhanhasani/bluebot/main/install.sh"
+    local TEMP_FILE="/tmp/bluebot_update.sh"
 
     # Make sure DNS works before reaching GitHub
     ensure_dns >/dev/null 2>&1
@@ -286,9 +289,9 @@ self_update_script "$@"
 # ── Repo / paths ─────────────────────────────────────────────
 BOT_DIR_DEFAULT="/var/www/html/mirzaprobotconfig"
 CONFIG_FILE_DEFAULT="$BOT_DIR_DEFAULT/config.php"
-GIT_REPO="mahdiMGF2/mirzabot"
-LATEST_CACHE="/tmp/.mirza_latest_version"
-IP_CACHE="/tmp/.mirza_server_ip"
+GIT_REPO="hazhanhasani/bluebot"
+LATEST_CACHE="/tmp/.bluebot_latest_version"
+IP_CACHE="/tmp/.bluebot_server_ip"
 
 # ── Resumable-install state engine ───────────────────────────
 # Survives reboots / network drops. Lets a failed install resume
@@ -677,7 +680,7 @@ ensure_cron() {
 export -f _crontab_present _cron_unit_name _cron_daemon_active ensure_cron
 
 # Refuse to install on a server that already has conflicting software.
-# Only runs on a brand-new install (never on resume / Mirza's own partial state).
+# Only runs on a brand-new install (never on resume / BlueBot's own partial state).
 precheck_fresh_server() {
     local found=()
     _pkg_installed apache2 && found+=("apache2 (web server)")
@@ -734,7 +737,7 @@ install_pause() {
     echo -e "  ${C_DIM}This is usually caused by the server losing internet or a network error.${CR}"
     echo ""
     echo -e "  ${C_TXT}Completed steps are saved. Just run it again:${CR}"
-    echo -e "      ${C_KEY}mirza install${CR}"
+    echo -e "      ${C_KEY}bluebot install${CR}"
     echo -e "  ${C_DIM}It resumes from this step; values you already entered (domain/token/...) will not be asked again.${CR}"
     echo -e "  ${C_WARN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${CR}"
     echo ""
@@ -915,8 +918,8 @@ version_section() {
     else
         _kv "Latest" "$(_dot warn) ${C_DIM}unknown (offline)${CR}"
     fi
-    _kv "Channel" "${C_DIM}t.me/mirzapanel${CR}"
-    _kv "Group" "${C_DIM}t.me/mirzapanelgroup${CR}"
+    _kv "Repository" "${C_DIM}github.com/hazhanhasani/bluebot${CR}"
+    _kv "License" "${C_DIM}AGPL-3.0-or-later${CR}"
 }
 
 bot_section() {
@@ -1075,7 +1078,7 @@ function renew_ssl() {
     _kv "Domain" "${C_KEY}${domain}${CR}"
 
     if ! command -v certbot >/dev/null 2>&1; then
-        echo -e "  ${C_BAD}●${CR} ${C_BAD}certbot is not installed. Install Mirza first.${CR}"
+        echo -e "  ${C_BAD}●${CR} ${C_BAD}certbot is not installed. Install BlueBot first.${CR}"
         sleep 1; show_menu; return 1
     fi
 
@@ -1125,7 +1128,7 @@ function backup_bot() {
 
     CONFIG_PATH="/var/www/html/mirzaprobotconfig/config.php"
     if [ ! -f "$CONFIG_PATH" ]; then
-        printf "    ${C_BAD}●${CR} ${C_BAD}Mirza is not installed. config.php not found.${CR}\n"
+        printf "    ${C_BAD}●${CR} ${C_BAD}BlueBot is not installed. config.php not found.${CR}\n"
         echo ""
         printf "  ${C_PROMPT}❯${CR} Press Enter to return to the menu... "
         read -r _
@@ -1175,7 +1178,7 @@ function backup_bot() {
         send_result=$(curl -s -o /dev/null -w "%{http_code}" \
             -F "chat_id=${admin_id}" \
             -F "document=@${backup_file}" \
-            -F "caption=📦 Mirza DB Backup (${backup_date})" \
+            -F "caption=📦 BlueBot DB Backup (${backup_date})" \
             "https://api.telegram.org/bot${bot_token}/sendDocument" 2>/dev/null)
         if [ "$send_result" = "200" ]; then
             _kv "Telegram" "$(_dot ok) ${C_OK}Backup sent to admin chat (${admin_id})${CR}"
@@ -1203,7 +1206,7 @@ function import_bot() {
 
     CONFIG_PATH="/var/www/html/mirzaprobotconfig/config.php"
     if [ ! -f "$CONFIG_PATH" ]; then
-        printf "    ${C_BAD}●${CR} ${C_BAD}Mirza is not installed. config.php not found.${CR}\n"
+        printf "    ${C_BAD}●${CR} ${C_BAD}BlueBot is not installed. config.php not found.${CR}\n"
         echo ""
         printf "  ${C_PROMPT}❯${CR} Press Enter to return to the menu... "
         read -r _
@@ -1314,9 +1317,9 @@ function import_bot() {
 function show_menu() {
     show_logo
     _sec "Menu"
-    _mi "1" "Install Mirza"
-    _mi "2" "Update Mirza"
-    _mi "3" "Remove Mirza"
+    _mi "1" "Install BlueBot"
+    _mi "2" "Update BlueBot"
+    _mi "3" "Remove BlueBot"
     _mi "4" "Migrate: Free -> Pro (Beta)"
     _mi "5" "Renew SSL certificate"
     _mi "6" "Backup Database"
@@ -1347,9 +1350,9 @@ function show_help_screen() {
     banner
 
     _sec "Commands"
-    _kv "install" "${C_DIM}Install Mirza${CR}"
-    _kv "update" "${C_DIM}Update Mirza (choose channel / version)${CR}"
-    _kv "remove" "${C_DIM}Remove Mirza and its services${CR}"
+    _kv "install" "${C_DIM}Install BlueBot${CR}"
+    _kv "update" "${C_DIM}Update BlueBot (choose channel / version)${CR}"
+    _kv "remove" "${C_DIM}Remove BlueBot and its services${CR}"
     _kv "migrate" "${C_DIM}Migrate Free -> Pro${CR}"
     _kv "renew" "${C_DIM}Renew the bot domain SSL certificate${CR}"
     _kv "backup" "${C_DIM}Backup database & send to Telegram${CR}"
@@ -1369,14 +1372,14 @@ function show_help_screen() {
     _kv "-h, --help" "${C_DIM}Show CLI help and exit${CR}"
 
     _sec "Examples"
-    printf "    ${C_KEY}mirza install --channel auto${CR}\n"
-    printf "    ${C_KEY}mirza install --token 123:ABC \\\\${CR}\n"
+    printf "    ${C_KEY}bluebot install --channel auto${CR}\n"
+    printf "    ${C_KEY}bluebot install --token 123:ABC \\\\${CR}\n"
     printf "    ${C_DIM}            --admin 111 --domain bot.example.com --version 0.1.7${CR}\n"
-    printf "    ${C_KEY}mirza update --version 0.1.6${CR}\n"
-    printf "    ${C_KEY}mirza update --channel release${CR}\n"
-    printf "    ${C_KEY}mirza remove${CR}\n"
-    printf "    ${C_KEY}mirza backup${CR}\n"
-    printf "    ${C_KEY}mirza import${CR}\n"
+    printf "    ${C_KEY}bluebot update --version 0.1.6${CR}\n"
+    printf "    ${C_KEY}bluebot update --channel release${CR}\n"
+    printf "    ${C_KEY}bluebot remove${CR}\n"
+    printf "    ${C_KEY}bluebot backup${CR}\n"
+    printf "    ${C_KEY}bluebot import${CR}\n"
 
     echo ""
     _rule
@@ -1729,7 +1732,7 @@ function install_bot() {
         clear
         banner
         _sec "Install blocked"
-        printf "    ${C_BAD}●${CR} ${C_BAD}Mirza is already installed on this server.${CR}\n"
+        printf "    ${C_BAD}●${CR} ${C_BAD}BlueBot is already installed on this server.${CR}\n"
         printf "    ${C_DIM}Path:${CR} %s\n" "$BOT_DIR_DEFAULT"
         echo ""
         printf "    ${C_DIM}To upgrade, use option ${CR}${C_KEY}2 (Update)${CR}${C_DIM}.${CR}\n"
@@ -1919,7 +1922,7 @@ function install_bot() {
 
         TEMP_DIR="/tmp/mirzaprobot"
         rm -rf "$TEMP_DIR"; mkdir -p "$TEMP_DIR"
-        run_step "Downloading Mirza (${SRC_LABEL_RESUME})" "wget -O '$TEMP_DIR/bot.zip' '$ZIP_URL'" \
+        run_step "Downloading BlueBot (${SRC_LABEL_RESUME})" "wget -O '$TEMP_DIR/bot.zip' '$ZIP_URL'" \
             || { show_step_error; install_pause "Downloading bot files"; }
         run_step "Extracting source files" "unzip -o '$TEMP_DIR/bot.zip' -d '$TEMP_DIR'" \
             || { show_step_error; install_pause "Extracting bot files"; }
@@ -2260,7 +2263,7 @@ EOF
             "curl -s -F \"url=https://${YOUR_DOMAIN}/index.php\" \"https://api.telegram.org/bot${YOUR_BOT_TOKEN}/setWebhook\"" \
             || { show_step_error; install_pause "Setting Telegram webhook"; }
 
-        MESSAGE="✅ The Mirza bot is installed! for start the bot send /start command."
+        MESSAGE="✅ The BlueBot bot is installed! for start the bot send /start command."
         curl -s -X POST "https://api.telegram.org/bot${YOUR_BOT_TOKEN}/sendMessage" -d chat_id="${YOUR_CHAT_ID}" -d text="$MESSAGE" > /dev/null 2>&1
         sleep 3
         run_step "Starting Apache" "systemctl start apache2" \
@@ -2277,7 +2280,7 @@ EOF
     clear
     banner
     _sec "Installation complete"
-    printf "    ${C_OK}●${CR} ${C_OK}Mirza is installed and the webhook is set.${CR}\n"
+    printf "    ${C_OK}●${CR} ${C_OK}BlueBot is installed and the webhook is set.${CR}\n"
     printf "    ${C_DIM}Open Telegram and send ${CR}${C_KEY}/start${CR}${C_DIM} to your bot.${CR}\n"
 
     _sec "Access"
@@ -2291,12 +2294,13 @@ EOF
     printf "    ${C_WARN}!${CR} ${C_DIM}Save these credentials somewhere safe.${CR}\n"
 
     _sec "Manage"
-    _kv "Command" "${C_DIM}run ${CR}${C_KEY}mirza${CR}${C_DIM} anytime to open this panel${CR}"
+    _kv "Command" "${C_DIM}run ${CR}${C_KEY}bluebot${CR}${C_DIM} anytime to open this panel${CR}"
     echo ""
     _rule
     echo ""
 
     chmod +x /root/install.sh
+    ln -sf /root/install.sh /usr/local/bin/bluebot
     ln -sf /root/install.sh /usr/local/bin/mirza
     self_update_script
 }
@@ -2306,7 +2310,7 @@ function update_bot() {
     BOT_DIR="/var/www/html/mirzaprobotconfig"
     if [ ! -d "$BOT_DIR" ]; then
         _sec "Update"
-        printf "    ${C_BAD}●${CR} ${C_BAD}Mirza is not installed. Install it first.${CR}\n"
+        printf "    ${C_BAD}●${CR} ${C_BAD}BlueBot is not installed. Install it first.${CR}\n"
         sleep 2
         show_menu
         return 1
@@ -2329,7 +2333,7 @@ function update_bot() {
 
     echo ""
     echo -e "  ${C_DIM}Update target:${CR} ${C_KEY}${TARGET_LABEL}${CR}"
-    print_header "Updating Mirza Bot"
+    print_header "Updating BlueBot"
     run_step "Updating system packages" "apt update --allow-releaseinfo-change && apt upgrade -y" \
         || { show_step_error; echo -e "\e[91mError updating the server. Exiting...\033[0m"; exit 1; }
     run_step "Ensuring cron is installed and running" "ensure_cron" \
@@ -2499,32 +2503,33 @@ EOF
             || echo -e "\e[93mWarning: vpnbot webhook update failed.\033[0m"
     fi
     rm -rf "$TEMP_DIR"
-    echo -e "\n\e[92mMirza Bot updated to latest version successfully!\033[0m"
+    echo -e "\n\e[92mBlueBot updated to latest version successfully!\033[0m"
     if [ -f "/root/install.sh" ]; then
         sudo chmod +x /root/install.sh
-        sudo ln -sf /root/install.sh /usr/local/bin/mirza
+        sudo ln -sf /root/install.sh /usr/local/bin/bluebot
+    ln -sf /root/install.sh /usr/local/bin/mirza
         echo -e "\e[92mEnsured /root/install.sh is executable and 'mirza' command is linked.\033[0m"
     else
         echo -e "\e[91mError: /root/install.sh not found after update attempt.\033[0m"
     fi
 }
 function remove_bot() {
-    echo -e "\e[33mStarting Mirza Bot removal process...\033[0m"
+    echo -e "\e[33mStarting BlueBot removal process...\033[0m"
     LOG_FILE="/var/log/remove_bot.log"
     echo "Log file: $LOG_FILE" > "$LOG_FILE"
     BOT_DIR="/var/www/html/mirzaprobotconfig"
     if [ ! -d "$BOT_DIR" ]; then
-        echo -e "\e[31m[ERROR]\033[0m Mirza Bot is not installed (/var/www/html/mirzaprobotconfig not found)." | tee -a "$LOG_FILE"
+        echo -e "\e[31m[ERROR]\033[0m BlueBot is not installed (/var/www/html/mirzaprobotconfig not found)." | tee -a "$LOG_FILE"
         echo -e "\e[33mNothing to remove. Exiting...\033[0m" | tee -a "$LOG_FILE"
         sleep 2
         exit 1
     fi
-    read -p "Are you sure you want to remove Mirza Bot and its dependencies? (y/n): " choice
+    read -p "Are you sure you want to remove BlueBot and its dependencies? (y/n): " choice
     if [[ ! "$choice" =~ ^[Yy]$ ]]; then
         echo "Aborting..." | tee -a "$LOG_FILE"
         exit 0
     fi
-    echo "Removing Mirza Bot..." | tee -a "$LOG_FILE"
+    echo "Removing BlueBot..." | tee -a "$LOG_FILE"
     if command -v crontab >/dev/null 2>&1 || [ -x /usr/bin/crontab ]; then
         local _cb
         _cb="$(command -v crontab || echo /usr/bin/crontab)"
@@ -2532,7 +2537,7 @@ function remove_bot() {
             "$_cb" -u www-data -l 2>/dev/null | grep -v '/cronbot/' | "$_cb" -u www-data - 2>/dev/null || true
         fi
         "$_cb" -l 2>/dev/null | grep -v '/cronbot/' | "$_cb" - 2>/dev/null || true
-        echo -e "\e[92mRemoved Mirza cron jobs.\033[0m" | tee -a "$LOG_FILE"
+        echo -e "\e[92mRemoved BlueBot cron jobs.\033[0m" | tee -a "$LOG_FILE"
     fi
     CONFIG_PATH="/var/www/html/mirzaprobotconfig/config.php"
     if [ -f "$CONFIG_PATH" ]; then
@@ -2592,9 +2597,9 @@ function remove_bot() {
     echo -e "\e[33mResetting firewall rules (except SSL)...\033[0m" | tee -a "$LOG_FILE"
     sudo ufw delete allow 'Apache' 2>/dev/null
     sudo ufw reload 2>/dev/null
-    # Clear Mirza install state so a fresh install is allowed afterwards
+    # Clear BlueBot install state so a fresh install is allowed afterwards
     sudo rm -rf /root/confmirza
-    echo -e "\e[92mMirza Bot, MySQL, and their dependencies have been completely removed.\033[0m" | tee -a "$LOG_FILE"
+    echo -e "\e[92mBlueBot, MySQL, and their dependencies have been completely removed.\033[0m" | tee -a "$LOG_FILE"
 }
 
 function migrate_to_pro() {
@@ -2632,7 +2637,7 @@ function migrate_to_pro() {
     BACKUP_FILE="/root/mirzabot_backup.sql"
     if [ ! -f "$BACKUP_FILE" ]; then
         echo -e "\033[31m[ERROR] Backup file not found at $BACKUP_FILE\033[0m"
-        echo -e "\033[33mPlease run the 'mirza' command (Free Version Script) and use option 4 to create a backup.\033[0m"
+        echo -e "\033[33mPlease run the 'bluebot' command (Free Version Script) and use option 4 to create a backup.\033[0m"
         exit 1
     else
         echo -e "\033[32mBackup file found.\033[0m"
@@ -2720,11 +2725,11 @@ function migrate_to_pro() {
     NEW_BOT_DIR="/var/www/html/mirzaprobotconfig"
     rm -rf "$OLD_BOT_DIR"
     mkdir -p "$NEW_BOT_DIR"
-    ZIP_URL="https://github.com/mahdiMGF2/mirzabot/archive/refs/heads/main.zip"
+    ZIP_URL="https://github.com/hazhanhasani/bluebot/archive/refs/heads/main.zip"
     TEMP_DIR="/tmp/mirzabot_mig"
     mkdir -p "$TEMP_DIR"
-    run_step "Downloading Mirza source" "wget -q -O '$TEMP_DIR/bot.zip' '$ZIP_URL'" \
-        || { show_step_error; echo -e "\033[31mError: Failed to download Mirza source.\033[0m"; exit 1; }
+    run_step "Downloading BlueBot source" "wget -q -O '$TEMP_DIR/bot.zip' '$ZIP_URL'" \
+        || { show_step_error; echo -e "\033[31mError: Failed to download BlueBot source.\033[0m"; exit 1; }
     run_step "Extracting source files" "unzip -o -q '$TEMP_DIR/bot.zip' -d '$TEMP_DIR'" \
         || { show_step_error; echo -e "\033[31mError: Failed to extract source files.\033[0m"; exit 1; }
     EXTRACTED_DIR=$(find "$TEMP_DIR" -mindepth 1 -maxdepth 1 -type d | head -1)
@@ -2809,7 +2814,8 @@ EOF
     ensure_cron || echo -e "\033[33mWarning: cron is not installed or not running.\033[0m"
     sed -i 's/\r$//' /root/install.sh
     chmod +x /root/install.sh
-    rm -f /usr/local/bin/mirza
+    rm -f /usr/local/bin/bluebot /usr/local/bin/mirza
+    ln -sf /root/install.sh /usr/local/bin/bluebot
     ln -sf /root/install.sh /usr/local/bin/mirza
     clear
     echo -e "\033[32m====================================================\033[0m"
@@ -2819,7 +2825,7 @@ EOF
     echo -e "\033[36mNew User:\033[0m     $NEW_DB_USER"
     echo -e "\033[36mNew Pass:\033[0m     $NEW_DB_PASS"
     echo -e "\033[36mBot Domain:\033[0m   https://$DOMAIN_NAME"
-    echo -e "\033[33mUse command 'mirza' to manage the bot from now on.\033[0m"
+    echo -e "\033[33mUse command 'bluebot' to manage the bot from now on.\033[0m"
     echo ""
 }
 
@@ -2831,15 +2837,15 @@ ARG_DBUSER=""   ARG_DBPASS=""  ARG_VERSION=""  ARG_CHANNEL=""
 print_usage() {
     cat <<USAGE
 
-  Mirza - management script
+  BlueBot - management script
 
   Usage:
     mirza [command] [options]
 
   Commands:
-    install            Install Mirza
-    update             Update Mirza
-    remove             Remove Mirza
+    install            Install BlueBot
+    update             Update BlueBot
+    remove             Remove BlueBot
     migrate            Migrate Free -> Pro
     renew              Renew the bot domain SSL certificate
     backup             Backup database & send to Telegram
@@ -2857,10 +2863,10 @@ print_usage() {
     -h, --help         Show this help and exit
 
   Examples:
-    mirza install --channel auto
-    mirza install --token 123:ABC --admin 111 --domain bot.example.com --version 0.1.7
-    mirza update --channel release
-    mirza update --version 0.1.6
+    bluebot install --channel auto
+    bluebot install --token 123:ABC --admin 111 --domain bot.example.com --version 0.1.7
+    bluebot update --channel release
+    bluebot update --version 0.1.6
 
 USAGE
 }
