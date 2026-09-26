@@ -1,4 +1,5 @@
 <?php
+require_once __DIR__ . '/src/Support/Diagnostics.php';
 #----------------[  admin section  ]------------------#
 $version = file_get_contents('version');
 $textadmin = ["panel", "/panel", $textbotlang['Admin']['panelAdmin']];
@@ -118,62 +119,7 @@ if ($isGatewayOptionClick || $isGatewaySettingStep) {
     $backadmin = $backuser = json_encode(['inline_keyboard' => [[['text' => $textbotlang['Admin']['backMenuBtn'], 'callback_data' => "paygwback"]]]]);
 }
 if ($text === "/debug") {
-    $debugDbOk = false;
-    try {
-        $debugDbOk = (bool) $pdo->query("SELECT 1")->fetchColumn();
-    } catch (Throwable $debugDbError) {
-        error_log("BlueBot /debug database check failed: " . $debugDbError->getMessage());
-    }
-
-    $debugVersion = is_file(__DIR__ . '/version')
-        ? trim((string) file_get_contents(__DIR__ . '/version'))
-        : 'unknown';
-    $debugMiniVersion = is_file(__DIR__ . '/app/version')
-        ? trim((string) file_get_contents(__DIR__ . '/app/version'))
-        : 'unknown';
-
-    $debugStoragePath = __DIR__ . '/storage/cache';
-    $debugStorageOk = is_dir($debugStoragePath) && is_writable($debugStoragePath);
-    $debugVendorOk = is_file(__DIR__ . '/vendor/autoload.php');
-    $debugInstallerPresent = is_dir(__DIR__ . '/install');
-    $debugWebhookProtected = isset($webhookSecret)
-        && is_array($webhookSecret)
-        && trim((string) ($webhookSecret['secret'] ?? '')) !== '';
-
-    try {
-        $debugDeliveryErrors = (int) $pdo
-            ->query("SELECT COUNT(*) FROM Payment_report WHERE payment_Status = 'delivery_error'")
-            ->fetchColumn();
-    } catch (Throwable $debugPaymentError) {
-        $debugDeliveryErrors = -1;
-        error_log("BlueBot /debug payment check failed: " . $debugPaymentError->getMessage());
-    }
-
-    $debugFreeBytes = @disk_free_space(__DIR__);
-    $debugFreeDisk = $debugFreeBytes === false
-        ? 'unknown'
-        : number_format($debugFreeBytes / 1073741824, 2) . ' GB';
-
-    $debugStatus = static fn(bool $ok): string => $ok ? '✅' : '❌';
-    $debugDeliveryText = $debugDeliveryErrors < 0
-        ? 'unknown'
-        : (string) $debugDeliveryErrors;
-
-    $debugText = "<b>🔵 BlueBot /debug</b>\n\n"
-        . "Version: <code>" . htmlspecialchars($debugVersion, ENT_QUOTES, 'UTF-8') . "</code>\n"
-        . "Mini App: <code>" . htmlspecialchars($debugMiniVersion, ENT_QUOTES, 'UTF-8') . "</code>\n"
-        . "PHP: <code>" . htmlspecialchars(PHP_VERSION, ENT_QUOTES, 'UTF-8') . "</code>\n"
-        . "Database: " . $debugStatus($debugDbOk) . "\n"
-        . "Storage writable: " . $debugStatus($debugStorageOk) . "\n"
-        . "Composer vendor: " . $debugStatus($debugVendorOk) . "\n"
-        . "Webhook protection: " . $debugStatus($debugWebhookProtected) . "\n"
-        . "Installer removed: " . $debugStatus(!$debugInstallerPresent) . "\n"
-        . "Delivery errors: <code>" . htmlspecialchars($debugDeliveryText, ENT_QUOTES, 'UTF-8') . "</code>\n"
-        . "Free disk: <code>" . htmlspecialchars($debugFreeDisk, ENT_QUOTES, 'UTF-8') . "</code>\n"
-        . "Bot status: <code>" . htmlspecialchars((string) ($setting['Bot_Status'] ?? 'unknown'), ENT_QUOTES, 'UTF-8') . "</code>\n"
-        . "Time: <code>" . date('Y-m-d H:i:s T') . "</code>\n\n"
-        . "<i>No secrets are included in this report.</i>";
-
+    $debugText = bluebotBuildDebugReport($pdo, $setting, is_array($webhookSecret ?? null) ? $webhookSecret : []);
     sendmessage($from_id, $debugText, null, 'HTML');
     return;
 } elseif ($datain == "paygwback") {
