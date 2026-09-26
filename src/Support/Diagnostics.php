@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/Logger.php';
 require_once __DIR__ . '/UpdateManager.php';
+require_once __DIR__ . '/ApiToken.php';
 
 function bluebotCollectDiagnostics(PDO $pdo, array $setting): array
 {
@@ -44,12 +45,7 @@ function bluebotCollectDiagnostics(PDO $pdo, array $setting): array
         ]);
     }
 
-    $apiEnvToken = getenv('BLUEBOT_API_TOKEN');
-    $apiHashFile = $root . '/api/hash.txt';
-    $apiFileToken = is_file($apiHashFile) && is_readable($apiHashFile)
-        ? trim((string) file_get_contents($apiHashFile))
-        : '';
-    $apiTokenConfigured = (is_string($apiEnvToken) && trim($apiEnvToken) !== '') || $apiFileToken !== '';
+    $apiTokenConfigured = bluebotHasDedicatedApiToken();
 
     $webhookProtected = trim((string) ($setting['webhook_secret'] ?? '')) !== '';
     $freeBytes = @disk_free_space($root);
