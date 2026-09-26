@@ -22,7 +22,14 @@ function claimPaymentPaid($order_id)
         clearSelectCache('Payment_report');
     }
 
-    return $stmt->rowCount() >= 1;
+    $changed = $stmt->rowCount() >= 1;
+    if ($changed) {
+        bluebotLog('info', 'Payment marked paid', [
+            'order_id' => (string) $order_id,
+        ]);
+    }
+
+    return $changed;
 }
 
 function markPaymentDeliveryError($order_id, $reason = '')
@@ -50,7 +57,14 @@ function markPaymentDeliveryError($order_id, $reason = '')
         ]);
     }
 
-    return $stmt->rowCount() >= 1;
+    $changed = $stmt->rowCount() >= 1;
+    if ($changed) {
+        bluebotLog('audit', 'Payment delivery marked reviewed', [
+            'order_id' => (string) $order_id,
+        ]);
+    }
+
+    return $changed;
 }
 
 function markPaymentDeliveryReviewed($order_id)
