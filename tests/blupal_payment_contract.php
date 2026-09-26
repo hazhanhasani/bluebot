@@ -37,6 +37,15 @@ contractContains($helper, <<<'PHP'
 markPaymentDeliveryError($orderId
 PHP, 'Blupal delivery failures must be recorded.', $failures);
 
+$callback = (string) @file_get_contents($root . '/payment/blupal_callback.php');
+contractContains($callback, <<<'PHP'
+bluebotBlupalSettle($invoiceId)
+PHP, 'Blupal browser callback must verify the invoice through the authenticated API.', $failures);
+contractContains($callback, <<<'PHP'
+$_GET['invoice_id']
+PHP, 'Blupal browser callback must accept the invoice identifier returned by the gateway.', $failures);
+contractContains($callback, "Payment_Method'] ?? '') === 'blupal'", 'Blupal browser callback must only resolve local Blupal orders.', $failures);
+
 $webhook = (string) @file_get_contents($root . '/payment/blupal_webhook.php');
 contractContains($webhook, <<<'PHP'
 $_SERVER['REQUEST_METHOD'] !== 'POST'
@@ -67,6 +76,10 @@ contractContains($keyboard, <<<'PHP'
 'blupal' => ['label' => $textbotlang['keyboard']['blupalGateway']
 PHP, 'Blupal is missing from payment gateway administration.', $failures);
 contractContains($keyboard, 'bluebotBlupalConfigured()', 'Blupal buyer button must remain hidden until credentials are configured.', $failures);
+
+$admin = (string) @file_get_contents($root . '/admin.php');
+contractContains($admin, "'/payment/blupal_callback.php'", 'Blupal callback URL must be exposed in gateway administration.', $failures);
+contractContains($admin, "'/payment/blupal_webhook.php'", 'Blupal webhook URL must be exposed in gateway administration.', $failures);
 
 $settings = (string) @file_get_contents($root . '/db/tables/PaySetting.php');
 foreach ([
