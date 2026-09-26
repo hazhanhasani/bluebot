@@ -222,9 +222,39 @@ function bluebotUpdateMarkNotified(string $ref): void
 
 function bluebotUpdateMarkInstalled(string $channel, string $ref): void
 {
-    update('setting', 'update_installed_channel', bluebotUpdateNormalizeChannel($channel));
-    update('setting', 'update_installed_ref', trim($ref));
-    update('setting', 'update_last_notified', trim($ref));
+    $channel = bluebotUpdateNormalizeChannel($channel);
+    $ref = trim($ref);
+
+    update('setting', 'update_installed_channel', $channel);
+    update('setting', 'update_installed_ref', $ref);
+    update('setting', 'update_last_notified', $ref);
+
+    if ($ref === '') {
+        return;
+    }
+
+    $root = dirname(__DIR__, 2);
+    $directory = $root . '/storage/update';
+    if (!is_dir($directory)) {
+        @mkdir($directory, 0775, true);
+    }
+
+    if (is_dir($directory)) {
+        $basePath = $root . '/version';
+        $payload = [
+            'channel' => $channel,
+            'ref' => $ref,
+            'label' => $channel === 'beta' ? 'main@' . substr($ref, 0, 7) : $ref,
+            'base_version' => is_file($basePath) ? trim((string) file_get_contents($basePath)) : '',
+            'installed_at' => gmdate(DATE_ATOM),
+        ];
+
+        @file_put_contents(
+            $directory . '/build.json',
+            json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT) . PHP_EOL,
+            LOCK_EX
+        );
+    }
 }
 
 function bluebotUpdateQueueDirectory(): string
