@@ -1000,7 +1000,7 @@ function claimPaymentPaid($order_id)
         "UPDATE Payment_report
          SET payment_Status = 'paid', at_updated = :at_updated
          WHERE id_order = :id_order
-           AND COALESCE(payment_Status, '') NOT IN ('paid', 'delivery_error')"
+           AND COALESCE(payment_Status, '') NOT IN ('paid', 'delivery_error', 'delivery_reviewed')"
     );
     $stmt->bindValue(':id_order', $order_id);
     $stmt->bindValue(':at_updated', date('Y/m/d H:i:s'));
@@ -1027,6 +1027,23 @@ function markPaymentDeliveryError($order_id, $reason = '')
     if ($reason !== '') {
         error_log("Payment delivery error for order {$order_id}: {$reason}");
     }
+
+    return $stmt->rowCount() >= 1;
+}
+
+function markPaymentDeliveryReviewed($order_id)
+{
+    global $pdo;
+
+    $stmt = $pdo->prepare(
+        "UPDATE Payment_report
+         SET payment_Status = 'delivery_reviewed', at_updated = :at_updated
+         WHERE id_order = :id_order AND payment_Status = 'delivery_error'"
+    );
+    $stmt->bindValue(':id_order', $order_id);
+    $stmt->bindValue(':at_updated', date('Y/m/d H:i:s'));
+    $stmt->execute();
+    clearSelectCache('Payment_report');
 
     return $stmt->rowCount() >= 1;
 }
