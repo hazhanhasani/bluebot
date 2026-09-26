@@ -30,4 +30,7 @@ return [
     'logs_api',
     'category',
     'reagent_report',
+    'sms_settings',
+    'sms_templates',
+    'sms_deliveries',
 ];
