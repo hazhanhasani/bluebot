@@ -1,4 +1,20 @@
 <?php
+require_once __DIR__ . '/src/Support/Logger.php';
+
+function mikrotikCurlJson($curl): array
+{
+    $raw = curl_exec($curl);
+    $error = $raw === false ? curl_error($curl) : '';
+    curl_close($curl);
+
+    if ($raw === false) {
+        bluebotLog('warning', 'MikroTik request failed', ['error' => $error]);
+        return ['error' => 404];
+    }
+
+    $decoded = json_decode($raw, true);
+    return is_array($decoded) ? $decoded : ['error' => 502];
+}
 
 
 function login_mikrotik($url,$username,$password){
@@ -15,10 +31,7 @@ function login_mikrotik($url,$username,$password){
       CURLOPT_CUSTOMREQUEST => 'GET',
 ));
 
-$response = curl_exec($curl);
-if($response === false)return array("error" => 404);
-$response = json_decode($response,true);
-curl_close($curl);
+$response = mikrotikCurlJson($curl);
 return $response;
 
 }
@@ -37,7 +50,8 @@ function addUser_mikrotik($name_panel,$username,$password,$group){
       CURLOPT_RETURNTRANSFER => true,
       CURLOPT_ENCODING => '',
       CURLOPT_MAXREDIRS => 10,
-      CURLOPT_TIMEOUT => 0,
+      CURLOPT_TIMEOUT_MS => ($GLOBALS['request_exec_timeout'] ?? null) ?: 5000,
+      CURLOPT_CONNECTTIMEOUT_MS => min((int) (($GLOBALS['request_exec_timeout'] ?? null) ?: 5000), 3000),
       CURLOPT_FOLLOWLOCATION => true,
       CURLOPT_HTTP_VERSION => CURL_HTTP_VERSION_1_1,
       CURLOPT_CUSTOMREQUEST => 'POST',
@@ -68,7 +82,8 @@ function set_profile_mikrotik($name_panel,$username,$prof_name){
       CURLOPT_RETURNTRANSFER => true,
       CURLOPT_ENCODING => '',
       CURLOPT_MAXREDIRS => 10,
-      CURLOPT_TIMEOUT => 0,
+      CURLOPT_TIMEOUT_MS => ($GLOBALS['request_exec_timeout'] ?? null) ?: 5000,
+      CURLOPT_CONNECTTIMEOUT_MS => min((int) (($GLOBALS['request_exec_timeout'] ?? null) ?: 5000), 3000),
       CURLOPT_FOLLOWLOCATION => true,
       CURLOPT_HTTP_VERSION => CURL_HTTP_VERSION_1_1,
       CURLOPT_CUSTOMREQUEST => 'POST',
@@ -78,10 +93,7 @@ function set_profile_mikrotik($name_panel,$username,$prof_name){
       CURLOPT_POSTFIELDS => json_encode($data,true)
 ));
 
-$response = curl_exec($curl);
-if($response === false)return array("error" => 404);
-$response = json_decode($response,true);
-curl_close($curl);
+$response = mikrotikCurlJson($curl);
 return $response;
 }
 function GetUsermikrotik($name_panel,$username){
@@ -93,7 +105,8 @@ function GetUsermikrotik($name_panel,$username){
       CURLOPT_USERPWD => $panel['username_panel'] . ":" . $panel['password_panel'],
       CURLOPT_ENCODING => '',
       CURLOPT_MAXREDIRS => 10,
-      CURLOPT_TIMEOUT => 0,
+      CURLOPT_TIMEOUT_MS => ($GLOBALS['request_exec_timeout'] ?? null) ?: 5000,
+      CURLOPT_CONNECTTIMEOUT_MS => min((int) (($GLOBALS['request_exec_timeout'] ?? null) ?: 5000), 3000),
       CURLOPT_FOLLOWLOCATION => true,
       CURLOPT_HTTP_VERSION => CURL_HTTP_VERSION_1_1,
       CURLOPT_CUSTOMREQUEST => 'GET',
@@ -102,10 +115,7 @@ function GetUsermikrotik($name_panel,$username){
     )
 ));
 
-$response = curl_exec($curl);
-if($response === false)return array("error" => 404);
-$response = json_decode($response,true);
-curl_close($curl);
+$response = mikrotikCurlJson($curl);
 return $response;
 }
 function GetUsermikrotik_volume($name_panel,$id){
@@ -121,7 +131,8 @@ function GetUsermikrotik_volume($name_panel,$id){
       CURLOPT_USERPWD => $panel['username_panel'] . ":" . $panel['password_panel'],
       CURLOPT_ENCODING => '',
       CURLOPT_MAXREDIRS => 10,
-      CURLOPT_TIMEOUT => 0,
+      CURLOPT_TIMEOUT_MS => ($GLOBALS['request_exec_timeout'] ?? null) ?: 5000,
+      CURLOPT_CONNECTTIMEOUT_MS => min((int) (($GLOBALS['request_exec_timeout'] ?? null) ?: 5000), 3000),
       CURLOPT_FOLLOWLOCATION => true,
       CURLOPT_HTTP_VERSION => CURL_HTTP_VERSION_1_1,
       CURLOPT_CUSTOMREQUEST => 'POST', 
@@ -131,11 +142,8 @@ function GetUsermikrotik_volume($name_panel,$id){
     )
 ));
 
-$response = curl_exec($curl);
-if($response === false)return array("error" => 404);
-$response = json_decode($response,true)[0];
-curl_close($curl);
-return $response;
+$response = mikrotikCurlJson($curl);
+return $response[0] ?? $response;
 }
 function deleteUser_mikrotik($name_panel,$username){
     $panel = select("marzban_panel","*","name_panel",$name_panel,"select");
@@ -149,7 +157,8 @@ function deleteUser_mikrotik($name_panel,$username){
       CURLOPT_USERPWD => $panel['username_panel'] . ":" . $panel['password_panel'],
       CURLOPT_ENCODING => '',
       CURLOPT_MAXREDIRS => 10,
-      CURLOPT_TIMEOUT => 0,
+      CURLOPT_TIMEOUT_MS => ($GLOBALS['request_exec_timeout'] ?? null) ?: 5000,
+      CURLOPT_CONNECTTIMEOUT_MS => min((int) (($GLOBALS['request_exec_timeout'] ?? null) ?: 5000), 3000),
       CURLOPT_FOLLOWLOCATION => true,
       CURLOPT_HTTP_VERSION => CURL_HTTP_VERSION_1_1,
       CURLOPT_CUSTOMREQUEST => 'POST', 
@@ -159,9 +168,6 @@ function deleteUser_mikrotik($name_panel,$username){
     )
 ));
 
-$response = curl_exec($curl);
-if($response === false)return array("error" => 404);
-$response = json_decode($response,true)[0];
-curl_close($curl);
-return $response;
+$response = mikrotikCurlJson($curl);
+return $response[0] ?? $response;
 }
