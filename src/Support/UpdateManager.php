@@ -21,7 +21,7 @@ function bluebotUpdateNormalizeChannel($channel): string
 
 function bluebotUpdateSettings(): array
 {
-    $row = select('setting', '*');
+    $row = select('setting', '*', null, null, 'select', ['cache' => false]);
     return is_array($row) ? $row : [];
 }
 
@@ -179,10 +179,9 @@ function bluebotUpdateAvailable(array $target, ?array $settings = null): bool
     }
 
     $installedRef = trim((string) ($settings['update_installed_ref'] ?? ''));
-    $installedChannel = bluebotUpdateNormalizeChannel($settings['update_installed_channel'] ?? 'release');
     $targetRef = trim((string) ($target['ref'] ?? ''));
 
-    return $targetRef !== '' && !($installedChannel === 'beta' && hash_equals($installedRef, $targetRef));
+    return $targetRef !== '' && ($installedRef === '' || !hash_equals($installedRef, $targetRef));
 }
 
 function bluebotUpdateMarkNotified(string $ref): void
