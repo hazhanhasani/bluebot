@@ -1,18 +1,18 @@
 <?php
 ini_set('error_log', 'error_log');
 require_once __DIR__ . '/config.php';
-require_once __DIR__ . '/Marzban.php';
-require_once __DIR__ . '/x-ui_single.php';
-require_once __DIR__ . '/hiddify.php';
-require_once __DIR__ . '/marzneshin.php';
-require_once __DIR__ . '/solidlayer.php';
-require_once __DIR__ . '/alireza_single.php';
-require_once __DIR__ . '/WGDashboard.php';
-require_once __DIR__ . '/s_ui.php';
-require_once __DIR__ . '/ibsng.php';
-require_once __DIR__ . '/mikrotik.php';
-require_once __DIR__ . '/mirza_agent.php';
-require_once __DIR__ . '/Rebecca.php';
+require_once __DIR__ . '/src/Panel/Adapters/Marzban.php';
+require_once __DIR__ . '/src/Panel/Adapters/Marzneshin.php';
+require_once __DIR__ . '/src/Panel/Adapters/SolidLayer.php';
+require_once __DIR__ . '/src/Panel/Adapters/ThreeXUI.php';
+require_once __DIR__ . '/src/Panel/Adapters/AlirezaXUI.php';
+require_once __DIR__ . '/src/Panel/Adapters/Hiddify.php';
+require_once __DIR__ . '/src/Panel/Adapters/SUI.php';
+require_once __DIR__ . '/src/Panel/Adapters/WGDashboard.php';
+require_once __DIR__ . '/src/Panel/Adapters/MikroTik.php';
+require_once __DIR__ . '/src/Panel/Adapters/IBSng.php';
+require_once __DIR__ . '/src/Panel/Adapters/MirzaAgent.php';
+require_once __DIR__ . '/src/Panel/Adapters/Rebecca.php';
 
 class ManagePanel
 {
