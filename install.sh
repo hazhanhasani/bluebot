@@ -1318,12 +1318,11 @@ function import_bot() {
         "mysql -h '$dbhost' -u '$dbuser' -p'$dbpass' '$dbname' < '$sql_file'" \
         || { show_step_error; echo -e "\n  ${C_BAD}●${CR} ${C_BAD}Import failed. See details above.${CR}"; echo ""; printf "  ${C_PROMPT}❯${CR} Press Enter to return to the menu... "; read -r _; show_menu; return 1; }
 
-    local DOMAIN_NAME=""
-    if [ -f "$CONFIG_PATH" ]; then
-        DOMAIN_NAME=$(grep '^\$domainhosts' "$CONFIG_PATH" | cut -d"'" -f2 | cut -d'/' -f1)
-    fi
-    if [ -n "$DOMAIN_NAME" ]; then
-        run_step "Updating database tables" "curl -s 'https://${DOMAIN_NAME}/table.php' > /dev/null" || true
+    if [ -f "$BOT_DIR/table.php" ]; then
+        run_step "Updating database tables" "cd '$BOT_DIR' && php table.php" || true
+        [ -f "$BOT_DIR/scripts/repair-webhook.php" ] \
+            && run_step "Refreshing Telegram webhook" "cd '$BOT_DIR' && php scripts/repair-webhook.php" \
+            || true
     fi
 
     echo ""
@@ -2294,6 +2293,8 @@ EOF
         sleep 5
         run_step "Initializing database tables" "cd '$BOT_DIR' && php${PHP_VER} table.php" \
             || { show_step_error; install_pause "Initializing database tables"; }
+        run_step "Refreshing protected Telegram webhook" "cd '$BOT_DIR' && php${PHP_VER} scripts/repair-webhook.php" \
+            || { show_step_error; install_pause "Refreshing Telegram webhook"; }
         run_step "Installing in-bot update worker" "install_update_worker '$BOT_DIR/scripts/bluebot-update-worker.sh'" \
             || { show_step_error; install_pause "Installing in-bot update worker"; }
         mark_phase WEBHOOK
@@ -2531,10 +2532,11 @@ EOF
         fi
     fi
     if [ -f "$CONFIG_PATH" ]; then
-        URL_PATH=$(grep "^\$domainhosts" "$CONFIG_PATH" | cut -d"'" -f2)
-        if [ -n "$URL_PATH" ]; then
-            run_step "Updating database tables" "curl -s 'https://$URL_PATH/table.php' > /dev/null" \
-                || echo -e "\e[91mSetup script execution failed! Check logs.\033[0m"
+        run_step "Updating database tables" "cd '$BOT_DIR' && php table.php" \
+            || echo -e "\e[91mDatabase migration failed! Check logs.\033[0m"
+        if [ -f "$BOT_DIR/scripts/repair-webhook.php" ]; then
+            run_step "Refreshing Telegram webhook" "cd '$BOT_DIR' && php scripts/repair-webhook.php" \
+                || echo -e "\e[93mWarning: main Telegram webhook refresh failed.\033[0m"
         fi
         run_step "Setting vpnbot webhooks" "set_vpnbot_webhooks '$CONFIG_PATH'" \
             || echo -e "\e[93mWarning: vpnbot webhook update failed.\033[0m"

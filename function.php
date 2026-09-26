@@ -2,6 +2,7 @@
 require_once __DIR__ . '/vendor/autoload.php';
 require_once __DIR__ . '/src/Support/Logger.php';
 require_once __DIR__ . '/src/Support/InstallerGuard.php';
+require_once __DIR__ . '/src/Support/TrustedProxy.php';
 require_once __DIR__ . '/src/Payment/PaymentState.php';
 require_once __DIR__ . '/config.php';
 ini_set('error_log', 'error_log');
@@ -1737,60 +1738,48 @@ function addBackgroundImage($urlimage, $qrCodeResult, $backgroundPath)
 
 function checktelegramip()
 {
-    $clientIp = $_SERVER['REMOTE_ADDR'] ?? '';
-    if (!is_string($clientIp) || $clientIp === '') {
-        return false;
-    }
-
-    $clientIp = trim($clientIp);
-    if (!filter_var($clientIp, FILTER_VALIDATE_IP)) {
-        return false;
-    }
-
-    $telegramIpRanges = [
-        ['lower' => '149.154.160.0', 'upper' => '149.154.175.255'],
-        ['lower' => '91.108.4.0', 'upper' => '91.108.7.255'],
-        ['lower' => '2001:67c:4e8::', 'upper' => '2001:67c:4e8:ffff:ffff:ffff:ffff:ffff']
-    ];
-
-    foreach ($telegramIpRanges as $range) {
-        if (isClientIpInRange($clientIp, $range['lower'], $range['upper'])) {
-            return true;
-        }
-    }
-
-    return false;
-}
-
-function isClientIpInRange($clientIp, $lowerBound, $upperBound)
-{
-    $clientPacked = inet_pton($clientIp);
-    $lowerPacked = inet_pton($lowerBound);
-    $upperPacked = inet_pton($upperBound);
-
-    if ($clientPacked === false || $lowerPacked === false || $upperPacked === false) {
-        return false;
-    }
-
-    $length = strlen($clientPacked);
-    if ($length !== strlen($lowerPacked) || $length !== strlen($upperPacked)) {
-        return false;
-    }
-
-    return strcmp($clientPacked, $lowerPacked) >= 0 && strcmp($clientPacked, $upperPacked) <= 0;
+    return bluebotTelegramWebhookIpAllowed($_SERVER);
 }
 
 function webhookSecretMatches($secret)
 {
-    $received = $_GET['secret'] ?? '';
+    $secret = trim((string) $secret);
+    if ($secret === '') {
+        return false;
+    }
 
-    return is_string($received) && $received !== '' && hash_equals($secret, $received);
+    $headerSecret = $_SERVER['HTTP_X_TELEGRAM_BOT_API_SECRET_TOKEN'] ?? '';
+    if (is_string($headerSecret) && $headerSecret !== '' && hash_equals($secret, $headerSecret)) {
+        return true;
+    }
+
+    // Backward compatibility for BlueBot installations that already use the
+    // legacy query-string secret in their Telegram webhook URL.
+    $querySecret = $_GET['secret'] ?? '';
+    return is_string($querySecret) && $querySecret !== '' && hash_equals($secret, $querySecret);
+}
+
+function bluebotSetMainWebhook($secret)
+{
+    global $domainhosts;
+
+    $secret = trim((string) $secret);
+    $host = trim((string) $domainhosts);
+    if ($secret === '' || $host === '') {
+        return false;
+    }
+
+    $response = telegram('setWebhook', [
+        'url' => "https://$host/index.php?secret=$secret",
+        'secret_token' => $secret,
+        'drop_pending_updates' => false,
+    ]);
+
+    return is_array($response) && !empty($response['ok']);
 }
 
 function ensureWebhookSecret()
 {
-    global $domainhosts;
-
     $stored = (string) (select("setting", "*")['webhook_secret'] ?? '');
     if ($stored !== '') {
         return ['secret' => $stored, 'created' => false];
@@ -1804,9 +1793,7 @@ function ensureWebhookSecret()
         $secret = $stored;
     }
 
-    telegram('setWebhook', [
-        'url' => "https://$domainhosts/index.php?secret=$secret",
-    ]);
+    bluebotSetMainWebhook($secret);
 
     return ['secret' => $secret, 'created' => true];
 }
