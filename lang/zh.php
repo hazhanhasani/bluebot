@@ -2389,15 +2389,13 @@ f,n.n2',
 🔹 | 此外，如果您需要<b>指导</b>或帮助，可以通过私信联系客服团队。
 
 📩 | 要发送报告、建议或请求指导，请在 <b>BlueBot 群组</b>中留言：
-<a href="https://t.me/mirzapanelgroup" rel="nofollow" target="_blank">BlueBot Group</a>',
+<a href="https://github.com/hazhanhasani/bluebot/issues" rel="nofollow" target="_blank">BlueBot Issues</a>',
                         'aboutBot' => '💎 | Version Bot: %s
 📌 | Version Mini App: 0.1.1
 
-<blockquote>🔹 | 此机器人完全免费，由 BlueBot 团队开发</blockquote>
+<blockquote>🔹 | BlueBot 是依据 AGPL-3.0-or-later 许可证发布的开源软件。</blockquote>
 
-<blockquote>🔹 | 任何对此机器人的出售或收费均视为违规。</blockquote>
-
-<blockquote>🔹 | 如果您发现任何出售或收费行为，请追踪并追回您的款项。</blockquote>
+<blockquote>🔹 | 在遵守许可证及源代码提供义务的前提下，可以进行商业分发或提供托管服务。</blockquote>
 
 <blockquote>🐞 | 如果您在机器人运行中遇到错误或问题，请通过管理面板中的 **📬 机器人反馈** 按钮联系我们。</blockquote>',
                         'gatewayRow' => '
