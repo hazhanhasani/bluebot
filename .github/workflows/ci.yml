@@ -146,6 +146,17 @@ jobs:
           php -r 'require "src/Support/InstallerGuard.php"; $d=sys_get_temp_dir()."/bluebot-installer-ci-".bin2hex(random_bytes(4)); mkdir($d,0700); file_put_contents($d."/probe","ok"); if (!bluebotRemoveInstallerPath($d) || file_exists($d)) exit(1);'
           echo "Installer guard module OK."
 
+      - name: Verify AqayePardakht callback contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -Fq "Payment_Method'] ?? '') !== 'aqayepardakht'" payment/aqayepardakht.php
+          grep -Fq "CURLOPT_CONNECTTIMEOUT_MS" payment/aqayepardakht.php
+          grep -Fq "AqayePardakht verification request failed" payment/aqayepardakht.php
+          grep -Fq "statusDeliveryFailed" payment/aqayepardakht.php
+          grep -Fq "deliveryFailed" payment/aqayepardakht.php
+          echo "AqayePardakht callback contract OK."
+
       - name: Validate installer syntax
         run: bash -n install.sh
 
