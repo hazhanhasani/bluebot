@@ -299,11 +299,11 @@ bluebot/
 ├── function.php            # Shared business/application helpers
 ├── keyboard.php            # Telegram keyboards and menus
 ├── panels.php              # Unified VPN panel lifecycle manager
-├── Marzban.php             # Marzban adapter
-├── marzneshin.php          # Marzneshin adapter
-├── solidlayer.php          # SolidLayer / GoGuard adapter
-├── hiddify.php             # Hiddify adapter
-├── x-ui_single.php         # X-UI / Sanaei adapter
+├── src/
+│   ├── Panel/
+│   │   └── Adapters/       # All external VPN panel integrations
+│   ├── Payment/            # Payment domain helpers
+│   └── Support/            # Logging, diagnostics and runtime support
 ├── app/                    # Telegram Mini App
 ├── panel/                  # Web administration panel
 ├── api/                    # Internal/API endpoints
