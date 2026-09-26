@@ -22,9 +22,15 @@ read_json() {
 }
 
 CHANNEL="$(read_json channel)"
+INSTALLED_CHANNEL="$(read_json installed_channel)"
 CHAT_ID="$(read_json chat_id)"
 REF="$(read_json ref)"
 LABEL="$(read_json label)"
+
+case "$INSTALLED_CHANNEL" in
+    release|beta) ;;
+    *) INSTALLED_CHANNEL="$CHANNEL" ;;
+esac
 
 case "$CHANNEL" in
     release|beta|auto) ;;
@@ -87,11 +93,17 @@ export TERM="${TERM:-xterm}"
 
 if /usr/local/bin/bluebot update --channel "$CHANNEL" --background >>"$LOG_FILE" 2>&1; then
     if [ -f "$BOT_DIR/scripts/update-state.php" ]; then
-        php "$BOT_DIR/scripts/update-state.php" "$CHANNEL" "$REF" >>"$LOG_FILE" 2>&1 || true
+        php "$BOT_DIR/scripts/update-state.php" "$INSTALLED_CHANNEL" "$REF" >>"$LOG_FILE" 2>&1 || true
     fi
 
     NEW_VERSION=""
-    [ -f "$BOT_DIR/version" ] && NEW_VERSION="$(tr -d '\r\n' < "$BOT_DIR/version")"
+    if [ -f "$BOT_DIR/src/Support/UpdateManager.php" ]; then
+        NEW_VERSION="$(php -r 'require $argv[1]; echo bluebotUpdateCurrentVersion();' "$BOT_DIR/src/Support/UpdateManager.php" 2>/dev/null || true)"
+    fi
+    if [ -z "$NEW_VERSION" ] && [ -f "$BOT_DIR/version" ]; then
+        NEW_VERSION="$(tr -d '\r\n' < "$BOT_DIR/version")"
+    fi
+
     write_status "success" "BlueBot update completed successfully."
     notify "✅ بروزرسانی BlueBot با موفقیت انجام شد. نسخه فعلی: ${NEW_VERSION:-unknown}"
     rm -f "$RUNNING_FILE"
