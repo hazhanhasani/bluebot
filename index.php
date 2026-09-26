@@ -4860,6 +4860,94 @@ if ($text == "/start" || $datain == "start" || $text == "start") {
         }
         $message_id = sendmessage($from_id, $textnowpayments, $paymentkeyboard, 'HTML');
         updatePaymentMessageId($message_id, $randomString);
+    } elseif ($datain == "blupal") {
+        if (!bluebotBlupalConfigured()) {
+            sendmessage($from_id, $textbotlang['users']['Balance']['errorLinkPayment'], $keyboard, 'HTML');
+            step('home', $from_id);
+            return;
+        }
+
+        $mainbalance = max(10000, (int) getPaySettingValue('minbalanceblupal', '10000'));
+        $maxbalance = (int) getPaySettingValue('maxbalanceblupal', '1000000');
+        $amount = (int) $user['Processing_value'];
+
+        if ($amount < $mainbalance || ($maxbalance > 0 && $amount > $maxbalance)) {
+            sendmessage(
+                $from_id,
+                strtr($textbotlang['users']['Balance']['depositRange'], [
+                    '{mainbalance}' => number_format($mainbalance),
+                    '{maxbalance}' => number_format($maxbalance),
+                ]),
+                null,
+                'HTML'
+            );
+            return;
+        }
+
+        deletemessage($from_id, $message_id);
+        sendmessage($from_id, $textbotlang['users']['Balance']['linkpayments'], $keyboard, 'HTML');
+
+        $randomString = bin2hex(random_bytes(5));
+        $invoice = "{$user['Processing_value_tow']}|{$user['Processing_value_one']}";
+        $dateacc = date('Y/m/d H:i:s');
+
+        $stmt = $pdo->prepare("INSERT INTO Payment_report (id_user,id_order,time,price,payment_Status,Payment_Method,id_invoice) VALUES (?,?,?,?,?,?,?)");
+        $stmt->execute([$from_id, $randomString, $dateacc, $amount, 'Unpaid', 'blupal', $invoice]);
+
+        $configuredCard = trim((string) getPaySettingValue('blupal_card_number', '0'));
+        $pay = bluebotBlupalCreateInvoice($amount, $configuredCard === '0' ? null : $configuredCard);
+
+        $remoteInvoiceId = trim((string) ($pay['invoice_id'] ?? ''));
+        $paymentLink = trim((string) ($pay['payment_link'] ?? ''));
+
+        if (empty($pay['success']) || $remoteInvoiceId === '' || !filter_var($paymentLink, FILTER_VALIDATE_URL)) {
+            $stmt = $pdo->prepare("DELETE FROM Payment_report WHERE id_order = ? AND payment_Status = 'Unpaid'");
+            $stmt->execute([$randomString]);
+
+            bluebotLog('warning', 'Blupal invoice creation failed', [
+                'order_id' => $randomString,
+                'user_id' => (string) $from_id,
+                'error' => (string) ($pay['error'] ?? 'invalid_response'),
+            ]);
+
+            sendmessage($from_id, $textbotlang['users']['Balance']['errorLinkPayment'], $keyboard, 'HTML');
+            step('home', $from_id);
+            return;
+        }
+
+        update("Payment_report", "dec_not_confirmed", $remoteInvoiceId, "id_order", $randomString);
+
+        $paymentkeyboard = json_encode([
+            'inline_keyboard' => [
+                [
+                    ['text' => $textbotlang['users']['Balance']['payments'], 'url' => $paymentLink],
+                ],
+                [
+                    ['text' => $textbotlang['keyboard']['checkBlupalPayment'], 'callback_data' => "blupalcheck_" . $randomString],
+                ],
+            ],
+        ]);
+
+        $priceFormat = number_format($amount);
+        $textPayment = sprintf($textbotlang['users']['Balance']['invoiceCreated2'], $randomString, $priceFormat);
+
+        $gethelp = getPaySettingValue('helpblupal', '2');
+        if ($gethelp != 2) {
+            $data = json_decode((string) $gethelp, true);
+            if (is_array($data)) {
+                if (($data['type'] ?? '') === 'text') {
+                    sendmessage($from_id, $data['text'] ?? '', null, 'HTML');
+                } elseif (($data['type'] ?? '') === 'photo') {
+                    sendphoto($from_id, $data['photoid'] ?? '', $data['text'] ?? null);
+                } elseif (($data['type'] ?? '') === 'video') {
+                    sendvideo($from_id, $data['videoid'] ?? '', $data['text'] ?? null);
+                }
+            }
+        }
+
+        $sentPayment = sendmessage($from_id, $textPayment, $paymentkeyboard, 'HTML');
+        updatePaymentMessageId($sentPayment, $randomString);
+        step('home', $from_id);
     } elseif ($datain == "zarinpal") {
         if ($user['Processing_value'] < 5000) {
             sendmessage($from_id, $textbotlang['users']['Balance']['zarinpal'], null, 'HTML');
@@ -5521,6 +5609,54 @@ if ($text == "/start" || $datain == "start" || $text == "start") {
         $message_id = sendmessage($from_id, $textstar, $paymentkeyboard, 'HTML');
         updatePaymentMessageId($message_id, $randomString);
     }
+} elseif (preg_match('/^blupalcheck_([A-Za-z0-9]{6,64})$/D', $datain, $blupalCheck)) {
+    $orderId = $blupalCheck[1];
+    $payment = select("Payment_report", "*", "id_order", $orderId, "select");
+
+    if (!is_array($payment)
+        || (string) ($payment['id_user'] ?? '') !== (string) $from_id
+        || (string) ($payment['Payment_Method'] ?? '') !== 'blupal') {
+        return;
+    }
+
+    if (!empty($callback_query_id)) {
+        telegram('answerCallbackQuery', [
+            'callback_query_id' => $callback_query_id,
+            'text' => $textbotlang['users']['Balance']['blupalChecking'],
+            'show_alert' => false,
+            'cache_time' => 0,
+        ]);
+    }
+
+    if ((string) ($payment['payment_Status'] ?? '') === 'paid') {
+        sendmessage($from_id, $textbotlang['users']['Balance']['alreadyConfirmed'], $keyboard, 'HTML');
+        return;
+    }
+
+    $remoteInvoiceId = trim((string) ($payment['dec_not_confirmed'] ?? ''));
+    if ($remoteInvoiceId === '') {
+        sendmessage($from_id, $textbotlang['users']['Balance']['blupalVerifyFailed'], $keyboard, 'HTML');
+        return;
+    }
+
+    $settled = bluebotBlupalSettle($remoteInvoiceId);
+    if (!empty($settled['ok'])) {
+        sendmessage($from_id, $textbotlang['users']['Balance']['blupalPaid'], $keyboard, 'HTML');
+        return;
+    }
+
+    $state = (string) ($settled['state'] ?? 'verify_failed');
+    if (in_array($state, ['pending', 'canceled', 'expired'], true)) {
+        sendmessage($from_id, sprintf($textbotlang['users']['Balance']['blupalPending'], strtoupper($state)), null, 'HTML');
+        return;
+    }
+
+    if ($state === 'delivery_error') {
+        sendmessage($from_id, $textbotlang['paymentGateway']['deliveryFailed'], $keyboard, 'HTML');
+        return;
+    }
+
+    sendmessage($from_id, $textbotlang['users']['Balance']['blupalVerifyFailed'], $keyboard, 'HTML');
 } elseif (preg_match('/^sendresidcart-(.*)/', $datain, $dataget)) {
     $timefivemin = time() - 120;
     $timefivemin = date('Y/m/d H:i:s', intval($timefivemin));
