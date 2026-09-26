@@ -1312,7 +1312,7 @@ function DirectPayment($order_id, $image = null)
         }
         update("invoice", "Status", "active", "username", $get_invoice['username']);
         try {
-            BluebotSms::queueAndDispatchForUser(
+            BluebotSms::queueForUser(
                 'service_activated',
                 (string) $Balance_id['id'],
                 [
@@ -1460,7 +1460,7 @@ function DirectPayment($order_id, $image = null)
             $oldExpireTs = is_numeric($DataUserOut['expire'] ?? null) ? (int) $DataUserOut['expire'] : 0;
             $renewDays = max(0, (int) ($prodcut['Service_time'] ?? 0));
             $newExpireTs = $renewDays > 0 ? max(time(), $oldExpireTs) + ($renewDays * 86400) : 0;
-            BluebotSms::queueAndDispatchForUser(
+            BluebotSms::queueForUser(
                 'service_renewed',
                 (string) $Balance_id['id'],
                 [
