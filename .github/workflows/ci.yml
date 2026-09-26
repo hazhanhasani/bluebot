@@ -82,6 +82,9 @@ jobs:
       - name: Trusted proxy webhook tests
         run: php tests/trusted_proxy_test.php
 
+      - name: Runtime bot identity tests
+        run: php tests/runtime_identity_test.php
+
       - name: Validate update worker syntax
         run: bash -n scripts/bluebot-update-worker.sh
 
