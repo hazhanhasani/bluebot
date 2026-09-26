@@ -1,5 +1,6 @@
 <?php
 require_once 'vendor/autoload.php';
+require_once __DIR__ . '/src/Support/Logger.php';
 require 'config.php';
 ini_set('error_log', 'error_log');
 
@@ -1025,7 +1026,10 @@ function markPaymentDeliveryError($order_id, $reason = '')
 
     $reason = trim((string) $reason);
     if ($reason !== '') {
-        error_log("Payment delivery error for order {$order_id}: {$reason}");
+        bluebotLog('error', 'Payment service delivery failed', [
+            'order_id' => (string) $order_id,
+            'reason' => $reason,
+        ]);
     }
 
     return $stmt->rowCount() >= 1;
