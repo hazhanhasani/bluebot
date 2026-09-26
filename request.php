@@ -2,6 +2,11 @@
 require_once 'config.php';
 require_once __DIR__ . '/src/Support/Logger.php';
 
+function bluebotVerifyPanelTls(): bool
+{
+    return getenv('BLUEBOT_VERIFY_PANEL_TLS') === '1';
+}
+
 class CurlRequest {
     private $url;
     private $headers = [];
@@ -64,7 +69,7 @@ class CurlRequest {
 
         // Legacy panel compatibility: some deployments use self-signed TLS.
         // BLUEBOT_VERIFY_PANEL_TLS=1 enables strict certificate verification.
-        $verifyTls = getenv('BLUEBOT_VERIFY_PANEL_TLS') === '1';
+        $verifyTls = bluebotVerifyPanelTls();
         curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, $verifyTls);
         curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, $verifyTls ? 2 : 0);
 
