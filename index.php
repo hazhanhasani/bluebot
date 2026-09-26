@@ -10,6 +10,12 @@ require_once __DIR__ . '/src/Support/JalaliDate.php';
 require_once __DIR__ . '/src/Support/MiniApp.php';
 require_once 'function.php';
 bluebotEnsureInstallerRemoved();
+
+// Build all per-request URLs from the domain that actually received this HTTPS
+// webhook. This is only an in-memory adoption here; authenticated persistence
+// happens below after Telegram webhook verification.
+bluebotAdoptRuntimeIdentity(false, false);
+
 require_once 'keyboard.php';
 require_once 'vendor/autoload.php';
 require_once 'panels.php';
