@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 require_once __DIR__ . '/Logger.php';
+require_once __DIR__ . '/UpdateManager.php';
 
 function bluebotCollectDiagnostics(PDO $pdo, array $setting): array
 {
@@ -54,7 +55,9 @@ function bluebotCollectDiagnostics(PDO $pdo, array $setting): array
     $freeBytes = @disk_free_space($root);
 
     return [
-        'version' => $readVersion($root . '/version'),
+        'version' => function_exists('bluebotUpdateCurrentVersion')
+            ? bluebotUpdateCurrentVersion()
+            : $readVersion($root . '/version'),
         'mini_version' => $readVersion($root . '/app/version'),
         'php_version' => PHP_VERSION,
         'database_ok' => $dbOk,
@@ -188,7 +191,21 @@ function bluebotRecordHealthSnapshot(array $diagnostics, int $minInterval = 300)
 
     $minInterval = max(0, $minInterval);
     $mtime = is_file($path) ? @filemtime($path) : false;
-    if ($minInterval > 0 && $mtime !== false && (time() - $mtime) < $minInterval) {
+    $versionChanged = false;
+
+    if (is_file($path) && is_readable($path)) {
+        $lines = @file($path, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
+        if (is_array($lines) && $lines !== []) {
+            $last = json_decode((string) end($lines), true);
+            if (is_array($last)) {
+                $previousVersion = (string) ($last['version'] ?? '');
+                $currentVersion = (string) ($diagnostics['version'] ?? '');
+                $versionChanged = $currentVersion !== '' && $currentVersion !== $previousVersion;
+            }
+        }
+    }
+
+    if (!$versionChanged && $minInterval > 0 && $mtime !== false && (time() - $mtime) < $minInterval) {
         return true;
     }
 

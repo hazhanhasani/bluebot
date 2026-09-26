@@ -144,6 +144,8 @@ jobs:
           grep -Fq "api_token_configured" src/Support/Diagnostics.php
           grep -Fq "webhook_protected" src/Support/Diagnostics.php
           grep -Fq "bluebotRecordHealthSnapshot" src/Support/Diagnostics.php
+          grep -Fq "bluebotUpdateCurrentVersion" src/Support/Diagnostics.php
+          grep -Fq "require_once __DIR__ . '/UpdateManager.php';" src/Support/Diagnostics.php
           grep -Fq "bluebotReadHealthHistory" panel/diagnostics.php
           test "$(grep -Fc 'bluebotRecordHealthSnapshot($diagnostics)' panel/diagnostics.php)" -eq 1
           test "$(grep -Fc 'bluebotReadHealthHistory' panel/diagnostics.php)" -eq 1
@@ -159,9 +161,9 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          php -r 'require "src/Support/Diagnostics.php"; $d=["database_ok"=>true,"storage_writable"=>true,"vendor_ready"=>true,"installer_removed"=>true,"webhook_protected"=>true,"api_token_configured"=>true,"delivery_errors"=>0,"delivery_reviewed"=>1,"version"=>"ci","mini_version"=>"ci","php_version"=>PHP_VERSION,"free_disk"=>"1 GB","bot_status"=>"active"]; if (!bluebotRecordHealthSnapshot($d)) exit(1); $h=bluebotReadHealthHistory(1); if (count($h)!==1 || $h[0]["version"]!=="ci" || !$h[0]["overall_healthy"]) exit(2);'
+          php -r 'require "src/Support/Diagnostics.php"; $d=["database_ok"=>true,"storage_writable"=>true,"vendor_ready"=>true,"installer_removed"=>true,"webhook_protected"=>true,"api_token_configured"=>true,"delivery_errors"=>0,"delivery_reviewed"=>1,"version"=>"ci-a","mini_version"=>"ci","php_version"=>PHP_VERSION,"free_disk"=>"1 GB","bot_status"=>"active"]; if (!bluebotRecordHealthSnapshot($d)) exit(1); $d["version"]="ci-b"; if (!bluebotRecordHealthSnapshot($d)) exit(2); $h=bluebotReadHealthHistory(2); if (count($h)!==2 || $h[0]["version"]!=="ci-b" || $h[1]["version"]!=="ci-a" || !$h[0]["overall_healthy"]) exit(3);'
           rm -f storage/logs/health.jsonl storage/logs/health.jsonl.1
-          echo "Diagnostics history round-trip OK."
+          echo "Diagnostics history/version-change round-trip OK."
 
       - name: Verify installer guard module
         shell: bash
