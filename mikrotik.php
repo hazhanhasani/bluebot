@@ -61,11 +61,11 @@ function addUser_mikrotik($name_panel,$username,$password,$group){
       CURLOPT_POSTFIELDS => json_encode($data,true)
 ));
 
-$response = curl_exec($curl);
-if($response === false)return array("error" => 404);
-set_profile_mikrotik($name_panel,$username,$group);
-$response = json_decode($response,true);
-curl_close($curl);
+$response = mikrotikCurlJson($curl);
+if (isset($response['error'])) {
+    return $response;
+}
+set_profile_mikrotik($name_panel, $username, $group);
 return $response;
 }
 function set_profile_mikrotik($name_panel,$username,$prof_name){
