@@ -12,6 +12,7 @@ return [
     ['marzban_panel', 'idx_panel_code', '`code_panel`(100)'],
     ['product', 'idx_product_code', '`code_product`(50)'],
     ['product', 'idx_product_location', '`Location`(100)'],
+    ['product', 'idx_product_name_location', '`name_product`(120), `Location`(100)'],
     ['manualsell', 'idx_manualsell_codepanel', '`codepanel`(100)'],
     ['service_other', 'idx_serviceother_username', '`username`(150)'],
     ['service_other', 'idx_serviceother_type', '`type`(100)'],
