@@ -38,7 +38,7 @@ if ($jobs === false || !str_contains($jobs, "'UpdateNotifier'")) {
 }
 
 $installer = @file_get_contents($root . '/install.sh');
-if ($installer !== false && str_contains($installer, "curl -s 'https://$URL_PATH/table.php'")) {
+if ($installer !== false && str_contains($installer, "curl -s 'https://\$URL_PATH/table.php'")) {
     $failures[] = 'Updater still depends on public HTTP for database migration.';
 }
 if ($installer === false || !str_contains($installer, "php scripts/repair-webhook.php")) {
