@@ -1991,7 +1991,8 @@ function createInvoice($amount)
         CURLOPT_RETURNTRANSFER => true,
         CURLOPT_ENCODING => '',
         CURLOPT_MAXREDIRS => 10,
-        CURLOPT_TIMEOUT => 0,
+        CURLOPT_TIMEOUT_MS => 10000,
+        CURLOPT_CONNECTTIMEOUT_MS => 4000,
         CURLOPT_FOLLOWLOCATION => true,
         CURLOPT_HTTP_VERSION => CURL_HTTP_VERSION_1_1,
         CURLOPT_CUSTOMREQUEST => 'POST',
@@ -2002,7 +2003,18 @@ function createInvoice($amount)
     ));
 
     $response = curl_exec($curl);
-    return json_decode($response, true);
+    $curlError = $response === false ? curl_error($curl) : '';
+    curl_close($curl);
+
+    if ($response === false) {
+        bluebotLog('warning', 'IranPay invoice request failed', [
+            'error' => $curlError,
+        ]);
+        return ['error' => $curlError ?: 'request failed'];
+    }
+
+    $decoded = json_decode($response, true);
+    return is_array($decoded) ? $decoded : ['error' => 'invalid response'];
 }
 function verifpay($id)
 {
@@ -2014,7 +2026,8 @@ function verifpay($id)
         CURLOPT_RETURNTRANSFER => true,
         CURLOPT_ENCODING => '',
         CURLOPT_MAXREDIRS => 10,
-        CURLOPT_TIMEOUT => 0,
+        CURLOPT_TIMEOUT_MS => 10000,
+        CURLOPT_CONNECTTIMEOUT_MS => 4000,
         CURLOPT_FOLLOWLOCATION => true,
         CURLOPT_HTTP_VERSION => CURL_HTTP_VERSION_1_1,
         CURLOPT_CUSTOMREQUEST => 'GET',
@@ -2024,7 +2037,16 @@ function verifpay($id)
     ));
 
     $response = curl_exec($curl);
+    $curlError = $response === false ? curl_error($curl) : '';
+    curl_close($curl);
 
+    if ($response === false) {
+        bluebotLog('warning', 'IranPay verification request failed', [
+            'invoice_id' => (string) $id,
+            'error' => $curlError,
+        ]);
+        return false;
+    }
 
     return $response;
 }
@@ -2045,7 +2067,8 @@ function createInvoiceiranpay1($amount, $id_invoice)
         CURLOPT_RETURNTRANSFER => true,
         CURLOPT_ENCODING => '',
         CURLOPT_MAXREDIRS => 10,
-        CURLOPT_TIMEOUT => 0,
+        CURLOPT_TIMEOUT_MS => 10000,
+        CURLOPT_CONNECTTIMEOUT_MS => 4000,
         CURLOPT_FOLLOWLOCATION => true,
         CURLOPT_HTTP_VERSION => CURL_HTTP_VERSION_1_1,
         CURLOPT_CUSTOMREQUEST => 'POST',
@@ -2057,7 +2080,19 @@ function createInvoiceiranpay1($amount, $id_invoice)
     ));
 
     $response = curl_exec($curl);
-    return json_decode($response, true);
+    $curlError = $response === false ? curl_error($curl) : '';
+    curl_close($curl);
+
+    if ($response === false) {
+        bluebotLog('warning', 'IranPay1 invoice request failed', [
+            'invoice_id' => (string) $id_invoice,
+            'error' => $curlError,
+        ]);
+        return ['error' => $curlError ?: 'request failed'];
+    }
+
+    $decoded = json_decode($response, true);
+    return is_array($decoded) ? $decoded : ['error' => 'invalid response'];
 }
 function sanitizeUserName($userName)
 {
@@ -2582,7 +2617,8 @@ function createPayZarinpal($price, $order_id)
         CURLOPT_RETURNTRANSFER => true,
         CURLOPT_ENCODING => '',
         CURLOPT_MAXREDIRS => 10,
-        CURLOPT_TIMEOUT => 0,
+        CURLOPT_TIMEOUT_MS => 10000,
+        CURLOPT_CONNECTTIMEOUT_MS => 4000,
         CURLOPT_FOLLOWLOCATION => true,
         CURLOPT_HTTP_VERSION => CURL_HTTP_VERSION_1_1,
         CURLOPT_CUSTOMREQUEST => 'POST',
@@ -2602,8 +2638,19 @@ function createPayZarinpal($price, $order_id)
         )
     ]));
     $response = curl_exec($curl);
+    $curlError = $response === false ? curl_error($curl) : '';
     curl_close($curl);
-    return json_decode($response, true);
+
+    if ($response === false) {
+        bluebotLog('warning', 'ZarinPal payment request failed', [
+            'order_id' => (string) $order_id,
+            'error' => $curlError,
+        ]);
+        return ['error' => $curlError ?: 'request failed'];
+    }
+
+    $decoded = json_decode($response, true);
+    return is_array($decoded) ? $decoded : ['error' => 'invalid response'];
 }
 function createPayVariza($price, $order_id)
 {
@@ -2661,7 +2708,8 @@ function createPayaqayepardakht($price, $order_id)
         CURLOPT_RETURNTRANSFER => true,
         CURLOPT_ENCODING => '',
         CURLOPT_MAXREDIRS => 10,
-        CURLOPT_TIMEOUT => 0,
+        CURLOPT_TIMEOUT_MS => 10000,
+        CURLOPT_CONNECTTIMEOUT_MS => 4000,
         CURLOPT_FOLLOWLOCATION => true,
         CURLOPT_HTTP_VERSION => CURL_HTTP_VERSION_1_1,
         CURLOPT_CUSTOMREQUEST => 'POST',
@@ -2677,8 +2725,19 @@ function createPayaqayepardakht($price, $order_id)
         'invoice_id' => $order_id,
     ]));
     $response = curl_exec($curl);
+    $curlError = $response === false ? curl_error($curl) : '';
     curl_close($curl);
-    return json_decode($response, true);
+
+    if ($response === false) {
+        bluebotLog('warning', 'AqayePardakht payment request failed', [
+            'order_id' => (string) $order_id,
+            'error' => $curlError,
+        ]);
+        return ['error' => $curlError ?: 'request failed'];
+    }
+
+    $decoded = json_decode($response, true);
+    return is_array($decoded) ? $decoded : ['error' => 'invalid response'];
 }
 function parseConfigs($input)
 {
