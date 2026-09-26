@@ -19,6 +19,18 @@ foreach ($requiredFiles as $file) {
     }
 }
 
+$installerVersioning = @file_get_contents($root . '/install.sh');
+foreach ([
+    'installed_build_state_path',
+    'get_main_commit_sha',
+    'record_installed_build',
+    '-beta+',
+] as $needle) {
+    if ($installerVersioning === false || !str_contains($installerVersioning, $needle)) {
+        $failures[] = "Installer build-version contract missing: {$needle}";
+    }
+}
+
 $manager = @file_get_contents($root . '/src/Support/UpdateManager.php');
 foreach ([
     'bluebotUpdateLatestRelease',
