@@ -4531,7 +4531,7 @@ ID пользователя : %s
                 'productFieldVolumeGb' => 'Операция',
                 'productFiftyValue' => '۵۰',
                 'productNameExample' => 'например: 50 ГБ на месяц',
-                'productNameExists' => 'Продукт с таким названием уже зарегистрирован.',
+                'productNameExists' => 'Продукт с таким названием уже зарегистрирован для этой панели.',
                 'productNameRequired' => 'Название продукта обязательно.',
                 'productNoProductFound' => 'Трафик',
                 'productNoProductYet' => 'Длительность',
