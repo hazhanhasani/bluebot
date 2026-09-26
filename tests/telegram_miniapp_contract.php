@@ -9,11 +9,28 @@ $appIndex = @file_get_contents($root . '/app/index.php');
 if ($appIndex !== false && str_contains($appIndex, 'https://telegram.org/js/telegram-web-app.js')) {
     $failures[] = 'Mini App startup must not block on the external Telegram SDK.';
 }
-if ($appIndex === false || !str_contains($appIndex, './js/telegram-bootstrap.js?v=0.1.3')) {
+if ($appIndex === false || !str_contains($appIndex, './js/telegram-bootstrap.js?v=0.1.4')) {
     $failures[] = 'Mini App compatibility bootstrap is not loaded with the current cache key.';
 }
-if ($appIndex === false || !str_contains($appIndex, './js/telegram-web-app.js?v=0.1.3')) {
+if ($appIndex === false || !str_contains($appIndex, './js/telegram-web-app.js?v=0.1.4')) {
     $failures[] = 'Local Telegram SDK is not loaded first.';
+}
+
+if ($appIndex === false || !str_contains($appIndex, 'script defer src="./js/telegram-web-app.js?v=0.1.4"')) {
+    $failures[] = 'Mini App Telegram SDK must load with defer for non-blocking first paint.';
+}
+if ($appIndex === false || !str_contains($appIndex, 'bluebot-boot')) {
+    $failures[] = 'Mini App must provide an immediate boot/loading surface.';
+}
+
+$appHtaccess = @file_get_contents($root . '/app/.htaccess');
+if ($appHtaccess === false || !str_contains($appHtaccess, 'Cloudflare-CDN-Cache-Control')) {
+    $failures[] = 'Mini App static/CDN cache policy is missing.';
+}
+
+$apiHtaccess = @file_get_contents($root . '/api/.htaccess');
+if ($apiHtaccess === false || !str_contains($apiHtaccess, 'CDN-Cache-Control "no-store"')) {
+    $failures[] = 'Authenticated API responses are not explicitly protected from CDN caching.';
 }
 
 $miniApi = @file_get_contents($root . '/api/miniapp.php');
@@ -36,7 +53,7 @@ if ($verify === false || !str_contains($verify, "hash_equals")) {
 }
 
 $version = trim((string) @file_get_contents($root . '/app/version'));
-if ($version !== '0.1.3') {
+if ($version !== '0.1.4') {
     $failures[] = 'Unexpected Mini App version: ' . $version;
 }
 
