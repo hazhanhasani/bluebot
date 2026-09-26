@@ -87,6 +87,29 @@ if ($manager === false || !str_contains($manager, "'installed_channel' => \$inst
     $failures[] = 'Queued update payload does not carry the resolved installed channel.';
 }
 
+$stateScript = @file_get_contents($root . '/scripts/update-state.php');
+if ($stateScript === false || !str_contains($stateScript, 'bluebotWriteInstalledBuildState')) {
+    $failures[] = 'Update-state CLI does not persist build metadata directly.';
+}
+if ($stateScript !== false) {
+    $managerRequirePos = strpos($stateScript, "/src/Support/UpdateManager.php");
+    $runtimeRequirePos = strpos($stateScript, "/function.php");
+    if ($managerRequirePos === false || ($runtimeRequirePos !== false && $managerRequirePos > $runtimeRequirePos)) {
+        $failures[] = 'Build state must be persisted before full application bootstrap.';
+    }
+}
+
+if ($manager === false || !str_contains($manager, 'bluebotWriteInstalledBuildState')) {
+    $failures[] = 'UpdateManager is missing the independent build-state writer.';
+}
+if ($manager === false || !str_contains($manager, "'display_version' => \$display")) {
+    $failures[] = 'Build state does not persist a display version.';
+}
+
+if ($installerVersioning === false || !str_contains($installerVersioning, '$BOT_DIR_DEFAULT/version')) {
+    $failures[] = 'Installer does not synchronize the runtime version file.';
+}
+
 $setting = @file_get_contents($root . '/db/tables/setting.php');
 foreach ([
     'update_channel',
