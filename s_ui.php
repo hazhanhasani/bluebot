@@ -193,9 +193,7 @@ function updateClientS_ui($namepanel, array $config)
         ),
     ));
 
-    $response = curl_exec($curl);
-
-    return json_decode($response, true);
+    return suiCurlJson($curl);
 }
 function ResetUserDataUsages_ui($usernamepanel, $namepanel)
 {
