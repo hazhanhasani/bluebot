@@ -64,6 +64,9 @@ jobs:
       - name: Telegram Mini App contract
         run: php tests/telegram_miniapp_contract.php
 
+      - name: Service selection contract
+        run: php tests/service_selection_contract.php
+
       - name: Telegram Mini App bootstrap tests
         run: node tests/telegram_bootstrap_test.js
 
