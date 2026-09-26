@@ -88,7 +88,7 @@ final class BluebotSms
             'admin_announcement' => [
                 'title' => 'اطلاعیه عمومی',
                 'category' => 'اطلاع‌رسانی',
-                'body' => 'اطلاعیه Blue VPN: %message%',
+                'body' => 'اطلاعیه BlueBot: %message%',
                 'vars' => [$v('message', 'text', 120)],
                 'broadcast' => 1,
             ],
