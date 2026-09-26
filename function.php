@@ -4,6 +4,7 @@ require_once __DIR__ . '/src/Support/Logger.php';
 require_once __DIR__ . '/src/Support/InstallerGuard.php';
 require_once __DIR__ . '/src/Support/TrustedProxy.php';
 require_once __DIR__ . '/src/Support/RuntimeIdentity.php';
+require_once __DIR__ . '/src/Support/SmsService.php';
 require_once __DIR__ . '/src/Payment/PaymentState.php';
 require_once __DIR__ . '/src/Payment/Blupal.php';
 require_once __DIR__ . '/config.php';
@@ -1310,6 +1311,25 @@ function DirectPayment($order_id, $image = null)
             update("user", "score", $scorenew, "id", $Balance_id['id']);
         }
         update("invoice", "Status", "active", "username", $get_invoice['username']);
+        try {
+            BluebotSms::queueAndDispatchForUser(
+                'service_activated',
+                (string) $Balance_id['id'],
+                [
+                    'service' => (string) $get_invoice['name_product'],
+                    'username' => (string) $dataoutput['username'],
+                    'expire_date' => BluebotSms::formatDate((int) $timestamp),
+                ],
+                (string) $get_invoice['id_invoice'],
+                (string) $Payment_report['id_order'],
+                'service-activated:' . (string) $get_invoice['id_invoice']
+            );
+        } catch (Throwable $smsError) {
+            bluebotLog('warning', 'Service activation SMS failed', [
+                'invoice_id' => (string) $get_invoice['id_invoice'],
+                'error' => $smsError->getMessage(),
+            ]);
+        }
         if ($Payment_report['Payment_Method'] == "cart to cart" or $Payment_report['Payment_Method'] == "arze digital offline") {
             update("invoice", "Status", "active", "id_invoice", $get_invoice['id_invoice']);
             $textconfrom = sprintf($textbotlang['Admin']['reportgroup']['paymentConfirmedService'], $username_ac, $get_invoice['Service_location'], $Balance_id['id'], $Payment_report['id_order'], $Balance_id['username'], $Balance_id['Balance'], $format_price_cart, $Payment_report['dec_not_confirmed']);
@@ -1436,6 +1456,27 @@ function DirectPayment($order_id, $image = null)
             ]);
         }
         update("invoice", "Status", "active", "id_invoice", $nameloc['id_invoice']);
+        try {
+            $oldExpireTs = is_numeric($DataUserOut['expire'] ?? null) ? (int) $DataUserOut['expire'] : 0;
+            $renewDays = max(0, (int) ($prodcut['Service_time'] ?? 0));
+            $newExpireTs = $renewDays > 0 ? max(time(), $oldExpireTs) + ($renewDays * 86400) : 0;
+            BluebotSms::queueAndDispatchForUser(
+                'service_renewed',
+                (string) $Balance_id['id'],
+                [
+                    'username' => (string) $usernamepanel,
+                    'expire_date' => BluebotSms::formatDate($newExpireTs),
+                ],
+                (string) $nameloc['id_invoice'],
+                (string) $Payment_report['id_order'],
+                'service-renewed:' . (string) $Payment_report['id_order']
+            );
+        } catch (Throwable $smsError) {
+            bluebotLog('warning', 'Service renewal SMS failed', [
+                'invoice_id' => (string) $nameloc['id_invoice'],
+                'error' => $smsError->getMessage(),
+            ]);
+        }
         if ($Payment_report['Payment_Method'] == "cart to cart" or $Payment_report['Payment_Method'] == "arze digital offline") {
 
             $textconfrom = sprintf($textbotlang['Admin']['reportgroup']['paymentConfirmedRenew'], $usernamepanel, $prodcut['name_product'], $nameloc['Service_location'], $Balance_id['id'], $Payment_report['id_order'], $Balance_id['username'], $Balance_id['Balance'], $format_price_cart, $Payment_report['dec_not_confirmed']);
