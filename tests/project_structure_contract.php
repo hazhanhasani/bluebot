@@ -49,6 +49,20 @@ foreach ($legacyRootAdapters as $file) {
     }
 }
 
+if (!is_file($root . '/src/Support/JalaliDate.php')) {
+    $failures[] = 'Missing src/Support/JalaliDate.php';
+}
+if (is_file($root . '/jdf.php')) {
+    $failures[] = 'Legacy root jdf.php still exists';
+}
+
+if (!is_file($root . '/assets/images/qr-background.jpg')) {
+    $failures[] = 'Missing default QR background asset.';
+}
+if (is_file($root . '/images.jpg')) {
+    $failures[] = 'Legacy root images.jpg still exists.';
+}
+
 if (!is_file($root . '/cronbot/NotificationsService.php')) {
     $failures[] = 'Missing corrected cronbot/NotificationsService.php';
 }
