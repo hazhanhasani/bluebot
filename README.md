@@ -112,6 +112,18 @@ bluebot update --channel beta
 └── .github/workflows/     # Release automation
 ```
 
+## Diagnostics
+
+Administrators can run the following Telegram command:
+
+```text
+/debug
+```
+
+The report is admin-only and intentionally excludes secrets. It checks the BlueBot version, Mini App version, PHP runtime, database connectivity, writable storage, Composer vendor availability, webhook protection, leftover installer files, payment delivery errors and free disk space.
+
+Payment records that are financially confirmed but fail during service delivery are marked as `delivery_error` so they remain visible for administrator review instead of being silently treated as fully delivered.
+
 ## Security notes
 
 - Keep `config.php`, database credentials and Telegram tokens out of public commits.
