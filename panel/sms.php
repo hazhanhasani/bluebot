@@ -56,7 +56,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             $stmt = $pdo->prepare(
                 'UPDATE sms_settings
-                 SET provider=?,base_url=?,api_key_enc=?,from_number=?,active=?,
+                 SET provider=?,base_url=?,api_key_enc=?,active=?,otp_active=?,
+                     otp_ttl_seconds=?,otp_resend_seconds=?,otp_max_attempts=?,
                      reminder_days_json=?,low_volume_threshold_gb=?,retry_max_attempts=?,verify_tls=?,updated_at=?
                  WHERE id=1'
             );
@@ -64,8 +65,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 'iranpayamak',
                 $base,
                 $apiEnc,
-                trim((string) ($_POST['from_number'] ?? '')),
                 isset($_POST['active']) ? 1 : 0,
+                isset($_POST['otp_active']) ? 1 : 0,
+                max(60, min(600, (int) ($_POST['otp_ttl_seconds'] ?? 120))),
+                max(30, min(600, (int) ($_POST['otp_resend_seconds'] ?? 60))),
+                max(3, min(10, (int) ($_POST['otp_max_attempts'] ?? 5))),
                 json_encode($days, JSON_UNESCAPED_UNICODE),
                 max(1, min(9999, (int) ($_POST['low_volume_threshold_gb'] ?? 5))),
                 max(1, min(5, (int) ($_POST['retry_max_attempts'] ?? 3))),
@@ -74,20 +78,42 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             ]);
 
             $message = 'تنظیمات پیامک ذخیره شد.';
-            if ($apiRaw !== '') {
+            $savedSettings = BluebotSms::settings();
+            if (BluebotSms::decryptSecret((string) ($savedSettings['api_key_enc'] ?? '')) !== '') {
                 @unlink(__DIR__ . '/../storage/cache/sms_patterns.json');
+                @unlink(__DIR__ . '/../storage/cache/sms_lines.json');
+
+                try {
+                    $lines = BluebotSms::refreshLines(true);
+                    $message .= ' خط ارسال ' . (string) ($lines['selected'] ?? '') .
+                        ' از بین ' . number_format((int) ($lines['count'] ?? 0)) .
+                        ' خط قابل‌استفاده به‌صورت خودکار انتخاب شد.';
+                } catch (Throwable $lineError) {
+                    $message .= ' Sync خط ارسال انجام نشد: ' . $lineError->getMessage();
+                }
+
                 try {
                     $sync = BluebotSms::refreshPatterns(true);
                     $smart = BluebotSms::smartAssignPatterns((array) ($sync['patterns'] ?? []), false);
                     $message .= ' ' . number_format((int) ($sync['count'] ?? 0)) .
-                        ' پترن فعال همگام شد و ' . number_format((int) ($smart['assigned'] ?? 0)) .
+                        ' پترن فعال از همه صفحات همگام شد و ' . number_format((int) ($smart['assigned'] ?? 0)) .
                         ' پترن خالی هوشمند جایگذاری شد.';
                 } catch (Throwable $syncError) {
-                    $message .= ' تنظیمات ذخیره شد اما Sync اولیه پترن‌ها انجام نشد: ' . $syncError->getMessage();
+                    $message .= ' Sync پترن‌ها انجام نشد: ' . $syncError->getMessage();
                 }
             }
 
             sms_redirect($message);
+        }
+
+        if ($action === 'refresh_lines') {
+            $result = BluebotSms::refreshLines(true);
+            sms_redirect(
+                number_format((int) ($result['count'] ?? 0)) .
+                ' خط قابل‌استفاده دریافت شد؛ خط ' .
+                (string) ($result['selected'] ?? '—') .
+                ' به‌صورت خودکار انتخاب شد.'
+            );
         }
 
         if ($action === 'refresh_patterns') {
@@ -187,6 +213,8 @@ $settings = BluebotSms::settings();
 $templates = BluebotSms::templates();
 $cache = BluebotSms::patternCache();
 $providerPatterns = (array) ($cache['patterns'] ?? []);
+$lineCache = BluebotSms::lineCache();
+$catalog = BluebotSms::catalog();
 $stats = BluebotSms::stats();
 $recent = BluebotSms::recent(100);
 
@@ -196,6 +224,20 @@ foreach ($providerPatterns as $pattern) {
         $patternByCode[(string) $pattern['code']] = $pattern;
     }
 }
+
+$formatVariableSpecs = static function (array $vars): string {
+    $parts = [];
+    foreach ($vars as $var) {
+        if (!is_array($var) || empty($var['name'])) {
+            continue;
+        }
+        $name = (string) $var['name'];
+        $type = (string) ($var['type'] ?? 'text') === 'numeric' ? 'int / عددی' : 'str / متنی';
+        $length = max(1, (int) ($var['length'] ?? 160));
+        $parts[] = '%' . $name . '% — ' . $type . ' — max ' . $length;
+    }
+    return implode("\n", $parts);
+};
 
 $pageTitle = 'پیامک و اعلان‌ها';
 $pageLede = 'مدیریت کامل فراز اس‌ام‌اس / ایران‌پیامک، پترن‌ها، اعلان سرویس و صف ارسال — بدون نیاز به تنظیم داخل ربات';
@@ -247,8 +289,11 @@ include __DIR__ . '/inc/layout_head.php';
                     <input class="input" dir="ltr" type="password" name="api_key" placeholder="خالی = حفظ کلید فعلی">
                 </div>
                 <div class="field">
-                    <label>شماره خط ارسال</label>
-                    <input class="input" dir="ltr" name="from_number" value="<?= htmlspecialchars((string) ($settings['from_number'] ?? '')) ?>" required>
+                    <label>خط ارسال خودکار</label>
+                    <input class="input" dir="ltr" value="<?= htmlspecialchars((string) ($lineCache['selected'] ?? $settings['from_number'] ?? 'در انتظار Sync')) ?>" disabled>
+                    <small style="color:var(--mute)">
+                        BlueBot از <code>/lines/accessible</code> خطوط مجاز همین API Key را می‌خواند و خط مناسب را خودکار انتخاب می‌کند.
+                    </small>
                 </div>
                 <div class="field">
                     <label>روزهای یادآوری پایان سرویس</label>
@@ -262,16 +307,39 @@ include __DIR__ . '/inc/layout_head.php';
                     <label>حداکثر تلاش ارسال</label>
                     <input class="input" type="number" min="1" max="5" name="retry_max_attempts" value="<?= (int) ($settings['retry_max_attempts'] ?? 3) ?>">
                 </div>
+                <div class="field">
+                    <label>اعتبار کد OTP (ثانیه)</label>
+                    <input class="input" type="number" min="60" max="600" name="otp_ttl_seconds" value="<?= (int) ($settings['otp_ttl_seconds'] ?? 120) ?>">
+                </div>
+                <div class="field">
+                    <label>ارسال مجدد OTP بعد از (ثانیه)</label>
+                    <input class="input" type="number" min="30" max="600" name="otp_resend_seconds" value="<?= (int) ($settings['otp_resend_seconds'] ?? 60) ?>">
+                </div>
+                <div class="field">
+                    <label>حداکثر تلاش OTP</label>
+                    <input class="input" type="number" min="3" max="10" name="otp_max_attempts" value="<?= (int) ($settings['otp_max_attempts'] ?? 5) ?>">
+                </div>
                 <div class="field" style="justify-content:end">
                     <label><input type="checkbox" name="active" value="1" <?= !empty($settings['active']) ? 'checked' : '' ?>> سیستم پیامک فعال باشد</label>
+                    <label><input type="checkbox" name="otp_active" value="1" <?= !empty($settings['otp_active']) ? 'checked' : '' ?>> تأیید شماره ربات با OTP فراز اس‌ام‌اس</label>
                     <label><input type="checkbox" name="verify_tls" value="1" <?= !isset($settings['verify_tls']) || (int) $settings['verify_tls'] === 1 ? 'checked' : '' ?>> بررسی TLS فعال باشد</label>
                 </div>
             </div>
         </div>
-        <div class="card-foot" style="padding:14px 16px">
+        <div class="card-foot" style="padding:14px 16px;display:flex;gap:8px;flex-wrap:wrap">
             <button class="btn btn-primary" type="submit"><?= icon('check', 14) ?> ذخیره تنظیمات SMS</button>
         </div>
     </form>
+    <div class="card-foot" style="padding:0 16px 14px">
+        <form method="post">
+            <input type="hidden" name="_csrf" value="<?= csrf_token() ?>">
+            <input type="hidden" name="action" value="refresh_lines">
+            <button class="btn btn-ghost" type="submit">↻ تشخیص مجدد خط ارسال</button>
+            <small style="margin-right:8px;color:var(--mute)">
+                <?= number_format((int) ($lineCache['count'] ?? 0)) ?> خط در Cache فعلی
+            </small>
+        </form>
+    </div>
 </div>
 
 <div class="card fade-up" style="margin-bottom:16px">
@@ -296,7 +364,10 @@ include __DIR__ . '/inc/layout_head.php';
     </div>
     <div class="card-body" style="padding:16px">
         <?php if ($providerPatterns): ?>
-            <div class="notice notice-ok">✅ <?= number_format(count($providerPatterns)) ?> پترن فعال بارگذاری شده است.</div>
+            <div class="notice notice-ok">
+                ✅ <?= number_format(count($providerPatterns)) ?> پترن فعال از
+                <?= number_format((int) ($cache['pages_fetched'] ?? 1)) ?> صفحه بارگذاری شده است.
+            </div>
             <div class="tbl-wrap" style="max-height:360px;overflow:auto">
                 <table class="tbl-lg">
                     <thead><tr><th>Code</th><th>توضیح / متن</th><th>متغیرها</th></tr></thead>
@@ -305,7 +376,10 @@ include __DIR__ . '/inc/layout_head.php';
                         <tr>
                             <td class="cm"><?= htmlspecialchars((string) ($pattern['code'] ?? '')) ?></td>
                             <td><?= htmlspecialchars(trunc((string) (($pattern['description'] ?? '') ?: ($pattern['text'] ?? '')), 100)) ?></td>
-                            <td class="cm"><?= htmlspecialchars(implode('، ', (array) ($pattern['variables'] ?? [])) ?: 'بدون متغیر') ?></td>
+                            <td class="cm" style="white-space:pre-line"><?= htmlspecialchars(
+                                $formatVariableSpecs((array) ($pattern['variable_specs'] ?? []))
+                                ?: (implode('، ', (array) ($pattern['variables'] ?? [])) ?: 'بدون متغیر')
+                            ) ?></td>
                         </tr>
                     <?php endforeach; ?>
                     </tbody>
@@ -329,7 +403,7 @@ include __DIR__ . '/inc/layout_head.php';
         <input type="hidden" name="action" value="save_templates">
         <div class="tbl-wrap">
             <table class="tbl-lg">
-                <thead><tr><th>فعال</th><th>رویداد</th><th>دسته</th><th>متغیرهای لازم</th><th>پترن Provider</th></tr></thead>
+                <thead><tr><th>فعال</th><th>رویداد</th><th>دسته</th><th>متن دقیق برای ثبت در فراز SMS</th><th>متغیرها و نوع</th><th>پترن Provider</th></tr></thead>
                 <tbody>
                 <?php foreach ($templates as $template):
                     $vars = json_decode((string) ($template['variables_json'] ?? '[]'), true) ?: [];
@@ -339,7 +413,11 @@ include __DIR__ . '/inc/layout_head.php';
                         <td><input type="checkbox" name="enabled[<?= htmlspecialchars((string) $template['event_key']) ?>]" value="1" <?= !empty($template['enabled']) ? 'checked' : '' ?>></td>
                         <td><strong><?= htmlspecialchars((string) $template['title']) ?></strong><br><small class="cf cm"><?= htmlspecialchars((string) $template['event_key']) ?></small></td>
                         <td><?= htmlspecialchars((string) $template['category']) ?></td>
-                        <td class="cm"><?= htmlspecialchars(implode('، ', $names) ?: 'بدون متغیر') ?></td>
+                        <td style="min-width:280px"><code style="white-space:pre-wrap"><?= htmlspecialchars((string) ($catalog[$template['event_key']]['body'] ?? $template['body'] ?? '')) ?></code></td>
+                        <td class="cm" style="white-space:pre-line;min-width:190px"><?= htmlspecialchars(
+                            $formatVariableSpecs((array) ($catalog[$template['event_key']]['vars'] ?? $vars))
+                            ?: 'بدون متغیر'
+                        ) ?></td>
                         <td>
                             <select class="select" name="pattern[<?= htmlspecialchars((string) $template['event_key']) ?>]" style="min-width:260px">
                                 <option value="">— بدون پترن —</option>

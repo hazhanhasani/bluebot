@@ -20,7 +20,7 @@ final class BluebotSms
             'phone_verification' => [
                 'title' => 'تأیید شماره موبایل',
                 'category' => 'احراز هویت',
-                'body' => 'کد تأیید Blue VPN: %code%\nاین کد را در اختیار دیگران قرار ندهید.',
+                'body' => 'کد تأیید BlueBot: %code%\nاین کد را در اختیار دیگران قرار ندهید.',
                 'vars' => [$v('code', 'numeric', 6)],
                 'default' => 1,
             ],
@@ -88,7 +88,7 @@ final class BluebotSms
             'admin_announcement' => [
                 'title' => 'اطلاعیه عمومی',
                 'category' => 'اطلاع‌رسانی',
-                'body' => 'اطلاعیه Blue VPN: %message%',
+                'body' => 'اطلاعیه BlueBot: %message%',
                 'vars' => [$v('message', 'text', 120)],
                 'broadcast' => 1,
             ],
@@ -602,12 +602,22 @@ final class BluebotSms
         $seenProviderCodes = [];
         $pagesFetched = 0;
         $page = 1;
-        $maxPages = 50;
+        // FarazSMS may paginate the pattern collection. Keep walking until the
+        // provider explicitly reports the end, returns an empty page, or starts
+        // repeating a page. The high guard is only a runaway-protection limit;
+        // hitting it is treated as an error so we never silently cache a partial
+        // "all patterns" result.
+        $maxPages = 500;
+        $truncated = false;
 
         while ($page <= $maxPages) {
+            $query = http_build_query([
+                'page' => $page,
+                'limit' => 100,
+            ]);
             $payload = self::request(
                 'GET',
-                $base . '/patterns?page=' . $page . '&limit=100',
+                $base . '/patterns?' . $query,
                 $apiKey,
                 $settings
             );
@@ -650,7 +660,18 @@ final class BluebotSms
                 break;
             }
 
+            if ($page >= $maxPages) {
+                $truncated = true;
+                break;
+            }
             $page++;
+        }
+
+        if ($truncated) {
+            throw new RuntimeException(
+                'تعداد صفحات پترن‌ها از حد ایمنی ' . $maxPages .
+                ' صفحه بیشتر است؛ برای جلوگیری از ذخیره فهرست ناقص، همگام‌سازی متوقف شد.'
+            );
         }
 
         $patterns = array_values($patterns);
@@ -665,6 +686,7 @@ final class BluebotSms
             'count' => count($patterns),
             'pages_fetched' => $pagesFetched,
             'provider_rows_seen' => count($seenProviderCodes),
+            'complete' => true,
         ];
         self::writeJsonFile($cachePath, $cache);
         self::recordHealth(true, count($patterns) . ' پترن فعال در ' . $pagesFetched . ' صفحه دریافت شد.');
@@ -1012,7 +1034,23 @@ final class BluebotSms
             $stmt = $pdo->prepare('SELECT * FROM sms_templates WHERE event_key=? LIMIT 1');
             $stmt->execute([$eventKey]);
             $template = $stmt->fetch(PDO::FETCH_ASSOC) ?: null;
-            if (!$template || (!$force && empty($template['enabled'])) || trim((string) ($template['pattern_code'] ?? '')) === '') {
+            if (!$template || (!$force && empty($template['enabled']))) {
+                return null;
+            }
+
+            // Pattern selection is provider-driven. A newly-created or changed
+            // FarazSMS pattern can therefore be discovered without manually
+            // opening the BlueBot panel first.
+            try {
+                $patternCode = self::ensurePatternForEvent($eventKey);
+            } catch (Throwable $patternError) {
+                self::log('Automatic SMS pattern lookup failed', [
+                    'event' => $eventKey,
+                    'error' => $patternError->getMessage(),
+                ]);
+                return null;
+            }
+            if ($patternCode === '') {
                 return null;
             }
 
@@ -1135,10 +1173,25 @@ final class BluebotSms
             $templateStmt->execute([$row['event_key']]);
             $template = $templateStmt->fetch(PDO::FETCH_ASSOC) ?: null;
             $spec = self::catalog()[(string) $row['event_key']] ?? null;
-            if (!$template || !$spec || empty($template['enabled']) || trim((string) $template['pattern_code']) === '') {
+            if (!$template || !$spec || empty($template['enabled'])) {
                 $pdo->prepare("UPDATE sms_deliveries SET status='skipped',last_error=?,next_attempt_at=NULL WHERE id=?")
-                    ->execute(['پترن غیرفعال یا بدون کد است.', $deliveryId]);
-                return ['ok' => false, 'sent' => false, 'status' => 'skipped', 'message' => 'پترن غیرفعال یا بدون کد است.'];
+                    ->execute(['رویداد پیامک غیرفعال است.', $deliveryId]);
+                return ['ok' => false, 'sent' => false, 'status' => 'skipped', 'message' => 'رویداد پیامک غیرفعال است.'];
+            }
+
+            try {
+                $patternCode = self::ensurePatternForEvent((string) $row['event_key']);
+            } catch (Throwable $patternError) {
+                $patternCode = '';
+                self::log('Automatic SMS pattern lookup failed during dispatch', [
+                    'event' => (string) $row['event_key'],
+                    'error' => $patternError->getMessage(),
+                ]);
+            }
+            if ($patternCode === '') {
+                $pdo->prepare("UPDATE sms_deliveries SET status='skipped',last_error=?,next_attempt_at=NULL WHERE id=?")
+                    ->execute(['پترن فعال و سازگار به‌صورت خودکار پیدا نشد.', $deliveryId]);
+                return ['ok' => false, 'sent' => false, 'status' => 'skipped', 'message' => 'پترن فعال و سازگار پیدا نشد.'];
             }
 
             $attempts = (int) $row['attempts'] + 1;
@@ -1148,7 +1201,7 @@ final class BluebotSms
             try {
                 $params = json_decode((string) $row['params_json'], true);
                 $params = is_array($params) ? $params : [];
-                $response = self::sendPattern((string) $row['phone'], (string) $template['pattern_code'], self::cleanParams($spec, $params));
+                $response = self::sendPattern((string) $row['phone'], $patternCode, self::cleanParams($spec, $params));
                 $providerId = self::providerId($response);
                 $pdo->prepare(
                     "UPDATE sms_deliveries

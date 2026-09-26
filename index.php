@@ -432,10 +432,133 @@ if ($text == "/start" || $datain == "start" || $text == "start") {
         sendmessage($from_id, $textbotlang['users']['number']['erroriran'], $request_contact, 'html');
         return;
     }
+
+    $normalizedPhone = BluebotSms::normalizePhone((string) $user_phone);
+    if ($normalizedPhone === '') {
+        sendmessage($from_id, $textbotlang['users']['number']['false'], $request_contact, 'html');
+        return;
+    }
+
+    if (BluebotSms::phoneOtpEnabled()) {
+        try {
+            $otp = BluebotSms::requestPhoneOtp((string) $from_id, $normalizedPhone);
+            $otpKeyboard = json_encode([
+                'inline_keyboard' => [
+                    [
+                        ['text' => 'ارسال مجدد کد', 'callback_data' => 'resend_phone_otp'],
+                    ],
+                    [
+                        ['text' => $textbotlang['users']['backbtn'], 'callback_data' => 'backuser'],
+                    ],
+                ],
+            ], JSON_UNESCAPED_UNICODE);
+            sendmessage(
+                $from_id,
+                'شماره دریافت شد؛ برای تکمیل تأیید، کد پیامکی را وارد کنید.',
+                json_encode(['remove_keyboard' => true]),
+                'html'
+            );
+            sendmessage(
+                $from_id,
+                'یک کد تأیید ۶ رقمی با فراز اس‌ام‌اس برای شماره شما ارسال شد. کد را همین‌جا وارد کنید.' .
+                "\n\nاعتبار کد: " . (int) ($otp['expires_in'] ?? 120) . ' ثانیه',
+                $otpKeyboard,
+                'html'
+            );
+            step('verify_phone_otp', $from_id);
+        } catch (Throwable $otpError) {
+            bluebotLog('warning', 'Phone OTP request failed', [
+                'user_id' => (string) $from_id,
+                'error' => $otpError->getMessage(),
+            ]);
+            sendmessage(
+                $from_id,
+                'ارسال کد تأیید انجام نشد: ' . htmlspecialchars($otpError->getMessage(), ENT_QUOTES, 'UTF-8'),
+                $request_contact,
+                'html'
+            );
+        }
+        return;
+    }
+
     sendmessage($from_id, $textbotlang['users']['number']['active'], json_encode(['inline_keyboard' => [], 'remove_keyboard' => true]), 'html');
     sendmessage($from_id, $textbotlang['users']['text_start'], $keyboard, 'html');
-    update("user", "number", $user_phone, "id", $from_id);
+    update("user", "number", $normalizedPhone, "id", $from_id);
     step('home', $from_id);
+} elseif ($user['step'] == 'verify_phone_otp') {
+    $otpKeyboard = json_encode([
+        'inline_keyboard' => [
+            [
+                ['text' => 'ارسال مجدد کد', 'callback_data' => 'resend_phone_otp'],
+            ],
+            [
+                ['text' => $textbotlang['users']['backbtn'], 'callback_data' => 'backuser'],
+            ],
+        ],
+    ], JSON_UNESCAPED_UNICODE);
+
+    if ($datain === 'resend_phone_otp') {
+        try {
+            $otp = BluebotSms::resendPhoneOtp((string) $from_id);
+            if ($callback_query_id) {
+                telegram('answerCallbackQuery', [
+                    'callback_query_id' => $callback_query_id,
+                    'text' => 'کد جدید ارسال شد.',
+                    'show_alert' => false,
+                ]);
+            }
+            Editmessagetext(
+                $from_id,
+                $message_id,
+                'کد تأیید جدید ارسال شد. کد ۶ رقمی را وارد کنید.' .
+                "\n\nاعتبار کد: " . (int) ($otp['expires_in'] ?? 120) . ' ثانیه',
+                $otpKeyboard
+            );
+        } catch (Throwable $otpError) {
+            if ($callback_query_id) {
+                telegram('answerCallbackQuery', [
+                    'callback_query_id' => $callback_query_id,
+                    'text' => mb_substr($otpError->getMessage(), 0, 180),
+                    'show_alert' => true,
+                ]);
+            } else {
+                sendmessage($from_id, $otpError->getMessage(), $otpKeyboard, 'html');
+            }
+        }
+        return;
+    }
+
+    $otpCode = preg_replace('/\D+/', '', convertPersianNumbersToEnglish((string) $text)) ?: '';
+    if (strlen($otpCode) !== 6) {
+        sendmessage($from_id, 'کد تأیید ۶ رقمی را وارد کنید.', $otpKeyboard, 'html');
+        return;
+    }
+
+    try {
+        $verified = BluebotSms::verifyPhoneOtp((string) $from_id, $otpCode);
+        $verifiedPhone = BluebotSms::normalizePhone((string) ($verified['phone'] ?? ''));
+        if ($verifiedPhone === '') {
+            throw new RuntimeException('شماره تأییدشده معتبر نیست.');
+        }
+
+        update("user", "number", $verifiedPhone, "id", $from_id);
+        sendmessage(
+            $from_id,
+            $textbotlang['users']['number']['active'],
+            json_encode(['inline_keyboard' => [], 'remove_keyboard' => true]),
+            'html'
+        );
+        sendmessage($from_id, $textbotlang['users']['text_start'], $keyboard, 'html');
+        step('home', $from_id);
+    } catch (Throwable $otpError) {
+        sendmessage(
+            $from_id,
+            htmlspecialchars($otpError->getMessage(), ENT_QUOTES, 'UTF-8'),
+            $otpKeyboard,
+            'html'
+        );
+    }
+    return;
 } elseif ($text == $textbotlang['textbot']['purchasedServices'] || $datain == "backorder" || $text == "/services") {
     $stmt = $pdo->prepare("SELECT * FROM invoice WHERE id_user = :id_user AND (status = 'active' OR status = 'end_of_time'  OR status = 'end_of_volume' OR status = 'sendedwarn' OR Status = 'send_on_hold')");
     $stmt->bindParam(':id_user', $from_id);
