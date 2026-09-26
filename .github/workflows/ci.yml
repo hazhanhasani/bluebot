@@ -73,6 +73,14 @@ jobs:
       - name: Telegram Mini App bootstrap tests
         run: node tests/telegram_bootstrap_test.js
 
+      - name: Validate Mini App JavaScript syntax
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --check app/js/app-loader.js
+          cp app/assets/index-C-2a0Dur.js /tmp/bluebot-miniapp-main.mjs
+          node --check /tmp/bluebot-miniapp-main.mjs
+
       - name: In-bot updater contracts
         run: php tests/inbot_updater_contract.php
 
