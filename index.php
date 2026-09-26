@@ -6,7 +6,7 @@ ini_set('error_log', 'error_log');
 ini_set('memory_limit', '512M');
 require_once 'config.php';
 require_once 'botapi.php';
-require_once 'jdf.php';
+require_once __DIR__ . '/src/Support/JalaliDate.php';
 require_once 'function.php';
 bluebotEnsureInstallerRemoved();
 require_once 'keyboard.php';
