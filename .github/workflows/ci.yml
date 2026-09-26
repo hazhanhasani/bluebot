@@ -93,6 +93,7 @@ jobs:
           set -euo pipefail
           test -f src/Support/Logger.php
           test -f src/Support/Diagnostics.php
+          test -f src/Support/InstallerGuard.php
           test -f src/Payment/PaymentState.php
           test -f panel/diagnostics.php
           test -f panel/audit.php
@@ -120,6 +121,10 @@ jobs:
           test "$(grep -Fc 'bluebotReadHealthHistory' panel/diagnostics.php)" -eq 1
           grep -Fq "bluebot_qr" function.php
           grep -Fq "require_once __DIR__ . '/config.php';" function.php
+          grep -Fq "require_once __DIR__ . '/src/Support/InstallerGuard.php';" function.php
+          grep -Fq "function bluebotEnsureInstallerRemoved" src/Support/InstallerGuard.php
+          grep -Fq "function mirzaEnsureInstallerRemoved" src/Support/InstallerGuard.php
+          test "$(grep -Fc 'function bluebotEnsureInstallerRemoved' function.php)" -eq 0
           echo "BlueBot safety contracts OK."
 
       - name: Verify diagnostics history round-trip
@@ -129,6 +134,13 @@ jobs:
           php -r 'require "src/Support/Diagnostics.php"; $d=["database_ok"=>true,"storage_writable"=>true,"vendor_ready"=>true,"installer_removed"=>true,"webhook_protected"=>true,"api_token_configured"=>true,"delivery_errors"=>0,"delivery_reviewed"=>1,"version"=>"ci","mini_version"=>"ci","php_version"=>PHP_VERSION,"free_disk"=>"1 GB","bot_status"=>"active"]; if (!bluebotRecordHealthSnapshot($d)) exit(1); $h=bluebotReadHealthHistory(1); if (count($h)!==1 || $h[0]["version"]!=="ci" || !$h[0]["overall_healthy"]) exit(2);'
           rm -f storage/logs/health.jsonl storage/logs/health.jsonl.1
           echo "Diagnostics history round-trip OK."
+
+      - name: Verify installer guard module
+        shell: bash
+        run: |
+          set -euo pipefail
+          php -r 'require "src/Support/InstallerGuard.php"; $d=sys_get_temp_dir()."/bluebot-installer-ci-".bin2hex(random_bytes(4)); mkdir($d,0700); file_put_contents($d."/probe","ok"); if (!bluebotRemoveInstallerPath($d) || file_exists($d)) exit(1);'
+          echo "Installer guard module OK."
 
       - name: Validate installer syntax
         run: bash -n install.sh
