@@ -1,5 +1,6 @@
 <?php
 require_once 'config.php';
+require_once __DIR__ . '/src/Support/Logger.php';
 
 class CurlRequest {
     private $url;
@@ -9,6 +10,13 @@ class CurlRequest {
     private $cookie = null;
     public function __construct($url) {
         global $request_exec_timeout;
+
+        $url = trim((string) $url);
+        $scheme = strtolower((string) parse_url($url, PHP_URL_SCHEME));
+        if (!in_array($scheme, ['http', 'https'], true)) {
+            throw new InvalidArgumentException('Only HTTP and HTTPS panel URLs are allowed.');
+        }
+
         $this->url = $url;
         $this->timeout = $request_exec_timeout;
     }
@@ -41,7 +49,17 @@ class CurlRequest {
         curl_setopt($ch, CURLOPT_CUSTOMREQUEST, strtoupper($method));
         curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
         curl_setopt($ch, CURLOPT_TIMEOUT_MS, $this->timeout);
-        curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
+        curl_setopt($ch, CURLOPT_CONNECTTIMEOUT_MS, min((int) $this->timeout, 5000));
+        curl_setopt($ch, CURLOPT_PROTOCOLS, CURLPROTO_HTTP | CURLPROTO_HTTPS);
+        if (defined('CURLOPT_REDIR_PROTOCOLS')) {
+            curl_setopt($ch, CURLOPT_REDIR_PROTOCOLS, CURLPROTO_HTTP | CURLPROTO_HTTPS);
+        }
+
+        // Legacy panel compatibility: some deployments use self-signed TLS.
+        // BLUEBOT_VERIFY_PANEL_TLS=1 enables strict certificate verification.
+        $verifyTls = getenv('BLUEBOT_VERIFY_PANEL_TLS') === '1';
+        curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, $verifyTls);
+        curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, $verifyTls ? 2 : 0);
 
         $finalHeaders = $this->prepareHeaders();
         if (!empty($finalHeaders)) {
@@ -60,6 +78,11 @@ class CurlRequest {
         $response = curl_exec($ch);
         if (curl_errno($ch)) {
             $error = curl_error($ch);
+            bluebotLog('warning', 'Panel HTTP request failed', [
+                'method' => strtoupper($method),
+                'url' => $this->url,
+                'error' => $error,
+            ]);
             curl_close($ch);
             return [
                 'status' => null,
