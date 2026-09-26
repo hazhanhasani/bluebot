@@ -858,7 +858,26 @@ if ($text == "/start" || $datain == "start" || $text == "start") {
         Editmessagetext($from_id, $message_id, $loadingText, $serviceBackKeyboard, 'html');
     }
 
-    $DataUserOut = $ManagePanel->DataUser($nameloc['Service_location'], $nameloc['username']);
+    try {
+        $includePanelLinks = !($marzban && ($marzban['type'] ?? '') === 'solidlayer');
+        $DataUserOut = $ManagePanel->DataUser(
+            $nameloc['Service_location'],
+            $nameloc['username'],
+            $includePanelLinks
+        );
+    } catch (Throwable $panelError) {
+        bluebotLog('error', 'Service status lookup crashed', [
+            'panel' => (string) $nameloc['Service_location'],
+            'panel_type' => (string) ($marzban['type'] ?? ''),
+            'username' => (string) $nameloc['username'],
+            'error' => $panelError->getMessage(),
+        ]);
+        $DataUserOut = [
+            'status' => 'Unsuccessful',
+            'msg' => 'Panel status lookup failed',
+        ];
+    }
+
     if (!is_array($DataUserOut)) {
         $DataUserOut = ['status' => 'Unsuccessful', 'msg' => 'Invalid panel response'];
     }
@@ -897,10 +916,28 @@ if ($text == "/start" || $datain == "start" || $text == "start") {
     } elseif ($DataUserOut['online_at'] == "offline") {
         $lastonline = $textbotlang['common']['connection']['offlineAlt'];
     } else {
-        if (isset($DataUserOut['online_at']) && $DataUserOut['online_at'] !== null) {
-            $dateTime = new DateTime($DataUserOut['online_at'], new DateTimeZone('UTC'));
-            $dateTime->setTimezone(new DateTimeZone('Asia/Tehran'));
-            $lastonline = jdate('Y/m/d H:i:s', $dateTime->getTimestamp());
+        if (isset($DataUserOut['online_at']) && $DataUserOut['online_at'] !== null && $DataUserOut['online_at'] !== '') {
+            try {
+                $onlineValue = $DataUserOut['online_at'];
+                if (is_numeric($onlineValue)) {
+                    $onlineTimestamp = (int) $onlineValue;
+                } else {
+                    $dateTime = new DateTime((string) $onlineValue, new DateTimeZone('UTC'));
+                    $onlineTimestamp = $dateTime->getTimestamp();
+                }
+
+                $lastonline = $onlineTimestamp > 0
+                    ? jdate('Y/m/d H:i:s', $onlineTimestamp)
+                    : $textbotlang['common']['connection']['notConnectedAlt'];
+            } catch (Throwable $dateError) {
+                bluebotLog('warning', 'Unable to parse panel online_at value', [
+                    'panel' => (string) $nameloc['Service_location'],
+                    'username' => (string) $nameloc['username'],
+                    'online_at' => (string) $DataUserOut['online_at'],
+                    'error' => $dateError->getMessage(),
+                ]);
+                $lastonline = $textbotlang['common']['connection']['notConnectedAlt'];
+            }
         } else {
             $lastonline = $textbotlang['common']['connection']['notConnectedAlt'];
         }
@@ -955,11 +992,26 @@ if ($text == "/start" || $datain == "start" || $text == "start") {
         $day .= $textbotlang['common']['labels']['remainingSuffix'];
     }
     #--------------[ subsupdate ]---------------#
-    if ($DataUserOut['sub_updated_at'] !== null) {
-        $sub_updated = $DataUserOut['sub_updated_at'];
-        $dateTime = new DateTime($sub_updated, new DateTimeZone('UTC'));
-        $dateTime->setTimezone(new DateTimeZone('Asia/Tehran'));
-        $lastupdate = jdate('Y/m/d H:i:s', $dateTime->getTimestamp());
+    if (!empty($DataUserOut['sub_updated_at'])) {
+        try {
+            $subUpdatedValue = $DataUserOut['sub_updated_at'];
+            if (is_numeric($subUpdatedValue)) {
+                $subUpdatedTimestamp = (int) $subUpdatedValue;
+            } else {
+                $dateTime = new DateTime((string) $subUpdatedValue, new DateTimeZone('UTC'));
+                $subUpdatedTimestamp = $dateTime->getTimestamp();
+            }
+            if ($subUpdatedTimestamp > 0) {
+                $lastupdate = jdate('Y/m/d H:i:s', $subUpdatedTimestamp);
+            }
+        } catch (Throwable $dateError) {
+            bluebotLog('warning', 'Unable to parse panel updated_at value', [
+                'panel' => (string) $nameloc['Service_location'],
+                'username' => (string) $nameloc['username'],
+                'sub_updated_at' => (string) $DataUserOut['sub_updated_at'],
+                'error' => $dateError->getMessage(),
+            ]);
+        }
     }
     #--------------[ Percent ]---------------#
     if ($DataUserOut['data_limit'] != null && $DataUserOut['used_traffic'] != null) {
