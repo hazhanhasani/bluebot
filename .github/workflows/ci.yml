@@ -90,6 +90,7 @@ jobs:
           test -f src/Support/Diagnostics.php
           test -f src/Payment/PaymentState.php
           test -f panel/diagnostics.php
+          test -f panel/audit.php
           grep -Fq "delivery_reviewed" src/Payment/PaymentState.php
           grep -Fq "NOT IN ('paid', 'delivery_error', 'delivery_reviewed')" src/Payment/PaymentState.php
           php -r '$s=file_get_contents("src/Payment/PaymentState.php"); $a=strpos($s,"function markPaymentDeliveryReviewed"); $b=strpos($s,"Payment delivery marked reviewed"); if ($a===false || $b===false || $b<$a) exit(1);'
@@ -99,6 +100,9 @@ jobs:
           grep -Fq "BLUEBOT_VERIFY_PANEL_TLS" request.php
           grep -Fq "bluebotBuildDebugReport" admin.php
           grep -Fq "bluebotCollectDiagnostics" panel/diagnostics.php
+          grep -Fq "bluebotAuditLogPath" src/Support/Logger.php
+          grep -Fq "bluebotReadAuditLog" panel/audit.php
+          grep -Fq "admin.payment_delivery_review" panel/payment.php
           grep -Fq "api_token_configured" src/Support/Diagnostics.php
           grep -Fq "webhook_protected" src/Support/Diagnostics.php
           grep -Fq "Admin reviewed payment delivery error" panel/payment.php
