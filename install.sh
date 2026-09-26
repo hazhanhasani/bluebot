@@ -331,6 +331,11 @@ mark_phase() {
     grep -qxF "PHASE:$1" "$STATE_FILE" 2>/dev/null || echo "PHASE:$1" >> "$STATE_FILE"
 }
 
+state_unmark_phase() {
+    [ -f "$STATE_FILE" ] || return 0
+    sed -i "/^PHASE:$1$/d" "$STATE_FILE" 2>/dev/null || true
+}
+
 # has_resumable_state -> 0 if an unfinished install is on disk
 has_resumable_state() {
     [ -f "$STATE_FILE" ] || return 1
@@ -2086,15 +2091,21 @@ function install_bot() {
     clear
     print_header "SSL Certificate Setup"
     domainname="$(state_get DOMAIN)"
-    if [ -n "$domainname" ]; then
+    if [ -n "$ARG_DOMAIN" ]; then
+        if [ -n "$domainname" ] && [ "$domainname" != "$ARG_DOMAIN" ]; then
+            echo -e "  ${C_WARN}! Replacing resumed domain ${domainname} with ${ARG_DOMAIN}.${CR}"
+            state_unmark_phase SSL
+            state_unmark_phase VHOST
+            state_unmark_phase CONFIG
+            state_unmark_phase WEBHOOK
+        fi
+        domainname="$ARG_DOMAIN"
+        state_set DOMAIN "$domainname"
+        echo -e "  ${C_DIM}Domain (from --domain):${CR} ${C_KEY}${domainname}${CR}"
+    elif [ -n "$domainname" ]; then
         echo -e "  ${C_DIM}Domain (resumed):${CR} ${C_KEY}${domainname}${CR}"
     else
-        if [ -n "$ARG_DOMAIN" ]; then
-            domainname="$ARG_DOMAIN"
-            echo -e "  ${C_DIM}Domain (from --domain):${CR} ${C_KEY}${domainname}${CR}"
-        else
-            read -p "Enter the domain: " domainname
-        fi
+        read -p "Enter the domain: " domainname
         while ! validate_domain "$domainname"; do
             echo -e "\e[91mInvalid domain. Enter a full domain like bot.example.com (no http://, no slash).\033[0m"
             read -p "Enter the domain: " domainname
@@ -2190,16 +2201,21 @@ EOF
     clear
     print_header "Bot Configuration"
     YOUR_BOT_TOKEN="$(state_get BOT_TOKEN)"
-    if [ -n "$YOUR_BOT_TOKEN" ]; then
+    if [ -n "$ARG_TOKEN" ]; then
+        if [ -n "$YOUR_BOT_TOKEN" ] && [ "$YOUR_BOT_TOKEN" != "$ARG_TOKEN" ]; then
+            echo -e "  ${C_WARN}! Replacing resumed bot token with the supplied token.${CR}"
+            state_set BOTNAME ""
+            state_unmark_phase CONFIG
+            state_unmark_phase WEBHOOK
+        fi
+        YOUR_BOT_TOKEN="$ARG_TOKEN"
+        state_set BOT_TOKEN "$YOUR_BOT_TOKEN"
+        echo -e "\e[33m[+] \e[36mBot Token (from --token):\e[0m ${YOUR_BOT_TOKEN:0:10}..."
+    elif [ -n "$YOUR_BOT_TOKEN" ]; then
         echo -e "\e[33m[+] \e[36mBot Token (resumed):\e[0m ${YOUR_BOT_TOKEN:0:10}..."
     else
-        if [ -n "$ARG_TOKEN" ]; then
-            YOUR_BOT_TOKEN="$ARG_TOKEN"
-            echo -e "\e[33m[+] \e[36mBot Token (from --token):\e[0m ${YOUR_BOT_TOKEN:0:10}..."
-        else
-            printf "\e[33m[+] \e[36mBot Token: \033[0m"
-            read YOUR_BOT_TOKEN
-        fi
+        printf "\e[33m[+] \e[36mBot Token: \033[0m"
+        read YOUR_BOT_TOKEN
         while [[ ! "$YOUR_BOT_TOKEN" =~ ^[0-9]{8,10}:[a-zA-Z0-9_-]{35}$ ]]; do
             echo -e "\e[91mInvalid bot token format. Please try again.\033[0m"
             printf "\e[33m[+] \e[36mBot Token: \033[0m"
@@ -2244,29 +2260,32 @@ EOF
     fi
 
     YOUR_DOMAIN="$DOMAIN_NAME"
-    YOUR_BOTNAME="$(state_get BOTNAME)"
+    RESUMED_BOTNAME="$(state_get BOTNAME)"
+    YOUR_BOTNAME="$TG_BOT_USERNAME"
+    [ -z "$YOUR_BOTNAME" ] && YOUR_BOTNAME="$(fetch_bot_username "$YOUR_BOT_TOKEN")"
+
     if [ -n "$YOUR_BOTNAME" ]; then
-        echo -e "\e[33m[+] \e[36musernamebot (resumed):\e[0m ${YOUR_BOTNAME}"
-    else
-        YOUR_BOTNAME="$TG_BOT_USERNAME"
-        [ -z "$YOUR_BOTNAME" ] && YOUR_BOTNAME="$(fetch_bot_username "$YOUR_BOT_TOKEN")"
-        if [ -n "$YOUR_BOTNAME" ]; then
-            echo -e "\e[33m[+] \e[36musernamebot (from token):\e[0m @${YOUR_BOTNAME}"
-        else
-            echo -e "  ${C_BAD}●${CR} ${C_BAD}Could not read the bot username from Telegram.${CR}"
-            while true; do
-                printf "\e[33m[+] \e[36musernamebot: \033[0m"
-                read YOUR_BOTNAME
-                if [ "$YOUR_BOTNAME" != "" ]; then
-                    break
-                else
-                    echo -e "\e[91mError: Bot username cannot be empty. Please enter a valid username.\033[0m"
-                fi
-            done
-        fi
         YOUR_BOTNAME="${YOUR_BOTNAME#@}"
         YOUR_BOTNAME="${YOUR_BOTNAME//[[:space:]]/}"
         state_set BOTNAME "$YOUR_BOTNAME"
+        echo -e "\e[33m[+] \e[36musernamebot (verified from current token):\e[0m @${YOUR_BOTNAME}"
+    elif [ -n "$RESUMED_BOTNAME" ]; then
+        YOUR_BOTNAME="${RESUMED_BOTNAME#@}"
+        YOUR_BOTNAME="${YOUR_BOTNAME//[[:space:]]/}"
+        echo -e "  ${C_WARN}! Telegram getMe unavailable; temporarily using resumed username @${YOUR_BOTNAME}.${CR}"
+    else
+        echo -e "  ${C_BAD}●${CR} ${C_BAD}Could not read the bot username from Telegram.${CR}"
+        while true; do
+            printf "\e[33m[+] \e[36musernamebot: \033[0m"
+            read YOUR_BOTNAME
+            YOUR_BOTNAME="${YOUR_BOTNAME#@}"
+            YOUR_BOTNAME="${YOUR_BOTNAME//[[:space:]]/}"
+            if [ -n "$YOUR_BOTNAME" ]; then
+                state_set BOTNAME "$YOUR_BOTNAME"
+                break
+            fi
+            echo -e "\e[91mError: Bot username cannot be empty. Please enter a valid username.\033[0m"
+        done
     fi
 
     ROOT_PASSWORD=$(cat /root/confmirza/dbrootmirza.txt | grep '$pass' | cut -d"'" -f2)
