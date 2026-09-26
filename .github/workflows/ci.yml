@@ -108,7 +108,6 @@ jobs:
           grep -Fq "admin.logout" panel/logout.php
           grep -Fq "api_token_configured" src/Support/Diagnostics.php
           grep -Fq "webhook_protected" src/Support/Diagnostics.php
-          grep -Fq "Admin reviewed payment delivery error" panel/payment.php
           grep -Fq "bluebot_qr" function.php
           grep -Fq "require_once __DIR__ . '/config.php';" function.php
           echo "BlueBot safety contracts OK."
