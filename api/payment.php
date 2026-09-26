@@ -35,7 +35,7 @@ function pay_payments(array $data, string $method): void
         $total_record = (int) $stmt->fetchColumn();
         $totalPages = (int) ceil($total_record / $limit);
 
-        $stmt = $pdo->prepare("SELECT id_order as id,id_user,time,price,payment_status,Payment_Method FROM Payment_report WHERE id_user LIKE CONCAT('%', :id_user, '%') OR id_order LIKE CONCAT('%', :id_order, '%') ORDER BY time DESC LIMIT :limit OFFSET :offset");
+        $stmt = $pdo->prepare("SELECT id_order as id,id_user,time,at_updated,price,payment_status,Payment_Method FROM Payment_report WHERE id_user LIKE CONCAT('%', :id_user, '%') OR id_order LIKE CONCAT('%', :id_order, '%') ORDER BY time DESC LIMIT :limit OFFSET :offset");
         $stmt->bindValue(':id_user', $q, PDO::PARAM_STR);
         $stmt->bindValue(':id_order', $q, PDO::PARAM_STR);
         $stmt->bindValue(':limit', $limit, PDO::PARAM_INT);
