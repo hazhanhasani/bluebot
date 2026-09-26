@@ -28,6 +28,30 @@ function blupalCallbackStateIcon(string $state): string
     };
 }
 
+function blupalCallbackBotUrl(): string
+{
+    global $usernamebot;
+
+    $username = ltrim(trim((string) $usernamebot), '@');
+    if ($username !== '' && preg_match('/^[A-Za-z0-9_]{5,32}$/', $username)) {
+        return 'https://t.me/' . rawurlencode($username);
+    }
+
+    try {
+        $me = telegram('getMe');
+        $username = ltrim(trim((string) ($me['result']['username'] ?? '')), '@');
+        if ($username !== '' && preg_match('/^[A-Za-z0-9_]{5,32}$/', $username)) {
+            return 'https://t.me/' . rawurlencode($username);
+        }
+    } catch (Throwable $error) {
+        bluebotLog('warning', 'Unable to resolve bot username for Blupal callback', [
+            'error' => $error->getMessage(),
+        ]);
+    }
+
+    return 'https://t.me/';
+}
+
 function blupalCallbackFinish(
     string $state,
     string $title,
@@ -79,9 +103,7 @@ function blupalCallbackFinish(
     };
 
     $buttonLabel = $state === 'pending' ? 'بررسی دوباره' : 'بازگشت به ربات';
-    $buttonAction = $state === 'pending'
-        ? 'location.reload()'
-        : 'window.close();setTimeout(()=>history.back(),120)';
+    $botUrl = blupalCallbackBotUrl();
 
     echo '<!doctype html><html lang="fa" dir="rtl"><head>'
         . '<meta charset="utf-8">'
@@ -117,6 +139,7 @@ function blupalCallbackFinish(
         . '.meta-row{display:flex;align-items:center;justify-content:space-between;gap:18px;padding:14px 2px;border-bottom:1px dashed var(--line)}'
         . '.meta-row:last-child{border-bottom:0}.meta-label{font-size:13px;color:#8290a5}.meta-value{font-size:13px;color:#263b57;direction:ltr;text-align:left;word-break:break-word}'
         . '.action{margin-top:24px;width:100%;border:0;border-radius:16px;padding:14px 18px;font:700 14px Tahoma,"Segoe UI",Arial,sans-serif;color:#fff;cursor:pointer;background:linear-gradient(100deg,#13b991,#439ce9);box-shadow:0 14px 30px rgba(31,161,158,.24);transition:transform .18s ease,box-shadow .18s ease}'
+        . '.action-link{display:block;text-decoration:none;text-align:center}'
         . '.action:hover{transform:translateY(-1px);box-shadow:0 18px 34px rgba(31,161,158,.3)}.action:active{transform:translateY(1px)}'
         . '.footer{display:flex;justify-content:center;align-items:center;gap:7px;margin-top:17px;color:#98a5b6;font-size:11px}.lock{font-size:13px}'
         . '@keyframes float{0%,100%{transform:translate3d(0,0,0)}50%{transform:translate3d(0,18px,0)}}'
@@ -132,7 +155,9 @@ function blupalCallbackFinish(
         . '<h1>' . $safeTitle . '</h1>'
         . '<p class="desc">' . $safeDetail . '</p>'
         . $metaHtml
-        . '<button class="action" type="button" onclick="' . $buttonAction . '">' . blupalCallbackEscape($buttonLabel) . '</button>'
+        . ($state === 'pending'
+            ? '<button class="action" type="button" onclick="location.reload()">' . blupalCallbackEscape($buttonLabel) . '</button>'
+            : '<a class="action action-link" href="' . blupalCallbackEscape($botUrl) . '" rel="noopener noreferrer">' . blupalCallbackEscape($buttonLabel) . '</a>')
         . '<div class="footer"><span class="lock">🔒</span><span>وضعیت پرداخت مستقیماً از API بلوپال بررسی شده است</span></div>'
         . '</article></section></main></body></html>';
     exit;
