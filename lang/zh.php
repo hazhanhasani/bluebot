@@ -4782,6 +4782,8 @@ f,n.n2',
                 ],
                 'statusSuccess' => '付款成功',
                 'statusFailed' => '失败',
+                'statusDeliveryFailed' => '付款已确认',
+                'deliveryFailed' => '付款已确认，但服务交付失败。请联系支持人员。',
                 'descThanks' => '感谢您完成交易！',
                 'giftReport' => '🎁 尊敬的用户，%s 托曼已作为礼物存入您的账户。',
                 'reportZarinpal' => '💵 新付款
