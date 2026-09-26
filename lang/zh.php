@@ -1840,6 +1840,17 @@ nowpayments.io
 
 🔗 请在 Variza 个人资料中注册的 Webhook 地址：
 <code>%s</code>',
+                        'askBlupalApiKey' => '🔑 请输入 Blupal API 密钥。
+
+当前密钥：<code>%s</code>',
+                        'askBlupalCardNumber' => '💳 请输入 Blupal 的16位收款卡号。此项可选；发送 0 可清除。
+
+当前卡号：<code>%s</code>',
+                        'blupalWebhookInfo' => '🔗 Blupal Webhook 地址：
+
+<code>%s</code>
+
+请在 Blupal Webhook 设置中注册此地址。',
                         'askZarinpalMerchant' => '💳 从 ZarinPal 获取您的商户代码并在此部分输入
         
 您当前的商户代码：%s',
@@ -3711,6 +3722,7 @@ f,n.n2',
                 'wheelLuck' => '🎲 幸运转盘',
                 'zarinPal' => '🟡 ZarinPal',
                 'variza' => '💳 Variza（自动点对点转账',
+                'blupal' => '🔷 Blupal（即时卡对卡）',
         ],
         'keyboard' => [
                 'acceptRules' => '✅ 我接受规则',
@@ -4167,6 +4179,14 @@ f,n.n2',
 'minAmountVariza' => 'Variza 最低金额',
 'maxAmountVariza' => 'Variza 最高金额',
 'setEducationVariza' => 'Variza 教程',
+                'blupalGateway' => 'Blupal',
+                'blupalApiKey' => '🔑 Blupal API 密钥',
+                'blupalCardNumber' => '💳 Blupal 卡号',
+                'blupalWebhookUrl' => '🔗 Blupal Webhook 地址',
+                'cashbackBlupal' => '🎁 Blupal 返现',
+                'minAmountBlupal' => '⬇️ Blupal 最低金额',
+                'maxAmountBlupal' => '⬆️ Blupal 最高金额',
+                'setEducationBlupal' => '📚 Blupal 教程',
                 'zarinPalMerchant' => 'ZarinPal 商户',
                 'zeroBalance' => '0️⃣ 余额清零',
                 'panelSetting' => '🎛 面板设置',
@@ -4840,6 +4860,12 @@ f,n.n2',
 - 🧾 订单 ID：%s
 - 🔗 Variza 支付标识：%s
 - 💳 支付方式：Variza',
+                'reportBlupal' => '💵 新付款
+- 👤 用户名：@%s
+- 🆔 用户ID：%s
+- 💸 金额：%s toman
+- 🔗 Blupal 发票：%s
+- 💳 支付方式：Blupal',
                 'invoiceTitle' => '付款发票',
                 'invoiceTransactionNo' => '交易编号：',
                 'invoiceAmount' => '支付金额：',
