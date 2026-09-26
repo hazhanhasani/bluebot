@@ -1036,6 +1036,15 @@ Thank you for using our services.',
                         'notchanged' => '❌ It is not possible to change the service status.',
                         'on_hold' => '❌ Not connected',
                         'panelNotConnected' => '❌ The query system for the requested service is currently unavailable. Try again in an hour',
+                        'serviceLoadingShort' => 'Loading service details…',
+                        'serviceLoading' => '⏳ Loading the latest status for <code>{username}</code>…',
+                        'panelNotConnectedCached' => '⚠️ Live panel status is temporarily unavailable, but your order has been selected.
+
+👤 Username: <code>{username}</code>
+🌿 Service: {service}
+🇺🇳 Location: {location}
+
+🔄 Try refreshing again in a moment.',
                         'remainingVolume' => 'Remaining service volume:',
                         'removeservice' => '❌ Refund',
                         'sendUsername' => '📌 Send your username',
