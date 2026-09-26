@@ -2392,7 +2392,7 @@ Current amount: %s',
 📩 | To send a report, suggestion, or request for guidance, leave a message in the <b>BlueBot issue tracker</b>:
 <a href="https://github.com/hazhanhasani/bluebot/issues" rel="nofollow" target="_blank">BlueBot Issues</a>',
                         'aboutBot' => '💎 | Version Bot: %s
-📌 | Version Mini App: 0.1.2
+📌 | Version Mini App: 0.1.3
 
 <blockquote>🔹 | BlueBot is open-source software distributed under AGPL-3.0-or-later and maintained in this repository.</blockquote>
 
