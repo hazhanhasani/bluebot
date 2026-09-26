@@ -4390,6 +4390,7 @@ ID пользователя : %s
                 'paymentStatusRejected' => 'Отклонено',
                 'paymentStatusUnpaid' => 'Не оплачено',
                 'paymentStatusWaiting' => 'В ожидании',
+                'paymentStatusDeliveryError' => 'Ошибка выдачи сервиса',
                 'paymentTransactionsHeading' => 'Сумма успешных транзакций',
                 'paymentTransactionsSubtitle' => 'Отчёт обо всех финансовых транзакциях панели.',
                 'paymentTransactionsTitle' => 'Транзакции',
