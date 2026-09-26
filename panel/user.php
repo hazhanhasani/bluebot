@@ -24,6 +24,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $amount = (int) ($_POST['amount'] ?? 0);
         if ($amount >= 1000) {
             db_query($pdo, "UPDATE user SET Balance = Balance + ? WHERE id = ?", [$amount, $id]);
+            $newBalance = (int) db_query($pdo, "SELECT Balance FROM user WHERE id = ?", [$id])->fetchColumn();
+            try {
+                BluebotSms::queueAndDispatchForUser(
+                    'wallet_charged',
+                    (string) $id,
+                    ['amount' => (string) $amount, 'balance' => (string) max(0, $newBalance)],
+                    null,
+                    null,
+                    'admin-wallet:' . $id . ':' . time() . ':' . $amount
+                );
+            } catch (Throwable $smsError) {
+                bluebotLog('warning', 'Admin wallet SMS failed', [
+                    'user_id' => (string) $id,
+                    'error' => $smsError->getMessage(),
+                ]);
+            }
             flash('success', number_format($amount) . $textbotlang['panel']['userBalanceAddedSuffix']);
         } else {
             flash('error', $textbotlang['panel']['userMinAmountToman']);
@@ -34,6 +50,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             db_query($pdo, "UPDATE user SET agent = ? WHERE id = ?", [$newRole, $id]);
             flash('success', $textbotlang['panel']['userGroupChangedPrefix'] . user_role_label($newRole) . $textbotlang['panel']['userGroupChangedSuffix']);
         }
+    } elseif ($action === 'toggle_sms') {
+        $enabled = (string) ($_POST['sms_enabled'] ?? '0') === '1' ? 1 : 0;
+        db_query($pdo, "UPDATE user SET sms_enabled = ? WHERE id = ?", [$enabled, $id]);
+        flash('success', $enabled ? 'پیامک‌های این کاربر فعال شد.' : 'پیامک‌های این کاربر غیرفعال شد.');
     }
 
     header("Location: user.php?id=$id");
@@ -228,6 +248,14 @@ include __DIR__ . '/inc/layout_head.php';
                 <button class="btn btn-ghost btn-sm" style="justify-content:center" onclick="openModal('roleModal')">
                     <?= icon('users', 13) ?> <?= $textbotlang['panel']['userColMethod'] ?>
                 </button>
+                <form method="post" style="margin:0">
+                    <input type="hidden" name="_csrf" value="<?= csrf_token() ?>">
+                    <input type="hidden" name="action" value="toggle_sms">
+                    <input type="hidden" name="sms_enabled" value="<?= !empty($user['sms_enabled']) ? '0' : '1' ?>">
+                    <button class="btn <?= !empty($user['sms_enabled']) ? 'btn-ok' : 'btn-ghost' ?> btn-sm" type="submit" style="justify-content:center;width:100%">
+                        <?= icon('card', 13) ?> پیامک: <?= !empty($user['sms_enabled']) ? 'فعال' : 'غیرفعال' ?>
+                    </button>
+                </form>
                 <div style="height:1px;background:var(--bd);margin:2px 0"></div>
                 <?php if ($isBlocked): ?>
                     <a href="user_action.php?action=unblock&id=<?= $id ?>&_csrf=<?= csrf_token() ?>&back=user.php"
