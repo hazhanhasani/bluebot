@@ -58,7 +58,7 @@ function getuser($username_account, $location)
     if (!empty($Check_token['error'])) {
         return $Check_token;
     }
-    $url = $marzban_list_get['url_panel'] . '/api/user/' . $username_account;
+    $url = $marzban_list_get['url_panel'] . '/api/user/' . rawurlencode((string) $username_account);
     $headers = array(
         'accept: application/json'
     );
@@ -182,7 +182,7 @@ function ResetUserDataUsage($username_account, $location)
     if (!empty($Check_token['error'])) {
         return $Check_token;
     }
-    $url = $marzban_list_get['url_panel'] . '/api/user/' . $username_account . '/reset';
+    $url = $marzban_list_get['url_panel'] . '/api/user/' . rawurlencode((string) $username_account) . '/reset';
 
     $headers = array(
         'accept: application/json'
@@ -200,7 +200,7 @@ function revoke_sub($username_account, $location)
     if (!empty($Check_token['error'])) {
         return $Check_token;
     }
-    $url = $marzban_list_get['url_panel'] . '/api/user/' . $username_account . '/revoke_sub';
+    $url = $marzban_list_get['url_panel'] . '/api/user/' . rawurlencode((string) $username_account) . '/revoke_sub';
     $headers = array(
         'accept: application/json'
     );
@@ -367,14 +367,36 @@ function removeuser($location, $username)
     if (!empty($Check_token['error'])) {
         return $Check_token;
     }
-    $url = $marzban_list_get['url_panel'] . '/api/user/' . $username;
-    $headers = array(
-        'accept: application/json'
-    );
+
+    $encodedUsername = rawurlencode((string) $username);
+    $url = $marzban_list_get['url_panel'] . '/api/user/' . $encodedUsername;
     $req = new CurlRequest($url);
-    $req->setHeaders($headers);
+    $req->setHeaders(['accept: application/json']);
     $req->setBearerToken($Check_token['access_token']);
     $response = $req->delete();
+
+    // Marzban 0.8.4 can return HTTP 500 after the database deletion has
+    // already succeeded (notably for users created by the env sudo admin).
+    // Verify the resource before reporting a false failure to BlueBot.
+    if ((int) ($response['status'] ?? 0) >= 500) {
+        $verify = new CurlRequest($url);
+        $verify->setHeaders(['accept: application/json']);
+        $verify->setBearerToken($Check_token['access_token']);
+        $verifyResponse = $verify->get();
+
+        if ((int) ($verifyResponse['status'] ?? 0) === 404) {
+            bluebotLog('warning', 'Marzban delete returned an error after successful deletion', [
+                'panel' => (string) $location,
+                'username' => (string) $username,
+                'delete_status' => (int) ($response['status'] ?? 0),
+            ]);
+            return [
+                'status' => 200,
+                'body' => json_encode(['detail' => 'User successfully deleted']),
+            ];
+        }
+    }
+
     return $response;
 }
 function removenode($location, $nodeid)
@@ -402,7 +424,7 @@ function Modifyuser($location, $username, array $data)
     if (!empty($Check_token['error'])) {
         return $Check_token;
     }
-    $url = $marzban_list_get['url_panel'] . '/api/user/' . $username;
+    $url = $marzban_list_get['url_panel'] . '/api/user/' . rawurlencode((string) $username);
     $headers = array(
         'accept: application/json',
         'Content-Type: application/json'
@@ -468,7 +490,7 @@ function get_list_update($location, $username)
     if (!empty($Check_token['error'])) {
         return $Check_token;
     }
-    $url = $marzban_list_get['url_panel'] . "/api/user/$username/sub_update?offset=0&limit=1";
+    $url = $marzban_list_get['url_panel'] . "/api/user/" . rawurlencode((string) $username) . "/sub_update?offset=0&limit=1";
     $headers = array(
         'accept: application/json'
     );
