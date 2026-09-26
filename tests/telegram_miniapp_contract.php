@@ -23,6 +23,15 @@ if ($appIndex === false || !str_contains($appIndex, 'bluebot-boot')) {
     $failures[] = 'Mini App must provide an immediate boot/loading surface.';
 }
 
+if ($appIndex === false || !str_contains($appIndex, './js/app-loader.js?v=0.1.4')) {
+    $failures[] = 'Mini App ordered application loader is missing.';
+}
+
+$appLoader = @file_get_contents($root . '/app/js/app-loader.js');
+if ($appLoader === false || !str_contains($appLoader, "import('../assets/index-C-2a0Dur.js?v=0.1.4')")) {
+    $failures[] = 'Mini App loader does not start the production bundle.';
+}
+
 $appHtaccess = @file_get_contents($root . '/app/.htaccess');
 if ($appHtaccess === false || !str_contains($appHtaccess, 'Cloudflare-CDN-Cache-Control')) {
     $failures[] = 'Mini App static/CDN cache policy is missing.';
