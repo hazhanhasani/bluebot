@@ -120,7 +120,9 @@ Administrators can run the following Telegram command:
 /debug
 ```
 
-The report is admin-only and intentionally excludes secrets. It checks the BlueBot version, Mini App version, PHP runtime, database connectivity, writable storage, Composer vendor availability, webhook protection, leftover installer files, payment delivery errors and free disk space.
+The report is admin-only and intentionally excludes secrets. It checks the BlueBot version, Mini App version, PHP runtime, database connectivity, writable storage, Composer vendor availability, webhook protection, dedicated API-token configuration, leftover installer files, payment delivery errors and free disk space.
+
+The same health information is available in the Web admin panel: **Diagnostics**.
 
 Payment records that are financially confirmed but fail during service delivery are marked as `delivery_error` so they remain visible for administrator review instead of being silently treated as fully delivered.
 
