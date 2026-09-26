@@ -7,6 +7,7 @@ ini_set('memory_limit', '512M');
 require_once 'config.php';
 require_once 'botapi.php';
 require_once __DIR__ . '/src/Support/JalaliDate.php';
+require_once __DIR__ . '/src/Support/MiniApp.php';
 require_once 'function.php';
 bluebotEnsureInstallerRemoved();
 require_once 'keyboard.php';
@@ -388,6 +389,9 @@ if ($user['joinchannel'] != "active") {
     }
 }
 if ($text == "/start" || $datain == "start" || $text == "start") {
+    // Keep Telegram's Mini App menu button synchronized with the bot domain.
+    // The helper is cached, so normal /start requests do not add repeated API calls.
+    bluebotEnsureMiniAppMenuButton(false);
     sendmessage($from_id, $textbotlang['users']['text_start'], $keyboard, "html");
     update("user", "Processing_value", "0", "id", $from_id);
     update("user", "Processing_value_one", "0", "id", $from_id);
@@ -724,7 +728,18 @@ if ($text == "/start" || $datain == "start" || $text == "start") {
     Editmessagetext($from_id, $message_id, $textbotlang['users']['status']['info'], $keyboardinfo);
     sendmessage($from_id, $textbotlang['users']['selectoption'], $keyboard, 'html');
     step('home', $from_id);
-} elseif (preg_match('/^product_(\w+)/', $datain, $dataget) || preg_match('/updateproduct_(\w+)/', $datain, $dataget) || $user['step'] == "getuseragnetservice" || $datain == "productcheckdata") {
+} elseif (preg_match('/^product_([A-Za-z0-9-]{1,200})$/D', $datain, $dataget) || preg_match('/^updateproduct_([A-Za-z0-9-]{1,200})$/D', $datain, $dataget) || $user['step'] == "getuseragnetservice" || $datain == "productcheckdata") {
+    $isInitialProductClick = is_string($datain) && str_starts_with($datain, 'product_');
+
+    if ($isInitialProductClick && !empty($callback_query_id)) {
+        telegram('answerCallbackQuery', [
+            'callback_query_id' => $callback_query_id,
+            'text' => $textbotlang['users']['status']['serviceLoadingShort'] ?? 'Loading service…',
+            'show_alert' => false,
+            'cache_time' => 0,
+        ]);
+    }
+
     if ($user['step'] == "getuseragnetservice") {
         $username = htmlspecialchars($text, ENT_QUOTES, 'UTF-8');
         $sql = "SELECT * FROM invoice WHERE (username LIKE CONCAT('%', :username, '%') OR note  LIKE CONCAT('%', :notes, '%') OR Volume LIKE CONCAT('%',:Volume, '%') OR Service_time LIKE CONCAT('%',:Service_time, '%')) AND id_user = :id_user AND (status = 'active' OR status = 'end_of_time'  OR status = 'end_of_volume' OR status = 'sendedwarn' OR Status = 'send_on_hold')";
@@ -742,7 +757,7 @@ if ($text == "/start" || $datain == "start" || $text == "start") {
         $stmt->bindParam(':username', $username);
         $stmt->bindParam(':id_user', $from_id);
         $stmt->execute();
-    } elseif ($datain[0] == "u") {
+    } elseif (is_string($datain) && str_starts_with($datain, 'updateproduct_')) {
         $username = $dataget[1];
         $sql = "SELECT * FROM invoice WHERE id_invoice = :username AND id_user = :id_user";
         $stmt = $pdo->prepare($sql);
@@ -823,18 +838,57 @@ if ($text == "/start" || $datain == "start" || $text == "start") {
         return;
     }
     $marzban = select("marzban_panel", "*", "name_panel", $nameloc['Service_location'], "select");
-    if ($marzban['name_panel'] != null) {
+    if ($marzban && $marzban['name_panel'] != null) {
         update("user", "Processing_value_four", $marzban['name_panel'], "id", $from_id);
     }
+
+    $serviceBackKeyboard = json_encode([
+        'inline_keyboard' => [
+            [
+                ['text' => $textbotlang['users']['status']['backlist'], 'callback_data' => 'backorder'],
+            ],
+        ],
+    ]);
+
+    if ($isInitialProductClick) {
+        $loadingText = strtr(
+            $textbotlang['users']['status']['serviceLoading'] ?? '⏳ Loading {username}…',
+            ['{username}' => htmlspecialchars((string) $nameloc['username'], ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8')]
+        );
+        Editmessagetext($from_id, $message_id, $loadingText, $serviceBackKeyboard, 'html');
+    }
+
     $DataUserOut = $ManagePanel->DataUser($nameloc['Service_location'], $nameloc['username']);
-    if (isset($DataUserOut['msg']) && $DataUserOut['msg'] == "User not found") {
+    if (!is_array($DataUserOut)) {
+        $DataUserOut = ['status' => 'Unsuccessful', 'msg' => 'Invalid panel response'];
+    }
+
+    if (($DataUserOut['msg'] ?? '') == "User not found") {
         update("invoice", "Status", "disabledn", "id_invoice", $nameloc['id_invoice']);
-        sendmessage($from_id, $textbotlang['users']['status']['userNotFound'], $keyboard, 'html');
+        if ($isInitialProductClick) {
+            Editmessagetext($from_id, $message_id, $textbotlang['users']['status']['userNotFound'], $serviceBackKeyboard, 'html');
+        } else {
+            sendmessage($from_id, $textbotlang['users']['status']['userNotFound'], $keyboard, 'html');
+        }
         step('home', $from_id);
         return;
     }
-    if ($DataUserOut['status'] == "Unsuccessful") {
-        sendmessage($from_id, $textbotlang['users']['status']['panelNotConnected'], $keyboard, 'html');
+
+    if (($DataUserOut['status'] ?? 'Unsuccessful') == "Unsuccessful") {
+        $cachedInfo = strtr(
+            $textbotlang['users']['status']['panelNotConnectedCached']
+                ?? "⚠️ Live status is unavailable.\n\n👤 {username}\n🌿 {service}\n🇺🇳 {location}",
+            [
+                '{username}' => htmlspecialchars((string) $nameloc['username'], ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'),
+                '{service}' => htmlspecialchars((string) $nameloc['name_product'], ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'),
+                '{location}' => htmlspecialchars((string) $nameloc['Service_location'], ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'),
+            ]
+        );
+        if ($isInitialProductClick) {
+            Editmessagetext($from_id, $message_id, $cachedInfo, $serviceBackKeyboard, 'html');
+        } else {
+            sendmessage($from_id, $cachedInfo, $keyboard, 'html');
+        }
         step('home', $from_id);
         return;
     }
