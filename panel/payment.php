@@ -3,6 +3,26 @@ require_once __DIR__ . '/inc/config.php';
 require_once __DIR__ . '/inc/icons.php';
 require_auth();
 
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'review_delivery') {
+  csrf_check_post();
+
+  $orderId = trim((string) ($_POST['order_id'] ?? ''));
+  if ($orderId === '' || strlen($orderId) > 2000) {
+    flash('error', $textbotlang['panel']['paymentDeliveryReviewInvalid']);
+    header('Location: payment.php?status=delivery_error');
+    exit;
+  }
+
+  if (markPaymentDeliveryReviewed($orderId)) {
+    flash('success', $textbotlang['panel']['paymentDeliveryReviewSuccess']);
+  } else {
+    flash('warning', $textbotlang['panel']['paymentDeliveryReviewNoop']);
+  }
+
+  header('Location: payment.php?status=delivery_error');
+  exit;
+}
+
 $search = trim($_GET['q'] ?? '');
 $status = $_GET['status'] ?? '';
 $page = max(1, (int) ($_GET['page'] ?? 1));
@@ -66,6 +86,7 @@ $statusMap = [
   'reject' => ['tag-no', $textbotlang['panel']['paymentStatusRejected']],
   'waiting' => ['tag-warn', $textbotlang['panel']['paymentStatusWaiting']],
   'delivery_error' => ['tag-no', $textbotlang['panel']['paymentStatusDeliveryError']],
+  'delivery_reviewed' => ['tag-plain', $textbotlang['panel']['paymentStatusDeliveryReviewed']],
 ];
 $methodMap = [
   'cart to cart' => $textbotlang['panel']['paymentMethodCardToCard'],
@@ -178,7 +199,19 @@ include __DIR__ . '/inc/layout_head.php';
               <td style="font-size:.78rem;color:var(--text-dim);white-space:nowrap">
                 <?= safe_date($p['time'] ?? null, 'Y/m/d H:i') ?>
               </td>
-              <td><span class="tag <?= $cls ?>"><?= $lbl ?></span></td>
+              <td>
+                <span class="tag <?= $cls ?>"><?= $lbl ?></span>
+                <?php if ($st === 'delivery_error'): ?>
+                  <form method="post" style="display:inline-block;margin-inline-start:6px">
+                    <input type="hidden" name="_csrf" value="<?= htmlspecialchars(csrf_token()) ?>">
+                    <input type="hidden" name="action" value="review_delivery">
+                    <input type="hidden" name="order_id" value="<?= htmlspecialchars((string) ($p['id_order'] ?? '')) ?>">
+                    <button type="submit" class="btn btn-ghost" style="padding:5px 8px;font-size:.7rem">
+                      <?= htmlspecialchars($textbotlang['panel']['paymentDeliveryReviewAction']) ?>
+                    </button>
+                  </form>
+                <?php endif; ?>
+              </td>
             </tr>
           <?php endforeach; endif; ?>
       </tbody>
