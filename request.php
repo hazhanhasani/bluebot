@@ -10,14 +10,7 @@ class CurlRequest {
     private $cookie = null;
     public function __construct($url) {
         global $request_exec_timeout;
-
-        $url = trim((string) $url);
-        $scheme = strtolower((string) parse_url($url, PHP_URL_SCHEME));
-        if (!in_array($scheme, ['http', 'https'], true)) {
-            throw new InvalidArgumentException('Only HTTP and HTTPS panel URLs are allowed.');
-        }
-
-        $this->url = $url;
+        $this->url = trim((string) $url);
         $this->timeout = $request_exec_timeout;
     }
 
@@ -43,7 +36,21 @@ class CurlRequest {
     }
 
     private function execute($method, $data = null) {
-        $this->timeout = !$this->timeout  ?  10000 : $this->timeout;
+        $this->timeout = !$this->timeout ? 10000 : $this->timeout;
+
+        $scheme = strtolower((string) parse_url($this->url, PHP_URL_SCHEME));
+        if (!in_array($scheme, ['http', 'https'], true)) {
+            bluebotLog('warning', 'Blocked unsupported panel URL scheme', [
+                'method' => strtoupper((string) $method),
+                'url' => $this->url,
+                'scheme' => $scheme,
+            ]);
+            return [
+                'status' => null,
+                'body' => null,
+                'error' => 'Only HTTP and HTTPS panel URLs are allowed.',
+            ];
+        }
         $ch = curl_init();
         curl_setopt($ch, CURLOPT_URL, $this->url);
         curl_setopt($ch, CURLOPT_CUSTOMREQUEST, strtoupper($method));
