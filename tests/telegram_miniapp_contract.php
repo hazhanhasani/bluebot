@@ -9,27 +9,42 @@ $appIndex = @file_get_contents($root . '/app/index.php');
 if ($appIndex !== false && str_contains($appIndex, 'https://telegram.org/js/telegram-web-app.js')) {
     $failures[] = 'Mini App startup must not block on the external Telegram SDK.';
 }
-if ($appIndex === false || !str_contains($appIndex, './js/telegram-bootstrap.js?v=0.1.4')) {
+if ($appIndex === false || !str_contains($appIndex, './js/telegram-bootstrap.js?v=0.1.5')) {
     $failures[] = 'Mini App compatibility bootstrap is not loaded with the current cache key.';
 }
-if ($appIndex === false || !str_contains($appIndex, './js/telegram-web-app.js?v=0.1.4')) {
+if ($appIndex === false || !str_contains($appIndex, './js/telegram-web-app.js?v=0.1.5')) {
     $failures[] = 'Local Telegram SDK is not loaded first.';
 }
 
-if ($appIndex === false || !str_contains($appIndex, 'script defer src="./js/telegram-web-app.js?v=0.1.4"')) {
+if ($appIndex === false || !str_contains($appIndex, 'script defer src="./js/telegram-web-app.js?v=0.1.5"')) {
     $failures[] = 'Mini App Telegram SDK must load with defer for non-blocking first paint.';
 }
 if ($appIndex === false || !str_contains($appIndex, 'bluebot-boot')) {
     $failures[] = 'Mini App must provide an immediate boot/loading surface.';
 }
 
-if ($appIndex === false || !str_contains($appIndex, './js/app-loader.js?v=0.1.4')) {
+if ($appIndex === false || !str_contains($appIndex, './js/app-loader.js?v=0.1.5')) {
     $failures[] = 'Mini App ordered application loader is missing.';
 }
 
 $appLoader = @file_get_contents($root . '/app/js/app-loader.js');
-if ($appLoader === false || !str_contains($appLoader, "import('../assets/index-C-2a0Dur.js?v=0.1.4')")) {
+if ($appLoader === false || !str_contains($appLoader, "import('../assets/index-C-2a0Dur.js?v=0.1.5')")) {
     $failures[] = 'Mini App loader does not start the production bundle.';
+}
+
+if ($appLoader === false || !str_contains($appLoader, "Startup timeout")) {
+    $failures[] = 'Mini App loader must surface startup failures instead of leaving a black screen.';
+}
+if ($appLoader === false || !str_contains($appLoader, "پنل کاربری کامل بارگذاری نشد")) {
+    $failures[] = 'Mini App startup error UI is missing.';
+}
+
+$mainBundle = @file_get_contents($root . '/app/assets/index-C-2a0Dur.js');
+if ($mainBundle === false || !str_contains($mainBundle, 'BBs=(()=>')) {
+    $failures[] = 'Mini App safe WebView storage wrapper is missing.';
+}
+if ($mainBundle === false || !str_contains($mainBundle, 'window.localStorage')) {
+    $failures[] = 'Mini App safe storage wrapper does not probe native localStorage.';
 }
 
 $appHtaccess = @file_get_contents($root . '/app/.htaccess');
@@ -86,7 +101,7 @@ if ($verify === false || !str_contains($verify, "hash_equals")) {
 }
 
 $version = trim((string) @file_get_contents($root . '/app/version'));
-if ($version !== '0.1.4') {
+if ($version !== '0.1.5') {
     $failures[] = 'Unexpected Mini App version: ' . $version;
 }
 
