@@ -614,14 +614,6 @@ final class BluebotSms
             $query = http_build_query([
                 'page' => $page,
                 'limit' => 100,
-                'per_page' => 100,
-                'status' => 'active',
-                // The current FarazSMS docs contain the historical "staus"
-                // spelling in the pattern filter example. Supplying both keeps
-                // compatibility with deployments using either spelling.
-                'staus' => 'active',
-                'sort_by' => 'updated_at',
-                'sort_type' => 'desc',
             ]);
             $payload = self::request(
                 'GET',
