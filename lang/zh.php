@@ -1803,7 +1803,7 @@ trojan://xyz',
                         'on' => '已开启',
                         'intro' => '📌 在下方列表中，您可以管理网关。
 
-⚠️ Mirza 团队不对网关提供任何保证，所有使用和责任由您承担',
+⚠️ BlueBot 团队不对网关提供任何保证，所有使用和责任由您承担',
                         'askPlisioApi' => '⚙️ 请发送您的 Plisio API 密钥。
 
 🔑 要获取 API 密钥，请访问以下网站：
@@ -2388,12 +2388,12 @@ f,n.n2',
 ➖➖➖➖➖➖➖➖➖➖➖
 🔹 | 此外，如果您需要<b>指导</b>或帮助，可以通过私信联系客服团队。
 
-📩 | 要发送报告、建议或请求指导，请在 <b>Mirza 群组</b>中留言：
-<a href="https://t.me/mirzapanelgroup" rel="nofollow" target="_blank">Mirza Group</a>',
+📩 | 要发送报告、建议或请求指导，请在 <b>BlueBot 群组</b>中留言：
+<a href="https://t.me/mirzapanelgroup" rel="nofollow" target="_blank">BlueBot Group</a>',
                         'aboutBot' => '💎 | Version Bot: %s
 📌 | Version Mini App: 0.1.1
 
-<blockquote>🔹 | 此机器人完全免费，由 Mirza 团队开发</blockquote>
+<blockquote>🔹 | 此机器人完全免费，由 BlueBot 团队开发</blockquote>
 
 <blockquote>🔹 | 任何对此机器人的出售或收费均视为违规。</blockquote>
 
@@ -4160,7 +4160,7 @@ f,n.n2',
                 'zarinPalMerchant' => 'ZarinPal 商户',
                 'zeroBalance' => '0️⃣ 余额清零',
                 'panelSetting' => '🎛 面板设置',
-                'mirzaAgentPanel' => 'Mirza 代理',
+                'mirzaAgentPanel' => '代理 / 经销商面板',
                 'setGroupName' => '🎛 设置群组名称',
                 'subLinkDomain' => '🔗 订阅链接域名',
                 'panelTypeSanaei' => 'Sanaei 单端口',
