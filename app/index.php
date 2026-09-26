@@ -13,7 +13,7 @@
     </script>
     <script src="./js/telegram-bootstrap.js?v=0.1.2"></script>
 
-    <script type="module" crossorigin src="./assets/index-C-2a0Dur.js"></script>
+    <script type="module" crossorigin src="./assets/index-C-2a0Dur.js?v=0.1.2"></script>
     <link rel="modulepreload" crossorigin href="./assets/vendor-CIGJ9g2q.js">
     <link rel="stylesheet" crossorigin href="./assets/index-BoHBsj0Z.css">
   </head>
