@@ -1,0 +1,68 @@
+name: BlueBot CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: bluebot-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    name: Validate and lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.2'
+          extensions: curl, mbstring, zip, gd, dom, simplexml, xmlwriter, xmlreader, fileinfo, iconv, bcmath, pdo_mysql
+          tools: composer
+
+      - name: Validate Composer metadata
+        run: composer validate --no-interaction --no-check-publish
+
+      - name: Install Composer dependencies
+        run: composer install --no-dev --no-interaction --no-progress --prefer-dist --optimize-autoloader
+
+      - name: Lint PHP sources
+        shell: bash
+        run: |
+          set -euo pipefail
+          mapfile -d '' files < <(find . -type f -name '*.php' \
+            -not -path './vendor/*' \
+            -not -path './storage/*' \
+            -print0)
+          if [ "${#files[@]}" -eq 0 ]; then
+            echo "No PHP files found."
+            exit 1
+          fi
+          printf 'Linting %s PHP files...\n' "${#files[@]}"
+          for file in "${files[@]}"; do
+            php -l "$file" >/dev/null
+          done
+          echo "PHP syntax OK."
+
+      - name: Validate installer syntax
+        run: bash -n install.sh
+
+      - name: Check config template safety
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -q "{API_KEY}" config.php
+          grep -q "{password_db}" config.php
+          grep -q "{domain_name}" config.php
+          echo "Config template placeholders are intact."
