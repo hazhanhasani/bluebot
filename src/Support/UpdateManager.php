@@ -278,3 +278,76 @@ function bluebotQueueUpdate($adminId): array
 
     return ['ok' => true, 'message' => 'queued', 'target' => $target];
 }
+
+
+function bluebotUpdateChannelLabel(string $channel): string
+{
+    return [
+        'release' => 'Stable',
+        'beta' => 'Beta',
+        'auto' => 'Auto',
+    ][bluebotUpdateNormalizeChannel($channel)] ?? 'Stable';
+}
+
+function bluebotUpdateCenterKeyboard(string $selectedChannel, bool $updateAvailable = false): string
+{
+    $selectedChannel = bluebotUpdateNormalizeChannel($selectedChannel);
+    $button = static function (string $channel, string $label) use ($selectedChannel): array {
+        return [
+            'text' => ($channel === $selectedChannel ? '✅ ' : '') . $label,
+            'callback_data' => 'bluebot_update_channel_' . $channel,
+        ];
+    };
+
+    $rows = [
+        [
+            $button('release', 'Stable'),
+            $button('beta', 'Beta'),
+            $button('auto', 'Auto'),
+        ],
+        [
+            ['text' => '🔍 بررسی نسخه', 'callback_data' => 'bluebot_update_status'],
+        ],
+    ];
+
+    if ($updateAvailable) {
+        array_unshift($rows, [
+            ['text' => '🚀 بروزرسانی', 'callback_data' => 'bluebot_update_run'],
+        ]);
+    }
+
+    return json_encode(['inline_keyboard' => $rows], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+}
+
+function bluebotUpdateCenterText(?array $settings = null, ?array $target = null): string
+{
+    $settings ??= bluebotUpdateSettings();
+    $channel = bluebotUpdateChannel($settings);
+    $target ??= bluebotUpdateLatest($channel);
+    $current = bluebotUpdateCurrentVersion();
+
+    $text = "🔄 <b>مرکز بروزرسانی BlueBot</b>\n\n";
+    $text .= "📦 کانال انتخابی: <b>" . bluebotUpdateChannelLabel($channel) . "</b>\n";
+    $text .= "🔹 نسخه فعلی: <code>" . htmlspecialchars($current, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . "</code>\n";
+
+    if ($target === null) {
+        $text .= "⚠️ دریافت اطلاعات نسخه جدید از GitHub ممکن نشد.\n";
+    } else {
+        $label = htmlspecialchars((string) ($target['label'] ?? $target['ref'] ?? ''), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+        $available = bluebotUpdateAvailable($target, $settings);
+        $text .= "🆕 آخرین نسخه: <code>{$label}</code>\n";
+        $text .= $available ? "🟢 بروزرسانی جدید آماده است.\n" : "✅ BlueBot بروز است.\n";
+    }
+
+    $queue = bluebotUpdateQueueStatus();
+    if (($queue['state'] ?? '') === 'running') {
+        $text .= "\n⏳ بروزرسانی در حال اجراست...";
+    } elseif (($queue['state'] ?? '') === 'failed') {
+        $text .= "\n❌ آخرین بروزرسانی ناموفق بوده است.";
+    } elseif (($queue['state'] ?? '') === 'success') {
+        $text .= "\n✅ آخرین بروزرسانی با موفقیت انجام شده است.";
+    }
+
+    $text .= "\n\nStable: آخرین نسخه پایدار\nBeta: آخرین تغییرات main\nAuto: نسخه پایدار و در نبود آن Beta";
+    return $text;
+}
