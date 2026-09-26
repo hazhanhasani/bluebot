@@ -14,13 +14,31 @@ require_once 'vendor/autoload.php';
 require_once 'panels.php';
 $textbotlang = languagechange();
 $text = restoreCustomEmojiLabel($text);
-#-----------telegram_ip_ranges------------#
-if (!checktelegramip())
-    die("Unauthorized access");
-#-----------end telegram_ip_ranges------------#
-$webhookSecret = ensureWebhookSecret();
-if (!$webhookSecret['created'] && $webhookSecret['secret'] !== '' && !webhookSecretMatches($webhookSecret['secret']))
-    die("Unauthorized access");
+#-----------telegram_webhook_auth------------#
+$storedWebhookSecret = (string) ($setting['webhook_secret'] ?? select("setting", "*")['webhook_secret'] ?? '');
+$telegramIpAllowed = checktelegramip();
+$telegramSecretAllowed = $storedWebhookSecret !== '' && webhookSecretMatches($storedWebhookSecret);
+
+if ($storedWebhookSecret === '') {
+    // First-time migration: only a request from Telegram itself may bootstrap
+    // the secret and replace the webhook with the protected URL/header.
+    if (!$telegramIpAllowed) {
+        die("Unauthorized access");
+    }
+    $webhookSecret = ensureWebhookSecret();
+} else {
+    // Normal operation is authenticated by Telegram's secret token. If an old
+    // webhook reaches us directly from Telegram without the token, accept that
+    // single verified request and repair the webhook immediately.
+    if (!$telegramSecretAllowed) {
+        if (!$telegramIpAllowed) {
+            die("Unauthorized access");
+        }
+        bluebotSetMainWebhook($storedWebhookSecret);
+    }
+    $webhookSecret = ['secret' => $storedWebhookSecret, 'created' => false];
+}
+#-----------end telegram_webhook_auth------------#
 if ($is_bot)
     return;
 if (isset($update['chat_member'])) {
