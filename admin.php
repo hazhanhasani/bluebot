@@ -1,5 +1,7 @@
 <?php
 require_once __DIR__ . '/src/Support/Diagnostics.php';
+require_once __DIR__ . '/src/Support/UpdateManager.php';
+require_once __DIR__ . '/src/Support/MiniApp.php';
 #----------------[  admin section  ]------------------#
 $version = file_get_contents('version');
 $textadmin = ["panel", "/panel", $textbotlang['Admin']['panelAdmin']];
@@ -134,6 +136,7 @@ if ($text === "/debug") {
     }
     $version_mini_app = file_get_contents('app/version');
     activecron();
+    bluebotEnsureMiniAppMenuButton(false);
     $text_admin = sprintf($text_panel_admin_login_template, $version, $version_mini_app);
     sendmessage($from_id, $text_admin, $keyboardadmin, 'HTML');
     $miniAppInstructionHidden = isset($user['hide_mini_app_instruction']) ? (string) $user['hide_mini_app_instruction'] : '0';
@@ -147,6 +150,68 @@ if ($text === "/debug") {
         ]);
         sendmessage($from_id, $miniAppInstructionText, $miniAppInstructionKeyboard, 'HTML');
     }
+} elseif ($text == $textbotlang['keyboard']['updateCenter'] && $adminrulecheck['rule'] == "administrator") {
+    $updateSettings = bluebotUpdateSettings();
+    $updateTarget = bluebotUpdateLatest(bluebotUpdateChannel($updateSettings));
+    $updateAvailable = $updateTarget !== null && bluebotUpdateAvailable($updateTarget, $updateSettings);
+    sendmessage(
+        $from_id,
+        bluebotUpdateCenterText($updateSettings, $updateTarget),
+        bluebotUpdateCenterKeyboard(bluebotUpdateChannel($updateSettings), $updateAvailable),
+        'HTML'
+    );
+    return;
+} elseif (preg_match('/^bluebot_update_channel_(release|beta|auto)$/', $datain, $updateChannelMatch) && $adminrulecheck['rule'] == "administrator") {
+    $selectedChannel = bluebotUpdateSetChannel($updateChannelMatch[1]);
+    $updateSettings = bluebotUpdateSettings();
+    $updateTarget = bluebotUpdateLatest($selectedChannel);
+    $updateAvailable = $updateTarget !== null && bluebotUpdateAvailable($updateTarget, $updateSettings);
+    Editmessagetext(
+        $from_id,
+        $message_id,
+        bluebotUpdateCenterText($updateSettings, $updateTarget),
+        bluebotUpdateCenterKeyboard($selectedChannel, $updateAvailable),
+        'HTML'
+    );
+    return;
+} elseif ($datain == "bluebot_update_status" && $adminrulecheck['rule'] == "administrator") {
+    $updateSettings = bluebotUpdateSettings();
+    $updateTarget = bluebotUpdateLatest(bluebotUpdateChannel($updateSettings));
+    $updateAvailable = $updateTarget !== null && bluebotUpdateAvailable($updateTarget, $updateSettings);
+    Editmessagetext(
+        $from_id,
+        $message_id,
+        bluebotUpdateCenterText($updateSettings, $updateTarget),
+        bluebotUpdateCenterKeyboard(bluebotUpdateChannel($updateSettings), $updateAvailable),
+        'HTML'
+    );
+    return;
+} elseif ($datain == "bluebot_update_run" && $adminrulecheck['rule'] == "administrator") {
+    $queuedUpdate = bluebotQueueUpdate($from_id);
+    if (!empty($queuedUpdate['ok'])) {
+        Editmessagetext(
+            $from_id,
+            $message_id,
+            "🚀 <b>بروزرسانی در صف قرار گرفت</b>\n\nWorker امن BlueBot حداکثر تا یک دقیقه دیگر عملیات را شروع می‌کند و نتیجه را همین‌جا در تلگرام اعلام می‌کند.",
+            json_encode(['inline_keyboard' => [[['text' => '🔍 وضعیت', 'callback_data' => 'bluebot_update_status']]]], JSON_UNESCAPED_UNICODE),
+            'HTML'
+        );
+    } else {
+        $queueMessage = (string) ($queuedUpdate['message'] ?? 'unknown error');
+        $friendlyQueueMessage = $queueMessage === 'already up to date'
+            ? '✅ BlueBot در حال حاضر بروز است.'
+            : ($queueMessage === 'update worker is not installed or queue directory is not writable'
+                ? '⚠️ Worker بروزرسانی هنوز روی سرور فعال نشده است. پس از نصب این نسخه، بروزرسانی‌های بعدی کاملاً از داخل ربات انجام می‌شوند.'
+                : '❌ امکان ثبت بروزرسانی وجود نداشت: ' . htmlspecialchars($queueMessage, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'));
+        Editmessagetext(
+            $from_id,
+            $message_id,
+            $friendlyQueueMessage,
+            bluebotUpdateCenterKeyboard(bluebotUpdateChannel(), false),
+            'HTML'
+        );
+    }
+    return;
 } elseif ($text == $textbotlang['Admin']['backAdminBtn']) {
     if ($buyreport == "0" || $otherservice == "0" || $otherreport == "0" || $paymentreports == "0" || $reporttest == "0" || $errorreport == "0") {
         sendmessage($from_id, $textbotlang['Admin']['activeBotText'], $active_panell, 'HTML');
