@@ -70,6 +70,7 @@ $backmenu_register(["apiiranpay4", "endpointiranpay4", "getcashiranpay4", "getda
 $backmenu_register(["getmaindigitaltron", "getmaxdigitaltron", "helpofflinearze"], $tronnowpayments);
 $backmenu_register(["chashbackstar", "gethelpstar", "getmainaqstar", "maxbalancestar"], $Startelegram);
 $backmenu_register(["variza_api_token", "variza_webhook_secret", "getcashvariza", "getmainvariza", "getmaaxvariza", "helpvariza"], $keyboardvariza);
+$backmenu_register(["blupal_api_key", "blupal_card_number", "getcashblupal", "getmainblupal", "getmaaxblupal", "helpblupal"], $keyboardblupal);
 $backmenu_register([
     "addchannelid", "limit_usertest_allusers", "getimagebackgroundqr", "getpricereqagent",
     "getcronvolumere", "on_hold_day", "getdaycron", "getvolumewarn", "getdaywarn"
@@ -2771,6 +2772,37 @@ elseif ($datain == "systemsms") {
 } elseif ($user['step'] == "variza_webhook_secret") {
     sendmessage($from_id, $textbotlang['Admin']['SettingnowPayment']['saveApi'], $keyboardvariza, 'HTML');
     update("PaySetting", "ValuePay", trim($text), "NamePay", "variza_webhook_secret");
+    step('home', $from_id);
+} elseif ($text == $textbotlang['keyboard']['blupalApiKey'] && $adminrulecheck['rule'] == "administrator") {
+    $current = getPaySettingValue('blupal_api_key', '0');
+    $masked = ($current === '' || $current === '0') ? 'تنظیم نشده' : substr($current, 0, 8) . '••••••';
+    sendmessage($from_id, sprintf($textbotlang['Admin']['gateway']['askBlupalApiKey'], $masked), $backadmin, 'HTML');
+    step('blupal_api_key', $from_id);
+} elseif ($user['step'] == "blupal_api_key") {
+    $value = trim($text);
+    if ($value === '' || strlen($value) < 8) {
+        sendmessage($from_id, $textbotlang['common']['invalidInput'], $backadmin, 'HTML');
+        return;
+    }
+    update("PaySetting", "ValuePay", $value, "NamePay", "blupal_api_key");
+    sendmessage($from_id, $textbotlang['Admin']['SettingnowPayment']['saveApi'], $keyboardblupal, 'HTML');
+    step('home', $from_id);
+} elseif ($text == $textbotlang['keyboard']['blupalCardNumber'] && $adminrulecheck['rule'] == "administrator") {
+    $current = getPaySettingValue('blupal_card_number', '0');
+    sendmessage($from_id, sprintf($textbotlang['Admin']['gateway']['askBlupalCardNumber'], $current), $backadmin, 'HTML');
+    step('blupal_card_number', $from_id);
+} elseif ($user['step'] == "blupal_card_number") {
+    $value = preg_replace('/\D+/', '', trim($text));
+    if ($value !== '0' && strlen($value) !== 16) {
+        sendmessage($from_id, $textbotlang['common']['invalidInput'], $backadmin, 'HTML');
+        return;
+    }
+    update("PaySetting", "ValuePay", $value, "NamePay", "blupal_card_number");
+    sendmessage($from_id, $textbotlang['Admin']['SettingnowPayment']['saveApi'], $keyboardblupal, 'HTML');
+    step('home', $from_id);
+} elseif ($text == $textbotlang['keyboard']['blupalWebhookUrl'] && $adminrulecheck['rule'] == "administrator") {
+    $url = 'https://' . $domainhosts . '/payment/blupal_webhook.php';
+    sendmessage($from_id, sprintf($textbotlang['Admin']['gateway']['blupalWebhookInfo'], $url), $keyboardblupal, 'HTML');
     step('home', $from_id);
 } elseif ($text == $textbotlang['Admin']['btnKeyboard']['managementPanel'] && $adminrulecheck['rule'] == "administrator") {
     sendmessage($from_id, $textbotlang['Admin']['managepanel']['getLoc'], $json_list_marzban_panel, 'HTML');
@@ -6192,6 +6224,17 @@ if ($datain == "settimecornremove" && $adminrulecheck['rule'] == "administrator"
     sendmessage($from_id, $textbotlang['Admin']['price']['priceSaved'], $keyboardvariza, 'HTML');
     step("home", $from_id);
     update("PaySetting", "ValuePay", $text, "NamePay", "chashbackvariza");
+} elseif ($text == $textbotlang['keyboard']['cashbackBlupal']) {
+    sendmessage($from_id, $textbotlang['Admin']['price']['askPaymentCashback'], $backadmin, 'HTML');
+    step("getcashblupal", $from_id);
+} elseif ($user['step'] == "getcashblupal") {
+    if (!ctype_digit($text) || (int) $text > 100) {
+        sendmessage($from_id, $textbotlang['common']['invalidInput'], $backadmin, 'HTML');
+        return;
+    }
+    update("PaySetting", "ValuePay", $text, "NamePay", "chashbackblupal");
+    sendmessage($from_id, $textbotlang['Admin']['price']['priceSaved'], $keyboardblupal, 'HTML');
+    step("home", $from_id);
 } elseif ($text == $textbotlang['keyboard']['addConfig']) {
     $product = [];
     $stmt = $pdo->prepare("SELECT * FROM product WHERE Location = :text or Location = '/all' ");
@@ -6744,6 +6787,33 @@ if ($datain == "settimecornremove" && $adminrulecheck['rule'] == "administrator"
     sendmessage($from_id, $textbotlang['Admin']['Balance']['maxDepositSaved'], $keyboardvariza, 'HTML');
     step("home", $from_id);
     update("PaySetting", "ValuePay", $text, "NamePay", "maxbalancevariza");
+} elseif ($text == $textbotlang['keyboard']['minAmountBlupal']) {
+    sendmessage($from_id, $textbotlang['Admin']['Balance']['askMinDeposit'], $backadmin, 'HTML');
+    step("getmainblupal", $from_id);
+} elseif ($user['step'] == "getmainblupal") {
+    if (!ctype_digit($text) || (int) $text < 10000) {
+        sendmessage($from_id, $textbotlang['common']['invalidInput'], $backadmin, 'HTML');
+        return;
+    }
+    update("PaySetting", "ValuePay", $text, "NamePay", "minbalanceblupal");
+    sendmessage($from_id, $textbotlang['Admin']['Balance']['minDepositSaved'], $keyboardblupal, 'HTML');
+    step("home", $from_id);
+} elseif ($text == $textbotlang['keyboard']['maxAmountBlupal']) {
+    sendmessage($from_id, $textbotlang['Admin']['Balance']['askMaxDeposit'], $backadmin, 'HTML');
+    step("getmaaxblupal", $from_id);
+} elseif ($user['step'] == "getmaaxblupal") {
+    if (!ctype_digit($text)) {
+        sendmessage($from_id, $textbotlang['common']['invalidInput'], $backadmin, 'HTML');
+        return;
+    }
+    $minimum = (int) getPaySettingValue('minbalanceblupal', '10000');
+    if ((int) $text < $minimum) {
+        sendmessage($from_id, $textbotlang['common']['invalidInput'], $backadmin, 'HTML');
+        return;
+    }
+    update("PaySetting", "ValuePay", $text, "NamePay", "maxbalanceblupal");
+    sendmessage($from_id, $textbotlang['Admin']['Balance']['maxDepositSaved'], $keyboardblupal, 'HTML');
+    step("home", $from_id);
 } elseif ($datain == "walletaddress") {
     $PaySetting = select("PaySetting", "ValuePay", "NamePay", "walletaddress", "select");
     $texttronseller = sprintf($textbotlang['Admin']['gateway']['askTronWallet'], $PaySetting['ValuePay']);
@@ -7218,6 +7288,27 @@ if ($datain == "settimecornremove" && $adminrulecheck['rule'] == "administrator"
     }
     step('home', $from_id);
     sendmessage($from_id, $textbotlang['Admin']['Help']['tutorialSaved'], $CartManage, 'HTML');
+} elseif ($text == $textbotlang['keyboard']['setEducationBlupal'] && $adminrulecheck['rule'] == "administrator") {
+    sendmessage($from_id, $textbotlang['Admin']['Help']['askTutorialMedia'], $backadmin, 'HTML');
+    step("helpblupal", $from_id);
+} elseif ($user['step'] == "helpblupal") {
+    if ($text) {
+        if (intval($text) == 2) {
+            update("PaySetting", "ValuePay", "2", "NamePay", "helpblupal");
+        } else {
+            update("PaySetting", "ValuePay", json_encode(['type' => 'text', 'text' => $text]), "NamePay", "helpblupal");
+        }
+        sendmessage($from_id, $textbotlang['Admin']['Help']['saved'], $keyboardblupal, 'HTML');
+        step('home', $from_id);
+    } elseif (!empty($photoid)) {
+        update("PaySetting", "ValuePay", json_encode(['type' => 'photo', 'photoid' => $photoid, 'text' => $caption ?? '']), "NamePay", "helpblupal");
+        sendmessage($from_id, $textbotlang['Admin']['Help']['saved'], $keyboardblupal, 'HTML');
+        step('home', $from_id);
+    } elseif (!empty($videoid)) {
+        update("PaySetting", "ValuePay", json_encode(['type' => 'video', 'videoid' => $videoid, 'text' => $caption ?? '']), "NamePay", "helpblupal");
+        sendmessage($from_id, $textbotlang['Admin']['Help']['saved'], $keyboardblupal, 'HTML');
+        step('home', $from_id);
+    }
 } elseif ($text == $textbotlang['keyboard']['setEducationVariza'] && $adminrulecheck['rule'] == "administrator") {
     sendmessage($from_id, $textbotlang['Admin']['Help']['askTutorialMedia'], $backadmin, 'HTML');
     step("helpvariza", $from_id);
