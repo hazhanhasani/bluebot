@@ -21,6 +21,9 @@ $contracts = [
         "'X-API-Key: '",
         "'/api/subscriptions'",
         "'/api/services'",
+        "bool \$includeLinks = true",
+        "\$includeLinks ? solidlayerGetSubscriptionLinks",
+        "\$subscription['last_online_at'] ?? ''",
     ],
     'src/Panel/Adapters/ThreeXUI.php' => [
         '?keepTraffic=0',
