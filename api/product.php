@@ -63,6 +63,8 @@ function prod_products(array $data, string $method): void
 
 function prod_product(array $data, string $method): void
 {
+    global $pdo;
+
     validateMethod('GET', $method);
 
     if (!isset($data['id']) || empty($data['id'])) {
