@@ -26,7 +26,7 @@ Create the following patterns in FarazSMS. Variable names are case-sensitive and
 | `payment_success` | Order | `پرداخت %amount% تومان با موفقیت انجام شد. شماره سفارش: %order_id%` | `amount`: int, max 12; `order_id`: str, max 40 |
 | `payment_failed` | Order | `پرداخت سفارش %order_id% ناموفق بود.` | `order_id`: str, max 40 |
 | `wallet_charged` | Others | `کیف پول شما %amount% تومان شارژ شد. موجودی: %balance% تومان` | `amount`: int, max 12; `balance`: int, max 12 |
-| `admin_announcement` | Others | `اطلاعیه Blue VPN: %message%` | `message`: str, max 120 |
+| `admin_announcement` | Others | `اطلاعیه BlueBot: %message%` | `message`: str, max 120 |
 
 ### Variable rules
 
