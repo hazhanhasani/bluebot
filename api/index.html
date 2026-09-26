@@ -5,7 +5,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="robots" content="noindex, nofollow" />
-    <title>مستندات API — MirzaBot</title>
+    <title>مستندات API — BlueBot</title>
     <style>
         :root {
             --paper: #f2f5f4;
@@ -822,7 +822,7 @@
                         stroke-linejoin="round" />
                     <circle cx="16.75" cy="14.4" r="1.5" fill="currentColor" />
                 </svg>
-                <span>MirzaBot</span>
+                <span>BlueBot</span>
                 <span class="brand__sub">API</span>
             </div>
 
@@ -2026,7 +2026,7 @@
 
         /* ---------------- theme ---------------- */
         const themeBtn = document.getElementById("themeBtn");
-        const stored = localStorage.getItem("mirza-docs-theme");
+        const stored = localStorage.getItem("bluebot-docs-theme");
         if (stored) document.documentElement.dataset.theme = stored;
 
         themeBtn.addEventListener("click", () => {
@@ -2034,7 +2034,7 @@
             const current = document.documentElement.dataset.theme || (prefersDark ? "dark" : "light");
             const next = current === "dark" ? "light" : "dark";
             document.documentElement.dataset.theme = next;
-            localStorage.setItem("mirza-docs-theme", next);
+            localStorage.setItem("bluebot-docs-theme", next);
         });
     </script>
 </body>
