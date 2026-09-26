@@ -38,7 +38,8 @@ return [
         status_cron VARCHAR(20) NULL DEFAULT '1',
         expire VARCHAR(100) NULL,
         token VARCHAR(100) NULL,
-        lang VARCHAR(5) NULL DEFAULT 'fa'
+        lang VARCHAR(5) NULL DEFAULT 'fa',
+        sms_enabled TINYINT(1) NOT NULL DEFAULT 1
         SQL,
     'columns' => [
         ['username', 'none'],
@@ -69,5 +70,6 @@ return [
         ['expire', null, 'VARCHAR(100)'],
         ['token', null, 'VARCHAR(100)'],
         ['lang', 'fa', 'varchar(5)'],
+        ['sms_enabled', '1', 'TINYINT(1) NOT NULL DEFAULT 1'],
     ],
 ];
