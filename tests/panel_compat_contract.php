@@ -8,11 +8,11 @@ $contracts = [
     'Marzban.php' => [
         'rawurlencode((string) $username)',
         'Marzban delete returned an error after successful deletion',
-        "'group_ids' => \$inbounds",
+        "$data['group_ids'] = $inbounds",
         '"proxy_settings" => json_decode',
     ],
     'marzneshin.php' => [
-        "'expire_strategy' => 'never'",
+        "$data['expire_strategy'] = 'never'",
         "\$data['expire_strategy'] = 'start_on_first_use'",
         'date(DATE_ATOM',
         "'/api/admins/token'",
