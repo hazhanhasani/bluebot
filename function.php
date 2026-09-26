@@ -568,6 +568,44 @@ function rowExists($table, $field, $value)
         return false;
     }
 }
+function productNameLocationConflict(string $name, string $location, ?int $excludeId = null): bool
+{
+    global $pdo;
+
+    $name = trim($name);
+    $location = trim($location);
+    if ($name === '') {
+        return false;
+    }
+
+    $sql = "SELECT 1
+            FROM product
+            WHERE name_product = :name
+              AND (
+                    Location = :exact_location
+                    OR Location = '/all'
+                    OR :requested_location = '/all'
+                  )";
+
+    $params = [
+        ':name' => $name,
+        ':exact_location' => $location,
+        ':requested_location' => $location,
+    ];
+
+    if ($excludeId !== null && $excludeId > 0) {
+        $sql .= " AND id <> :exclude_id";
+        $params[':exclude_id'] = $excludeId;
+    }
+
+    $sql .= " LIMIT 1";
+
+    $stmt = $pdo->prepare($sql);
+    $stmt->execute($params);
+
+    return (bool) $stmt->fetchColumn();
+}
+
 function getPaySettingValue($name, $default = null)
 {
     $rows = select("PaySetting", "*", null, null, "fetchAll");
@@ -1050,9 +1088,17 @@ function DirectPayment($order_id, $image = null)
         if ($get_invoice['Status'] == "active") {
             return;
         }
-        $stmt = $pdo->prepare("SELECT * FROM product WHERE name_product = :name_product AND (Location = :Service_location  or Location = '/all')");
-        $stmt->bindParam(':name_product', $get_invoice['name_product'], PDO::PARAM_STR);
-        $stmt->bindParam(':Service_location', $get_invoice['Service_location'], PDO::PARAM_STR);
+        $stmt = $pdo->prepare(
+            "SELECT *
+             FROM product
+             WHERE name_product = :name_product
+               AND (Location = :service_location OR Location = '/all')
+             ORDER BY CASE WHEN Location = :exact_location THEN 0 ELSE 1 END, id ASC
+             LIMIT 1"
+        );
+        $stmt->bindValue(':name_product', $get_invoice['name_product'], PDO::PARAM_STR);
+        $stmt->bindValue(':service_location', $get_invoice['Service_location'], PDO::PARAM_STR);
+        $stmt->bindValue(':exact_location', $get_invoice['Service_location'], PDO::PARAM_STR);
         $stmt->execute();
         $info_product = $stmt->fetch(PDO::FETCH_ASSOC);
         if ($get_invoice['name_product'] == $textbotlang['users']['customSellVolume']['btnVolume'] || $get_invoice['name_product'] == $textbotlang['users']['customSellVolume']['btnService']) {
