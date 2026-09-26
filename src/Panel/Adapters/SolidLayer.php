@@ -504,7 +504,7 @@ function solidlayerSubscriptionStatus(array $subscription): string
     return 'active';
 }
 
-function solidlayerBluebotUser(string $location, string $username): array
+function solidlayerBluebotUser(string $location, string $username, bool $includeLinks = true): array
 {
     $result = solidlayerGetSubscription($location, $username);
     if (empty($result['ok'])) {
@@ -515,7 +515,9 @@ function solidlayerBluebotUser(string $location, string $username): array
     }
 
     $subscription = $result['data'];
-    $links = solidlayerGetSubscriptionLinks($location, $username);
+    // The service status screen does not need configuration links. Fetching
+    // /links lazily prevents a second remote API request from delaying the UI.
+    $links = $includeLinks ? solidlayerGetSubscriptionLinks($location, $username) : [];
     $subscriptionUrl = solidlayerAbsoluteSubscriptionUrl(
         $location,
         (string) ($subscription['subscription_link'] ?? '')
@@ -526,10 +528,12 @@ function solidlayerBluebotUser(string $location, string $username): array
         (int) ($subscription['total_usage'] ?? 0) - (int) ($subscription['reset_usage'] ?? 0)
     );
 
-    $onlineAt = 0;
-    if (!empty($subscription['last_online_at'])) {
-        $parsed = strtotime((string) $subscription['last_online_at']);
-        $onlineAt = $parsed === false ? 0 : $parsed;
+    // BlueBot's service detail renderer expects an ISO/date string here.
+    // Returning a Unix integer makes DateTime parse it as a date expression and
+    // throws DateMalformedStringException, leaving Telegram on the loading card.
+    $onlineAt = trim((string) ($subscription['last_online_at'] ?? ''));
+    if ($onlineAt === '') {
+        $onlineAt = null;
     }
 
     return [
