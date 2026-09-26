@@ -1,5 +1,6 @@
 <?php
 require_once 'config.php';
+require_once __DIR__ . '/src/Support/MiniApp.php';
 $setting = select("setting", "*", null, null, "select");
 $textbotlang = languagechange();
 //-----------------------------[  text panel  ]-------------------------------
@@ -37,10 +38,7 @@ $replacements = [
 ];
 $admin_idss = select("admin", "*", "id_admin", $from_id, "count");
 $temp_addtional_key = [];
-$miniAppHost = trim((string) ($domainhosts ?? ''));
-$miniAppHost = preg_replace('~^https?://~i', '', $miniAppHost);
-$miniAppHost = trim((string) $miniAppHost, '/');
-$miniAppUrl = $miniAppHost !== '' ? 'https://' . $miniAppHost . '/app/' : '';
+$miniAppUrl = bluebotMiniAppUrl();
 $miniAppButton = $miniAppUrl !== '' ? [
     'text' => $textbotlang['keyboard']['miniAppOpen'],
     'web_app' => ['url' => $miniAppUrl],
