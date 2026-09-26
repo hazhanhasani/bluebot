@@ -4,6 +4,17 @@
   var finished = false;
   var failureShown = false;
 
+  function escapeHtml(value) {
+    return String(value).replace(/[&<>"]/g, function (ch) {
+      return {
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        '"': '&quot;'
+      }[ch];
+    });
+  }
+
   function rootLooksUninitialized() {
     var root = document.getElementById('root');
     if (!root) return true;
@@ -26,9 +37,7 @@
         '<div class="bluebot-boot-card bluebot-boot-error">' +
           '<strong>پنل کاربری کامل بارگذاری نشد</strong>' +
           '<span>اتصال به فایل‌های Mini App یا محیط WebView تلگرام با خطا روبه‌رو شد.</span>' +
-          (diagnostic ? '<small>' + diagnostic.replace(/[&<>"]/g, function (ch) {' +
-            'return {"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;"}[ch];' +
-          '}) + '</small>' : '') +
+          (diagnostic ? '<small>' + escapeHtml(diagnostic) + '</small>' : '') +
           '<button type="button" id="bluebot-retry">تلاش مجدد</button>' +
         '</div>' +
       '</div>';
