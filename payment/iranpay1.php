@@ -68,6 +68,7 @@ if ($StatusPayment == 100) {
                 DirectPayment($invoice_id, "../images.jpg");
             } catch (Throwable $directPaymentError) {
                 error_log("DirectPayment failed for order {$invoice_id}: " . $directPaymentError->getMessage());
+                markPaymentDeliveryError($invoice_id, $directPaymentError->getMessage());
                 return;
             }
             $pricecashback = select("PaySetting", "ValuePay", "NamePay", "chashbackiranpay1", "select")['ValuePay'];
