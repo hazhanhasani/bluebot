@@ -2801,8 +2801,14 @@ elseif ($datain == "systemsms") {
     sendmessage($from_id, $textbotlang['Admin']['SettingnowPayment']['saveApi'], $keyboardblupal, 'HTML');
     step('home', $from_id);
 } elseif ($text == $textbotlang['keyboard']['blupalWebhookUrl'] && $adminrulecheck['rule'] == "administrator") {
-    $url = 'https://' . $domainhosts . '/payment/blupal_webhook.php';
-    sendmessage($from_id, sprintf($textbotlang['Admin']['gateway']['blupalWebhookInfo'], $url), $keyboardblupal, 'HTML');
+    $callbackUrl = 'https://' . $domainhosts . '/payment/blupal_callback.php';
+    $webhookUrl = 'https://' . $domainhosts . '/payment/blupal_webhook.php';
+    sendmessage(
+        $from_id,
+        sprintf($textbotlang['Admin']['gateway']['blupalWebhookInfo'], $callbackUrl, $webhookUrl),
+        $keyboardblupal,
+        'HTML'
+    );
     step('home', $from_id);
 } elseif ($text == $textbotlang['Admin']['btnKeyboard']['managementPanel'] && $adminrulecheck['rule'] == "administrator") {
     sendmessage($from_id, $textbotlang['Admin']['managepanel']['getLoc'], $json_list_marzban_panel, 'HTML');
