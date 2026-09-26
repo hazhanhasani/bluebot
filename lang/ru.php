@@ -1803,7 +1803,7 @@ trojan://xyz',
                         'on' => 'Включено',
                         'intro' => '📌 В списке ниже вы можете управлять шлюзами.
 
-⚠️ Команда Mirza не даёт никаких гарантий по шлюзам, всё использование и ответственность лежат на вас',
+⚠️ Команда BlueBot не даёт никаких гарантий по шлюзам, всё использование и ответственность лежат на вас',
                         'askPlisioApi' => '⚙️ Пожалуйста, отправьте ваш API Key для Plisio.
 
 🔑 Чтобы получить API ключ, посетите следующий сайт:
@@ -2388,12 +2388,12 @@ f,n.n2',
 ➖➖➖➖➖➖➖➖➖➖➖
 🔹 | Также, если вам нужна <b>помощь</b> или поддержка, вы можете связаться с командой поддержки в личных сообщениях.
 
-📩 | Чтобы отправить отчёт, предложение или запрос помощи, оставьте сообщение в <b>группе Mirza</b>:
-<a href="https://t.me/mirzapanelgroup" rel="nofollow" target="_blank">Mirza Group</a>',
+📩 | Чтобы отправить отчёт, предложение или запрос помощи, оставьте сообщение в <b>группе BlueBot</b>:
+<a href="https://t.me/mirzapanelgroup" rel="nofollow" target="_blank">BlueBot Group</a>',
                         'aboutBot' => '💎 | Version Bot: %s
 📌 | Version Mini App: 0.1.1
 
-<blockquote>🔹 | Этот бот полностью бесплатный и разработан командой Mirza</blockquote>
+<blockquote>🔹 | Этот бот полностью бесплатный и разработан командой BlueBot</blockquote>
 
 <blockquote>🔹 | Любая продажа или взимание платы за этого бота считается нарушением.</blockquote>
 
@@ -4160,7 +4160,7 @@ ID пользователя : %s
                 'zarinPalMerchant' => 'Продавец ZarinPal',
                 'zeroBalance' => '0️⃣ Обнулить баланс',
                 'panelSetting' => '🎛 Настройка панели',
-                'mirzaAgentPanel' => 'Агент Mirza',
+                'mirzaAgentPanel' => 'Панель агента / реселлера',
                 'setGroupName' => '🎛 Настройка имени группы',
                 'subLinkDomain' => '🔗 Домен ссылки подписки',
                 'panelTypeSanaei' => 'Sanaei один порт',
@@ -4296,10 +4296,10 @@ ID пользователя : %s
                 'jsSidebarCollapsed' => 'Свёрнутое меню включено',
                 'jsSidebarExpanded' => 'Открытое меню включено',
                 'jsThemeActivated' => 'Тема «{name}» включена',
-                'keyboardManageTitle' => 'Панель администратора Mirza Bot',
+                'keyboardManageTitle' => 'Панель администратора BlueBot',
                 'keyboardSaveBtn' => 'Вернуться в режим по умолчанию',
                 'keyboardSortHint' => 'Вернуться в панель пользователя',
-                'layoutBrandName' => 'Панель администратора Mirza Bot',
+                'layoutBrandName' => 'Панель администратора BlueBot',
                 'layoutDefaultAdminName' => 'Администратор',
                 'layoutFooterCopyright' => 'Панель управления',
                 'layoutFooterLinkDocs' => 'Настройки',
@@ -4316,7 +4316,7 @@ ID пользователя : %s
                 'layoutNavLogout' => 'Управление',
                 'layoutNavOrders' => 'Да, продолжить',
                 'layoutNavPayments' => '· Панель',
-                'layoutNavProducts' => 'Mirza',
+                'layoutNavProducts' => 'BlueBot',
                 'layoutNavServices' => 'Отмена',
                 'layoutNavSettings' => 'Панель управления',
                 'layoutNavUsers' => 'Вы уверены? Эта операция необратима.',
@@ -4329,7 +4329,7 @@ ID пользователя : %s
                 'layoutPageTitleProduct' => 'Продукты',
                 'layoutPageTitleService' => 'Сервисы',
                 'layoutPageTitleSettings' => 'Настройки',
-                'layoutPageTitleSuffix' => 'Mirza',
+                'layoutPageTitleSuffix' => 'BlueBot',
                 'layoutPageTitleUsers' => 'Пользователи',
                 'layoutProfileMenuLabel' => 'Настройки',
                 'layoutSearchBoxPlaceholder' => 'Транзакции',
@@ -4339,11 +4339,11 @@ ID пользователя : %s
                 'loginEnterCredentials' => 'Введите имя пользователя и пароль.',
                 'loginErrorTitle' => 'Пароль',
                 'loginFooter' => 'Имя пользователя',
-                'loginHeading' => 'Панель администратора Mirza',
+                'loginHeading' => 'Панель администратора BlueBot',
                 'loginHidePassword' => 'Доступ к этой панели разрешён только авторизованным администраторам.',
-                'loginPanelTitle' => 'Вход — Панель администратора Mirza',
-                'loginPasswordLabel' => 'Панель администратора Mirza',
-                'loginPasswordPlaceholder' => '· Версия 1.0 Mirza',
+                'loginPanelTitle' => 'Вход — Панель администратора BlueBot',
+                'loginPasswordLabel' => 'Панель администратора BlueBot',
+                'loginPasswordPlaceholder' => '· Версия 1.0 BlueBot',
                 'loginRememberMe' => 'Чтобы управлять ботом, введите данные вашего аккаунта.',
                 'loginShowPassword' => 'Вход в панель',
                 'loginSubtitle' => 'Для поддержки, пожалуйста ',
