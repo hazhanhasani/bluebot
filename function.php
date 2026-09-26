@@ -996,10 +996,38 @@ function addBalance($userId, $amount)
 function claimPaymentPaid($order_id)
 {
     global $pdo;
-    $stmt = $pdo->prepare("UPDATE Payment_report SET payment_Status = 'paid' WHERE id_order = :id_order AND payment_Status <> 'paid'");
+    $stmt = $pdo->prepare(
+        "UPDATE Payment_report
+         SET payment_Status = 'paid', at_updated = :at_updated
+         WHERE id_order = :id_order
+           AND COALESCE(payment_Status, '') NOT IN ('paid', 'delivery_error')"
+    );
     $stmt->bindValue(':id_order', $order_id);
+    $stmt->bindValue(':at_updated', date('Y/m/d H:i:s'));
     $stmt->execute();
     clearSelectCache('Payment_report');
+    return $stmt->rowCount() >= 1;
+}
+
+function markPaymentDeliveryError($order_id, $reason = '')
+{
+    global $pdo;
+
+    $stmt = $pdo->prepare(
+        "UPDATE Payment_report
+         SET payment_Status = 'delivery_error', at_updated = :at_updated
+         WHERE id_order = :id_order AND payment_Status = 'paid'"
+    );
+    $stmt->bindValue(':id_order', $order_id);
+    $stmt->bindValue(':at_updated', date('Y/m/d H:i:s'));
+    $stmt->execute();
+    clearSelectCache('Payment_report');
+
+    $reason = trim((string) $reason);
+    if ($reason !== '') {
+        error_log("Payment delivery error for order {$order_id}: {$reason}");
+    }
+
     return $stmt->rowCount() >= 1;
 }
 
