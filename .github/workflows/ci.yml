@@ -88,8 +88,9 @@ jobs:
           set -euo pipefail
           test -f src/Support/Logger.php
           test -f src/Support/Diagnostics.php
-          grep -Fq "delivery_reviewed" function.php
-          grep -Fq "NOT IN ('paid', 'delivery_error', 'delivery_reviewed')" function.php
+          test -f src/Payment/PaymentState.php
+          grep -Fq "delivery_reviewed" src/Payment/PaymentState.php
+          grep -Fq "NOT IN ('paid', 'delivery_error', 'delivery_reviewed')" src/Payment/PaymentState.php
           grep -Fq "review_delivery" panel/payment.php
           grep -Fq "csrf_check_post();" panel/payment.php
           grep -Fq "CURLPROTO_HTTP | CURLPROTO_HTTPS" request.php
