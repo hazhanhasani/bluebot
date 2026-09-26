@@ -119,6 +119,7 @@ try {
     DirectPayment($order_id, __DIR__ . "/../images.jpg");
 } catch (Throwable $e) {
     error_log("variza webhook: DirectPayment failed for {$order_id}: " . $e->getMessage());
+    markPaymentDeliveryError($order_id, $e->getMessage());
     variza_webhook_respond(500, 'delivery failed');
 }
 
