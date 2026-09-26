@@ -131,6 +131,8 @@ if ($text === "/debug") {
         . "</code>";
     if ($miniAppState === 'cloudflare_empty_worker') {
         $debugText .= "\n⚠️ Cloudflare Worker/Route روی دامنه Mini App فعال است اما Deployment معتبر ندارد.";
+    } elseif ($miniAppState === 'cdn_challenge') {
+        $debugText .= "\n⚠️ CDN/WAF برای Mini App صفحه Challenge برمی‌گرداند. مسیر /app و /api باید از Challenge/Under Attack مستثنا شوند.";
     }
     sendmessage($from_id, $debugText, null, 'HTML');
     return;
