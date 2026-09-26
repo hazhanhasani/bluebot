@@ -778,14 +778,82 @@ _dot() {
 _sec() { printf "\n  ${C_KEY}▌${CR} ${C_TITLE}%s${CR}\n" "$1"; _rule; }
 _kv()  { printf "    ${C_DIM}%-11s${CR}${C_BORDER}:${CR} %b${CR}\n" "$1" "$2"; }
 
-# Read the installed version from the source 'version' file
-get_installed_version() {
-    if [ -f "$BOT_DIR_DEFAULT/version" ]; then
-        tr -d ' \t\r\n' < "$BOT_DIR_DEFAULT/version"
-    else
-        echo ""
-    fi
+# Installed build metadata lives under storage/ so it survives updates.
+installed_build_state_path() {
+    echo "$BOT_DIR_DEFAULT/storage/update/build.json"
 }
+
+get_installed_build_field() {
+    local field="$1" state
+    state="$(installed_build_state_path)"
+    [ -s "$state" ] || return 0
+    php -r '
+        $j=json_decode((string)@file_get_contents($argv[1]),true);
+        if (is_array($j) && isset($j[$argv[2]]) && is_scalar($j[$argv[2]])) {
+            echo (string)$j[$argv[2]];
+        }
+    ' "$state" "$field" 2>/dev/null
+}
+
+get_installed_version() {
+    local base channel ref short
+    if [ -f "$BOT_DIR_DEFAULT/version" ]; then
+        base=$(tr -d ' \t\r\n' < "$BOT_DIR_DEFAULT/version")
+    else
+        base=""
+    fi
+
+    channel=$(get_installed_build_field channel)
+    ref=$(get_installed_build_field ref)
+
+    if [ "$channel" = "beta" ] && [ -n "$ref" ]; then
+        short="${ref:0:7}"
+        if [ -n "$base" ]; then
+            echo "${base}-beta+${short}"
+        else
+            echo "beta+${short}"
+        fi
+        return 0
+    fi
+
+    echo "$base"
+}
+
+get_main_commit_sha() {
+    local json sha
+    json=$(curl -fsSL --max-time 8 "https://api.github.com/repos/${GIT_REPO}/commits/main" 2>/dev/null) || return 1
+    if command -v jq >/dev/null 2>&1; then
+        sha=$(echo "$json" | jq -r '.sha // empty' 2>/dev/null)
+    else
+        sha=$(echo "$json" | grep -oE '"sha"[[:space:]]*:[[:space:]]*"[0-9a-f]{40}"' | head -1 | grep -oE '[0-9a-f]{40}')
+    fi
+    [ -n "$sha" ] && echo "$sha"
+}
+
+record_installed_build() {
+    local channel="$1" ref="$2" label="$3"
+    local state_dir="$BOT_DIR_DEFAULT/storage/update"
+    local base=""
+
+    [ -f "$BOT_DIR_DEFAULT/version" ] && base=$(tr -d ' \t\r\n' < "$BOT_DIR_DEFAULT/version")
+    mkdir -p "$state_dir" || return 1
+
+    php -r '
+        $payload = [
+            "channel" => $argv[2],
+            "ref" => $argv[3],
+            "label" => $argv[4],
+            "base_version" => $argv[5],
+            "installed_at" => gmdate(DATE_ATOM),
+        ];
+        $json = json_encode($payload, JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES|JSON_PRETTY_PRINT);
+        exit(file_put_contents($argv[1], $json . PHP_EOL, LOCK_EX) === false ? 1 : 0);
+    ' "$state_dir/build.json" "$channel" "$ref" "$label" "$base" || return 1
+
+    chown www-data:www-data "$state_dir/build.json" 2>/dev/null || true
+    chmod 0640 "$state_dir/build.json" 2>/dev/null || true
+}
+
 
 # Get latest version (newest git tag) from GitHub, cached for 1 hour
 get_latest_version() {
