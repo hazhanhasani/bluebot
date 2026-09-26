@@ -2383,7 +2383,7 @@ f,n.n2',
 ➖➖➖➖➖➖➖➖➖➖➖
 🔹 | اگر پیشنهادی برای <b>افزودن قابلیت جدید</b> دارید یا ایده‌ای برای بهبود عملکرد ربات در نظر دارید، خوشحال می‌شویم بشنویم.
 ➖➖➖➖➖➖➖➖➖➖➖
-🔹 | همچنین اگر نیاز به <b>راهنمایی</b> یا کمک دارید، می‌توانید از طریق دایرکت با تیم پشتیبانی در ارتباط باشید.
+🔹 | همچنین اگر نیاز به <b>راهنمایی</b> یا کمک دارید، می‌توانید از صفحه Issues پروژه استفاده کنید.
 
 📩 | برای ارسال گزارش، پیشنهاد یا درخواست راهنمایی، در <b>صفحه گزارش مشکلات BlueBot</b> پیام بگذارید:
 <a href="https://github.com/hazhanhasani/bluebot/issues" rel="nofollow" target="_blank">BlueBot Issues</a>',
@@ -4324,15 +4324,14 @@ f,n.n2',
                 'loginHeading' => 'پنل مدیریت BlueBot',
                 'loginHidePassword' => 'دسترسی به این پنل فقط برای مدیران مجاز است.',
                 'loginPanelTitle' => 'ورود — پنل مدیریت BlueBot',
-                'loginPasswordLabel' => 'پنل مدیریت BlueBot',
-                'loginPasswordPlaceholder' => '· نسخه BlueBot',
+                'loginPasswordLabel' => 'BlueBot Admin',
+                'loginPasswordPlaceholder' => '· BlueBot',
                 'loginRememberMe' => 'برای مدیریت ربات، اطلاعات حساب خود را وارد کنید.',
                 'loginShowPassword' => 'ورود به پنل',
-                'loginSubtitle' => 'برای حمایت لطفا به',
+                'loginSubtitle' => 'مخزن رسمی',
                 'loginTooManyAttempts' => 'تعداد تلاش‌های ناموفق بیش از حد. لطفاً ۱۵ دقیقه صبر کنید.',
-                'loginUsernameLabel' => 'پروژه',
-                'loginUsernamePlaceholder' => 'استار و
-          دونیت دهید',
+                'loginUsernameLabel' => 'BlueBot',
+                'loginUsernamePlaceholder' => 'در GitHub',
                 'loginWelcomeBack' => 'خوش آمدید، ',
                 'loginWrongCredentials' => 'نام کاربری یا رمز عبور اشتباه است.',
                 'paymentAllMethods' => 'از ابتدای فعالیت',
