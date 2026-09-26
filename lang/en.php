@@ -3908,6 +3908,7 @@ We hope you had a good experience with the ease and speed of your service. If yo
                 'generalLimit' => '↙️ Overall limit',
                 'generalSettings' => '⚙️ General settings',
                 'updateCenter' => '🔄 BlueBot update',
+                'miniAppOpen' => '📱 User panel',
                 'getAllConfigs' => '⚙️ Get all configs',
                 'getConfig' => 'Get config',
                 'getConfigBtn' => '🔗 Get config button',
