@@ -40,9 +40,19 @@ src/
 │       └── Rebecca.php
 ├── Payment/
 └── Support/
+    ├── Diagnostics.php
+    ├── InstallerGuard.php
+    ├── JalaliDate.php
+    └── Logger.php
 ```
 
 `panels.php` is the only root-level orchestrator for panel adapters. New external panel integrations should be added to `src/Panel/Adapters/`.
+
+## Assets and runtime state
+
+- `assets/images/qr-background.jpg` — tracked default QR background
+- `storage/qr/background.jpg` — administrator-defined runtime QR background; untracked
+- Runtime-generated files belong under `storage/`, never in the repository root.
 
 ## Runtime and web surfaces
 
