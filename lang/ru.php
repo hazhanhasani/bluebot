@@ -1850,11 +1850,15 @@ nowpayments.io
                         'askBlupalCardNumber' => '💳 Введите 16-значный номер карты Blupal. Поле необязательное; отправьте 0 для очистки.
 
 Текущая карта: <code>%s</code>',
-                        'blupalWebhookInfo' => '🔗 URL вебхука Blupal:
+                        'blupalWebhookInfo' => '🔷 <b>URL интеграции Blupal</b>
 
+↩️ <b>Callback URL</b> — обязателен в панели Blupal:
 <code>%s</code>
 
-Зарегистрируйте этот URL в настройках Blupal.',
+⚡ <b>Webhook URL</b>:
+<code>%s</code>
+
+Зарегистрируйте оба HTTPS-адреса.',
                         'askZarinpalMerchant' => '💳 Получите ваш код продавца от ZarinPal и введите его в этом разделе
         
 Ваш текущий код продавца: %s',
@@ -4186,7 +4190,7 @@ ID пользователя : %s
                 'blupalGateway' => 'Blupal',
                 'blupalApiKey' => '🔑 API-ключ Blupal',
                 'blupalCardNumber' => '💳 Карта Blupal',
-                'blupalWebhookUrl' => '🔗 Webhook Blupal',
+                'blupalWebhookUrl' => '🔗 Callback / Webhook Blupal',
                 'cashbackBlupal' => '🎁 Кэшбэк Blupal',
                 'minAmountBlupal' => '⬇️ Минимум Blupal',
                 'maxAmountBlupal' => '⬆️ Максимум Blupal',
