@@ -42,6 +42,30 @@ if ($apiHtaccess === false || !str_contains($apiHtaccess, 'CDN-Cache-Control "no
     $failures[] = 'Authenticated API responses are not explicitly protected from CDN caching.';
 }
 
+$miniAppSupport = @file_get_contents($root . '/src/Support/MiniApp.php');
+$keyboard = @file_get_contents($root . '/keyboard.php');
+$indexSource = @file_get_contents($root . '/index.php');
+
+if ($keyboard === false || !str_contains($keyboard, '$miniAppUrl = bluebotMiniAppUrl();')) {
+    $failures[] = 'Main keyboard Mini App button must use the active runtime Mini App URL.';
+}
+if ($keyboard !== false && str_contains($keyboard, '$miniAppHost = trim((string) ($domainhosts')) {
+    $failures[] = 'Main keyboard must not rebuild Mini App URL from stale config domain.';
+}
+if ($miniAppSupport === false || !str_contains($miniAppSupport, '$host = bluebotPublicDomain();')) {
+    $failures[] = 'Mini App URL must resolve through the current runtime domain.';
+}
+if ($miniAppSupport !== false) {
+    $runtimePos = strpos($miniAppSupport, '$host = bluebotPublicDomain();');
+    $legacyOverridePos = strpos($miniAppSupport, "getenv('BLUEBOT_MINIAPP_URL')");
+    if ($runtimePos === false || $legacyOverridePos === false || $runtimePos > $legacyOverridePos) {
+        $failures[] = 'Current bot domain must take priority over a legacy Worker/CDN Mini App override.';
+    }
+}
+if ($indexSource === false || !str_contains($indexSource, 'bluebotAdoptRuntimeIdentity(true, true);')) {
+    $failures[] = 'Authenticated webhook flow must persist the current bot/domain identity.';
+}
+
 $miniApi = @file_get_contents($root . '/api/miniapp.php');
 if ($miniApi === false || !str_contains($miniApi, "/src/Support/JalaliDate.php")) {
     $failures[] = 'Mini App API does not load JalaliDate from the organized path.';
