@@ -70,6 +70,9 @@ jobs:
       - name: In-bot updater contracts
         run: php tests/inbot_updater_contract.php
 
+      - name: Installed build version tests
+        run: php tests/installed_build_version_test.php
+
       - name: Trusted proxy webhook tests
         run: php tests/trusted_proxy_test.php
 
