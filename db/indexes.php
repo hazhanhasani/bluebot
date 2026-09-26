@@ -18,4 +18,9 @@ return [
     ['service_other', 'idx_serviceother_type', '`type`(100)'],
     ['user', 'idx_user_affiliates', '`affiliates`'],
     ['departman', 'uniq_departman_entry', '`idsupport`(100), `name_departman`(150)', true],
+    ['sms_deliveries', 'uniq_sms_dedupe', '`dedupe_key`', true],
+    ['sms_deliveries', 'idx_sms_status_next', '`status`(30), `next_attempt_at`'],
+    ['sms_deliveries', 'idx_sms_user_created', '`user_id`(100), `created_at`'],
+    ['sms_deliveries', 'idx_sms_event', '`event_key`(80)'],
+    ['sms_deliveries', 'idx_sms_invoice', '`invoice_id`(100)'],
 ];
