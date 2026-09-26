@@ -2540,6 +2540,41 @@ function sendMessageService($panel_info, $config, $sub_link, $username_service, 
         }
     }
 }
+
+/**
+ * Legacy installer helper aliases kept for existing integrations.
+ * New BlueBot code should use the bluebot* names above.
+ */
+function mirzaRemoveInstallerPath($path)
+{
+    return bluebotRemoveInstallerPath($path);
+}
+
+function mirzaInstallerNoticeTexts()
+{
+    return bluebotInstallerNoticeTexts();
+}
+
+function mirzaShouldAlertInstallerAdmin($cooldown = 3600)
+{
+    return bluebotShouldAlertInstallerAdmin($cooldown);
+}
+
+function mirzaNotifyInstallerBlocked()
+{
+    return bluebotNotifyInstallerBlocked();
+}
+
+function mirzaStopForInstaller($message)
+{
+    return bluebotStopForInstaller($message);
+}
+
+function mirzaEnsureInstallerRemoved()
+{
+    return bluebotEnsureInstallerRemoved();
+}
+
 function isValidInvitationCode($setting, $fromId, $verfy_status)
 {
     global $textbotlang;
@@ -2718,7 +2753,7 @@ function parseConfigs($input)
     return $configs;
 }
 
-function mirzaRemoveInstallerPath($path)
+function bluebotRemoveInstallerPath($path)
 {
     if (is_link($path) || is_file($path)) {
         return @unlink($path);
@@ -2737,13 +2772,13 @@ function mirzaRemoveInstallerPath($path)
         if ($entry === '.' || $entry === '..') {
             continue;
         }
-        $removed = mirzaRemoveInstallerPath($path . '/' . $entry) && $removed;
+        $removed = bluebotRemoveInstallerPath($path . '/' . $entry) && $removed;
     }
 
     return @rmdir($path) && $removed;
 }
 
-function mirzaInstallerNoticeTexts()
+function bluebotInstallerNoticeTexts()
 {
     global $textbotlang;
     $lang = is_array($textbotlang) && !empty($textbotlang) ? $textbotlang : null;
@@ -2757,7 +2792,7 @@ function mirzaInstallerNoticeTexts()
     ];
 }
 
-function mirzaShouldAlertInstallerAdmin($cooldown = 3600)
+function bluebotShouldAlertInstallerAdmin($cooldown = 3600)
 {
     $cacheDir = __DIR__ . '/storage/cache';
     if (!is_dir($cacheDir) && !@mkdir($cacheDir, 0775, true) && !is_dir($cacheDir)) {
@@ -2772,28 +2807,28 @@ function mirzaShouldAlertInstallerAdmin($cooldown = 3600)
     return true;
 }
 
-function mirzaNotifyInstallerBlocked()
+function bluebotNotifyInstallerBlocked()
 {
     global $from_id, $adminnumber;
     if (!function_exists('sendmessage')) {
         return;
     }
-    $texts = mirzaInstallerNoticeTexts();
+    $texts = bluebotInstallerNoticeTexts();
     $adminId = isset($adminnumber) ? trim((string) $adminnumber) : '';
     $userId = isset($from_id) ? trim((string) $from_id) : '';
     $userIsAdmin = $adminId !== '' && $userId === $adminId;
     if ($userId !== '' && !isTelegramChatIdEmpty($userId)) {
         sendmessage($userId, $userIsAdmin ? $texts['admin'] : $texts['user'], null, 'HTML');
     }
-    if (!$userIsAdmin && $adminId !== '' && mirzaShouldAlertInstallerAdmin()) {
+    if (!$userIsAdmin && $adminId !== '' && bluebotShouldAlertInstallerAdmin()) {
         sendmessage($adminId, $texts['admin'], null, 'HTML');
     }
 }
 
-function mirzaStopForInstaller($message)
+function bluebotStopForInstaller($message)
 {
     error_log($message);
-    mirzaNotifyInstallerBlocked();
+    bluebotNotifyInstallerBlocked();
     if (!headers_sent()) {
         http_response_code(200);
         header('Content-Type: text/plain; charset=utf-8');
@@ -2803,14 +2838,14 @@ function mirzaStopForInstaller($message)
     exit;
 }
 
-function mirzaEnsureInstallerRemoved()
+function bluebotEnsureInstallerRemoved()
 {
     $installerDirectory = __DIR__ . '/install';
     if (!is_dir($installerDirectory)) {
         return;
     }
 
-    if (!mirzaRemoveInstallerPath($installerDirectory)) {
-        mirzaStopForInstaller('BlueBot install folder still exists and could not be removed automatically; delete it manually to enable the bot.');
+    if (!bluebotRemoveInstallerPath($installerDirectory)) {
+        bluebotStopForInstaller('BlueBot install folder still exists and could not be removed automatically; delete it manually to enable the bot.');
     }
 }
