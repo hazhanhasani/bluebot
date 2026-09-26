@@ -2507,8 +2507,8 @@ EOF
     if [ -f "/root/install.sh" ]; then
         sudo chmod +x /root/install.sh
         sudo ln -sf /root/install.sh /usr/local/bin/bluebot
-    ln -sf /root/install.sh /usr/local/bin/mirza
-        echo -e "\e[92mEnsured /root/install.sh is executable and 'mirza' command is linked.\033[0m"
+        sudo ln -sf /root/install.sh /usr/local/bin/mirza
+        echo -e "\e[92mEnsured /root/install.sh is executable and BlueBot command aliases are linked.\033[0m"
     else
         echo -e "\e[91mError: /root/install.sh not found after update attempt.\033[0m"
     fi
@@ -2840,7 +2840,7 @@ print_usage() {
   BlueBot - management script
 
   Usage:
-    mirza [command] [options]
+    bluebot [command] [options]
 
   Commands:
     install            Install BlueBot
