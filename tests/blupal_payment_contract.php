@@ -14,32 +14,58 @@ function contractContains(string $source, string $needle, string $message, array
 
 $helper = (string) @file_get_contents($root . '/src/Payment/Blupal.php');
 contractContains($helper, "'https://blupal.top/api'", 'Blupal production API base URL is missing.', $failures);
-contractContains($helper, "'X-API-Key: ' . $apiKey", 'Blupal authentication header is missing.', $failures);
+contractContains($helper, <<<'PHP'
+'X-API-Key: ' . $apiKey
+PHP, 'Blupal authentication header is missing.', $failures);
 contractContains($helper, "'/v1/invoices/create'", 'Blupal invoice creation endpoint is missing.', $failures);
-contractContains($helper, "'/v1/invoices/' . rawurlencode($invoiceId)", 'Blupal invoice verification endpoint is missing.', $failures);
-contractContains($helper, "$amountToman * 10", 'Blupal Toman-to-Rial conversion is missing.', $failures);
+contractContains($helper, <<<'PHP'
+'/v1/invoices/' . rawurlencode($invoiceId)
+PHP, 'Blupal invoice verification endpoint is missing.', $failures);
+contractContains($helper, <<<'PHP'
+$amountToman * 10
+PHP, 'Blupal Toman-to-Rial conversion is missing.', $failures);
 contractContains($helper, 'CURLOPT_PROTOCOLS => CURLPROTO_HTTPS', 'Blupal client must restrict transport to HTTPS.', $failures);
 contractContains($helper, 'CURLOPT_SSL_VERIFYPEER => true', 'Blupal TLS peer verification must remain enabled.', $failures);
-contractContains($helper, "if ($status !== 'PAID')", 'Blupal settlement must require remote PAID status.', $failures);
+contractContains($helper, <<<'PHP'
+if ($status !== 'PAID')
+PHP, 'Blupal settlement must require remote PAID status.', $failures);
 contractContains($helper, 'expectedRial', 'Blupal settlement must compare the remote amount.', $failures);
-contractContains($helper, 'claimPaymentPaid($orderId)', 'Blupal settlement must use idempotent payment claiming.', $failures);
-contractContains($helper, 'markPaymentDeliveryError($orderId', 'Blupal delivery failures must be recorded.', $failures);
+contractContains($helper, <<<'PHP'
+claimPaymentPaid($orderId)
+PHP, 'Blupal settlement must use idempotent payment claiming.', $failures);
+contractContains($helper, <<<'PHP'
+markPaymentDeliveryError($orderId
+PHP, 'Blupal delivery failures must be recorded.', $failures);
 
 $webhook = (string) @file_get_contents($root . '/payment/blupal_webhook.php');
-contractContains($webhook, "$_SERVER['REQUEST_METHOD'] !== 'POST'", 'Blupal webhook must be POST-only.', $failures);
-contractContains($webhook, "payment.completed", 'Blupal webhook payment.completed event support is missing.', $failures);
-contractContains($webhook, "bluebotBlupalSettle($invoiceId)", 'Blupal webhook must re-verify payment through the authenticated API.', $failures);
+contractContains($webhook, <<<'PHP'
+$_SERVER['REQUEST_METHOD'] !== 'POST'
+PHP, 'Blupal webhook must be POST-only.', $failures);
+contractContains($webhook, 'payment.completed', 'Blupal webhook payment.completed event support is missing.', $failures);
+contractContains($webhook, <<<'PHP'
+bluebotBlupalSettle($invoiceId)
+PHP, 'Blupal webhook must re-verify payment through the authenticated API.', $failures);
 contractContains($webhook, 'payload_too_large', 'Blupal webhook payload size guard is missing.', $failures);
 
 $index = (string) @file_get_contents($root . '/index.php');
-contractContains($index, '$datain == "blupal"', 'Blupal buyer checkout branch is missing.', $failures);
-contractContains($index, "'blupal', $invoice", 'Blupal payment report method is missing.', $failures);
-contractContains($index, '"dec_not_confirmed", $remoteInvoiceId', 'Blupal remote invoice ID is not persisted.', $failures);
+contractContains($index, <<<'PHP'
+$datain == "blupal"
+PHP, 'Blupal buyer checkout branch is missing.', $failures);
+contractContains($index, <<<'PHP'
+'blupal', $invoice
+PHP, 'Blupal payment report method is missing.', $failures);
+contractContains($index, <<<'PHP'
+"dec_not_confirmed", $remoteInvoiceId
+PHP, 'Blupal remote invoice ID is not persisted.', $failures);
 contractContains($index, 'blupalcheck_', 'Blupal manual payment verification action is missing.', $failures);
-contractContains($index, 'bluebotBlupalSettle($remoteInvoiceId)', 'Blupal manual verification must use authenticated remote verification.', $failures);
+contractContains($index, <<<'PHP'
+bluebotBlupalSettle($remoteInvoiceId)
+PHP, 'Blupal manual verification must use authenticated remote verification.', $failures);
 
 $keyboard = (string) @file_get_contents($root . '/keyboard.php');
-contractContains($keyboard, "'blupal' => ['label' => $textbotlang['keyboard']['blupalGateway']", 'Blupal is missing from payment gateway administration.', $failures);
+contractContains($keyboard, <<<'PHP'
+'blupal' => ['label' => $textbotlang['keyboard']['blupalGateway']
+PHP, 'Blupal is missing from payment gateway administration.', $failures);
 contractContains($keyboard, 'bluebotBlupalConfigured()', 'Blupal buyer button must remain hidden until credentials are configured.', $failures);
 
 $settings = (string) @file_get_contents($root . '/db/tables/PaySetting.php');
