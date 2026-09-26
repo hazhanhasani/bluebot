@@ -1748,10 +1748,26 @@ function webhookSecretMatches($secret)
     return is_string($received) && $received !== '' && hash_equals($secret, $received);
 }
 
-function ensureWebhookSecret()
+function bluebotSetMainWebhook($secret)
 {
     global $domainhosts;
 
+    $secret = trim((string) $secret);
+    $host = trim((string) $domainhosts);
+    if ($secret === '' || $host === '') {
+        return false;
+    }
+
+    $response = telegram('setWebhook', [
+        'url' => "https://$host/index.php?secret=$secret",
+        'drop_pending_updates' => false,
+    ]);
+
+    return is_array($response) && !empty($response['ok']);
+}
+
+function ensureWebhookSecret()
+{
     $stored = (string) (select("setting", "*")['webhook_secret'] ?? '');
     if ($stored !== '') {
         return ['secret' => $stored, 'created' => false];
@@ -1765,9 +1781,7 @@ function ensureWebhookSecret()
         $secret = $stored;
     }
 
-    telegram('setWebhook', [
-        'url' => "https://$domainhosts/index.php?secret=$secret",
-    ]);
+    bluebotSetMainWebhook($secret);
 
     return ['secret' => $secret, 'created' => true];
 }
