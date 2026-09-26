@@ -1,6 +1,7 @@
 <?php
 require_once __DIR__ . '/vendor/autoload.php';
 require_once __DIR__ . '/src/Support/Logger.php';
+require_once __DIR__ . '/src/Support/InstallerGuard.php';
 require_once __DIR__ . '/src/Payment/PaymentState.php';
 require_once __DIR__ . '/config.php';
 ini_set('error_log', 'error_log');
@@ -2541,40 +2542,6 @@ function sendMessageService($panel_info, $config, $sub_link, $username_service, 
     }
 }
 
-/**
- * Legacy installer helper aliases kept for existing integrations.
- * New BlueBot code should use the bluebot* names above.
- */
-function mirzaRemoveInstallerPath($path)
-{
-    return bluebotRemoveInstallerPath($path);
-}
-
-function mirzaInstallerNoticeTexts()
-{
-    return bluebotInstallerNoticeTexts();
-}
-
-function mirzaShouldAlertInstallerAdmin($cooldown = 3600)
-{
-    return bluebotShouldAlertInstallerAdmin($cooldown);
-}
-
-function mirzaNotifyInstallerBlocked()
-{
-    return bluebotNotifyInstallerBlocked();
-}
-
-function mirzaStopForInstaller($message)
-{
-    return bluebotStopForInstaller($message);
-}
-
-function mirzaEnsureInstallerRemoved()
-{
-    return bluebotEnsureInstallerRemoved();
-}
-
 function isValidInvitationCode($setting, $fromId, $verfy_status)
 {
     global $textbotlang;
@@ -2751,101 +2718,4 @@ function parseConfigs($input)
     }
 
     return $configs;
-}
-
-function bluebotRemoveInstallerPath($path)
-{
-    if (is_link($path) || is_file($path)) {
-        return @unlink($path);
-    }
-    if (!is_dir($path)) {
-        return true;
-    }
-
-    $entries = @scandir($path);
-    if ($entries === false) {
-        return false;
-    }
-
-    $removed = true;
-    foreach ($entries as $entry) {
-        if ($entry === '.' || $entry === '..') {
-            continue;
-        }
-        $removed = bluebotRemoveInstallerPath($path . '/' . $entry) && $removed;
-    }
-
-    return @rmdir($path) && $removed;
-}
-
-function bluebotInstallerNoticeTexts()
-{
-    global $textbotlang;
-    $lang = is_array($textbotlang) && !empty($textbotlang) ? $textbotlang : null;
-    if ($lang === null) {
-        $lang = @include __DIR__ . '/lang/fa.php';
-    }
-    $notice = is_array($lang) ? ($lang['Admin']['installerNotice'] ?? null) : null;
-    return [
-        'user' => $notice['user'] ?? 'The bot is temporarily unavailable. Please try again later.',
-        'admin' => $notice['admin'] ?? 'The install folder still exists on the server and the bot could not remove it. Delete it manually to bring the bot back.',
-    ];
-}
-
-function bluebotShouldAlertInstallerAdmin($cooldown = 3600)
-{
-    $cacheDir = __DIR__ . '/storage/cache';
-    if (!is_dir($cacheDir) && !@mkdir($cacheDir, 0775, true) && !is_dir($cacheDir)) {
-        return true;
-    }
-    $marker = $cacheDir . '/installer_notice';
-    $last = @file_get_contents($marker);
-    if ($last !== false && (time() - intval($last)) < $cooldown) {
-        return false;
-    }
-    @file_put_contents($marker, (string) time());
-    return true;
-}
-
-function bluebotNotifyInstallerBlocked()
-{
-    global $from_id, $adminnumber;
-    if (!function_exists('sendmessage')) {
-        return;
-    }
-    $texts = bluebotInstallerNoticeTexts();
-    $adminId = isset($adminnumber) ? trim((string) $adminnumber) : '';
-    $userId = isset($from_id) ? trim((string) $from_id) : '';
-    $userIsAdmin = $adminId !== '' && $userId === $adminId;
-    if ($userId !== '' && !isTelegramChatIdEmpty($userId)) {
-        sendmessage($userId, $userIsAdmin ? $texts['admin'] : $texts['user'], null, 'HTML');
-    }
-    if (!$userIsAdmin && $adminId !== '' && bluebotShouldAlertInstallerAdmin()) {
-        sendmessage($adminId, $texts['admin'], null, 'HTML');
-    }
-}
-
-function bluebotStopForInstaller($message)
-{
-    error_log($message);
-    bluebotNotifyInstallerBlocked();
-    if (!headers_sent()) {
-        http_response_code(200);
-        header('Content-Type: text/plain; charset=utf-8');
-        header('Cache-Control: no-store');
-    }
-    echo $message;
-    exit;
-}
-
-function bluebotEnsureInstallerRemoved()
-{
-    $installerDirectory = __DIR__ . '/install';
-    if (!is_dir($installerDirectory)) {
-        return;
-    }
-
-    if (!bluebotRemoveInstallerPath($installerDirectory)) {
-        bluebotStopForInstaller('BlueBot install folder still exists and could not be removed automatically; delete it manually to enable the bot.');
-    }
 }
