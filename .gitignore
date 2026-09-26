@@ -18,3 +18,24 @@ graphify-out
 docs
 /lang/override/
 /deploy.sh
+
+# Local secrets / environment overrides
+.env
+.env.*
+!.env.example
+*.local.php
+
+# Backups / database dumps / temporary archives
+*.bak
+*.backup
+*.dump
+*.sql.gz
+*.tar
+*.tar.gz
+*.tgz
+
+# Editor / OS noise
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
