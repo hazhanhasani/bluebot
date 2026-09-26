@@ -39,3 +39,13 @@ Options -Indexes
         Deny from all
     </IfModule>
 </FilesMatch>
+
+
+# BlueBot sensitive project metadata must never be served directly.
+<FilesMatch "^(config\.php|composer\.(json|lock)|\.env(?:\..*)?|\.gitignore)$">
+    Require all denied
+    <IfModule !mod_authz_core.c>
+        Order deny,allow
+        Deny from all
+    </IfModule>
+</FilesMatch>
