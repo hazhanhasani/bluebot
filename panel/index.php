@@ -30,7 +30,18 @@ try {
         $pdo,
         "SELECT COUNT(*) FROM Payment_report
          WHERE time LIKE ?
-            OR (time REGEXP '^[0-9]+
+            OR (
+                time NOT REGEXP '[^0-9]'
+                AND CHAR_LENGTH(time) BETWEEN 10 AND 13
+                AND CAST(time AS UNSIGNED) >= ?
+            )",
+        [$todayPrefix, $todayTimestamp]
+    );
+} catch (Exception $e) {
+    bluebotLog('warning', 'Dashboard payment statistics failed', [
+        'reason' => $e->getMessage(),
+    ]);
+}
 
 $recentInvoices = [];
 $recentUsers = [];
