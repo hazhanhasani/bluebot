@@ -89,8 +89,8 @@ function get_clinetsalireza($username, $namepanel)
         CURLOPT_RETURNTRANSFER => true,
         CURLOPT_ENCODING => '',
         CURLOPT_MAXREDIRS => 10,
-        CURLOPT_SSL_VERIFYHOST => false,
-        CURLOPT_SSL_VERIFYPEER => false,
+        CURLOPT_SSL_VERIFYHOST => bluebotVerifyPanelTls() ? 2 : 0,
+        CURLOPT_SSL_VERIFYPEER => bluebotVerifyPanelTls(),
         CURLOPT_TIMEOUT_MS => ($GLOBALS['request_exec_timeout'] ?? null) ?: 4000,
         CURLOPT_FOLLOWLOCATION => true,
         CURLOPT_HTTP_VERSION => CURL_HTTP_VERSION_1_1,
@@ -106,7 +106,10 @@ function get_clinetsalireza($username, $namepanel)
     curl_close($curl);
 
     if ($rawResponse === false) {
-        error_log('Alireza clients request failed: ' . $curlError);
+        bluebotLog('warning', 'Alireza clients request failed', [
+            'panel' => (string) $namepanel,
+            'error' => $curlError,
+        ]);
         @unlink(alirezaCookiePath($marzban_list_get['code_panel']));
         return [];
     }
@@ -114,7 +117,9 @@ function get_clinetsalireza($username, $namepanel)
     $decodedResponse = json_decode($rawResponse, true);
     $response = is_array($decodedResponse) ? ($decodedResponse['obj'] ?? null) : null;
     if (!is_array($response)) {
-        error_log('Alireza clients request returned an invalid response');
+        bluebotLog('warning', 'Alireza clients request returned an invalid response', [
+            'panel' => (string) $namepanel,
+        ]);
         @unlink(alirezaCookiePath($marzban_list_get['code_panel']));
         return [];
     }
@@ -242,8 +247,8 @@ function get_onlineclialireza($name_panel, $username)
         CURLOPT_MAXREDIRS => 10,
         CURLOPT_TIMEOUT_MS => ($GLOBALS['request_exec_timeout'] ?? null) ?: 10000,
         CURLOPT_CONNECTTIMEOUT_MS => min((int) (($GLOBALS['request_exec_timeout'] ?? null) ?: 10000), 5000),
-        CURLOPT_SSL_VERIFYHOST => false,
-        CURLOPT_SSL_VERIFYPEER => false,
+        CURLOPT_SSL_VERIFYHOST => bluebotVerifyPanelTls() ? 2 : 0,
+        CURLOPT_SSL_VERIFYPEER => bluebotVerifyPanelTls(),
         CURLOPT_FOLLOWLOCATION => true,
         CURLOPT_HTTP_VERSION => CURL_HTTP_VERSION_1_1,
         CURLOPT_CUSTOMREQUEST => 'POST',
@@ -254,7 +259,10 @@ function get_onlineclialireza($name_panel, $username)
     ));
     $rawResponse = curl_exec($curl);
     if ($rawResponse === false) {
-        error_log('Alireza online-clients request failed: ' . curl_error($curl));
+        bluebotLog('warning', 'Alireza online-clients request failed', [
+            'panel' => (string) $name_panel,
+            'error' => curl_error($curl),
+        ]);
         curl_close($curl);
         @unlink(alirezaCookiePath($marzban_list_get['code_panel']));
         return "offline";
