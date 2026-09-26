@@ -5,63 +5,63 @@ declare(strict_types=1);
 $root = dirname(__DIR__);
 
 $contracts = [
-    'Marzban.php' => [
+    'src/Panel/Adapters/Marzban.php' => [
         'rawurlencode((string) $username)',
         'Marzban delete returned an error after successful deletion',
         '$data[\'group_ids\'] = $inbounds',
         '"proxy_settings" => json_decode',
     ],
-    'marzneshin.php' => [
+    'src/Panel/Adapters/Marzneshin.php' => [
         '$data[\'expire_strategy\'] = \'never\'',
         '$data[\'expire_strategy\'] = \'start_on_first_use\'',
         'date(DATE_ATOM',
         "'/api/admins/token'",
     ],
-    'solidlayer.php' => [
+    'src/Panel/Adapters/SolidLayer.php' => [
         "'X-API-Key: '",
         "'/api/subscriptions'",
         "'/api/services'",
     ],
-    'x-ui_single.php' => [
+    'src/Panel/Adapters/ThreeXUI.php' => [
         '?keepTraffic=0',
         '\'inboundIds\' => $ids',
         'array_replace($current, $config)',
         "'/panel/api/clients/update/'",
     ],
-    'alireza_single.php' => [
+    'src/Panel/Adapters/AlirezaXUI.php' => [
         'function alirezaClientIdentifier',
         "['id', 'password', 'email']",
         "'/xui/API/inbounds/updateClient/'",
     ],
-    'hiddify.php' => [
+    'src/Panel/Adapters/Hiddify.php' => [
         "'Hiddify-API-Key: '",
         "'/api/v2/admin/user/'",
         "'Authorization: Basic '",
     ],
-    's_ui.php' => [
+    'src/Panel/Adapters/SUI.php' => [
         "'/apiv2/save'",
         "json_encode(array('id' => (int) \$data_user['id']))",
         "empty(\$response['success'])",
     ],
-    'WGDashboard.php' => [
+    'src/Panel/Adapters/WGDashboard.php' => [
         'function wgDashboardRequest',
         "'wg-dashboard-apikey: '",
         "rawurlencode((string) \$panel['inboundid'])",
     ],
-    'mikrotik.php' => [
+    'src/Panel/Adapters/MikroTik.php' => [
         'function mikrotikRequest',
         "'PUT', 'user-manager/user'",
         "'DELETE'",
         "'user-manager/user/print'",
     ],
-    'ibsng.php' => [
+    'src/Panel/Adapters/IBSng.php' => [
         'Modules\\IBSng',
     ],
-    'mirza_agent.php' => [
+    'src/Panel/Adapters/MirzaAgent.php' => [
         'create_user_mirza',
         'get_user_data_mirza',
     ],
-    'Rebecca.php' => [
+    'src/Panel/Adapters/Rebecca.php' => [
         'adduser_rebecca',
         'Modifyuser_rebecca',
     ],
