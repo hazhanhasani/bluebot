@@ -77,31 +77,50 @@ function validate_telegram_init_data($rawData, string $botToken): array
     $receivedHash = (string) $initData['hash'];
     unset($initData['hash']);
 
-    $dataCheckArray = [];
-    foreach ($initData as $key => $value) {
-        if ($value === null) {
-            continue;
+    $buildDataCheckString = static function (array $fields): string {
+        $dataCheckArray = [];
+        foreach ($fields as $key => $value) {
+            if ($value === null) {
+                continue;
+            }
+
+            $stringValue = normalize_init_value($value);
+            if ($stringValue === '') {
+                continue;
+            }
+
+            $dataCheckArray[] = $key . '=' . $stringValue;
         }
 
-        $stringValue = normalize_init_value($value);
-        if ($stringValue === '') {
-            continue;
-        }
+        sort($dataCheckArray, SORT_STRING);
+        return implode("\n", $dataCheckArray);
+    };
 
-        $dataCheckArray[] = $key . '=' . $stringValue;
-    }
-
-    if ($dataCheckArray === []) {
+    $dataCheckString = $buildDataCheckString($initData);
+    if ($dataCheckString === '') {
         throw new InvalidArgumentException('Telegram init data payload is empty');
     }
 
-    sort($dataCheckArray, SORT_STRING);
-    $dataCheckString = implode("\n", $dataCheckArray);
-
     $secretKey = hash_hmac('sha256', $botToken, 'WebAppData', true);
     $calculatedHash = hash_hmac('sha256', $dataCheckString, $secretKey);
+    $hashValid = hash_equals($calculatedHash, $receivedHash);
 
-    if (!hash_equals($calculatedHash, $receivedHash)) {
+    // New Telegram initData can also contain the Ed25519 "signature" field.
+    // Existing clients/libraries differ on whether that field participates in
+    // bot-token HMAC validation. Accept either Telegram-compatible form while
+    // still requiring the bot-token HMAC to match exactly.
+    if (!$hashValid && array_key_exists('signature', $initData)) {
+        $withoutSignature = $initData;
+        unset($withoutSignature['signature']);
+        $legacyCheckString = $buildDataCheckString($withoutSignature);
+
+        if ($legacyCheckString !== '') {
+            $legacyHash = hash_hmac('sha256', $legacyCheckString, $secretKey);
+            $hashValid = hash_equals($legacyHash, $receivedHash);
+        }
+    }
+
+    if (!$hashValid) {
         throw new RuntimeException('User verification failed');
     }
 
