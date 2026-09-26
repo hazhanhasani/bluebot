@@ -9,6 +9,12 @@ require_once __DIR__ . '/../src/Support/JalaliDate.php';
 require_once __DIR__ . '/../keyboard.php';
 
 header('Content-Type: application/json; charset=utf-8');
+header('Cache-Control: private, no-store, no-cache, must-revalidate');
+header('Pragma: no-cache');
+header('Expires: 0');
+header('CDN-Cache-Control: no-store');
+header('Cloudflare-CDN-Cache-Control: no-store');
+header('Vary: Authorization');
 date_default_timezone_set('Asia/Tehran');
 ini_set('default_charset', 'UTF-8');
 ini_set('error_log', 'error_log');
