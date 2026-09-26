@@ -179,11 +179,17 @@ function bluebotHealthSnapshot(array $diagnostics): array
     ];
 }
 
-function bluebotRecordHealthSnapshot(array $diagnostics): bool
+function bluebotRecordHealthSnapshot(array $diagnostics, int $minInterval = 300): bool
 {
     $path = bluebotHealthHistoryPath();
     if ($path === '') {
         return false;
+    }
+
+    $minInterval = max(0, $minInterval);
+    $mtime = is_file($path) ? @filemtime($path) : false;
+    if ($minInterval > 0 && $mtime !== false && (time() - $mtime) < $minInterval) {
+        return true;
     }
 
     bluebotRotateHealthHistory($path);
@@ -233,90 +239,19 @@ function bluebotReadHealthHistory(int $limit = 20): array
             'core_healthy' => (bool) ($decoded['core_healthy'] ?? false),
             'security_healthy' => (bool) ($decoded['security_healthy'] ?? false),
             'database_ok' => (bool) ($decoded['database_ok'] ?? false),
+            'storage_writable' => (bool) ($decoded['storage_writable'] ?? false),
+            'vendor_ready' => (bool) ($decoded['vendor_ready'] ?? false),
+            'installer_removed' => (bool) ($decoded['installer_removed'] ?? false),
+            'webhook_protected' => (bool) ($decoded['webhook_protected'] ?? false),
+            'api_token_configured' => (bool) ($decoded['api_token_configured'] ?? false),
             'delivery_errors' => max(0, (int) ($decoded['delivery_errors'] ?? 0)),
+            'delivery_reviewed' => max(0, (int) ($decoded['delivery_reviewed'] ?? 0)),
             'version' => (string) ($decoded['version'] ?? 'unknown'),
+            'mini_version' => (string) ($decoded['mini_version'] ?? 'unknown'),
+            'php_version' => (string) ($decoded['php_version'] ?? 'unknown'),
+            'free_disk' => (string) ($decoded['free_disk'] ?? 'unknown'),
+            'bot_status' => (string) ($decoded['bot_status'] ?? 'unknown'),
         ];
-    }
-
-    return $history;
-}
-
-
-function bluebotDiagnosticsHistoryPath(): string
-{
-    $root = dirname(__DIR__, 2);
-    $directory = $root . '/storage/logs';
-
-    if (!is_dir($directory) && !@mkdir($directory, 0750, true) && !is_dir($directory)) {
-        return '';
-    }
-
-    @chmod($directory, 0750);
-    return $directory . '/health.log';
-}
-
-function bluebotRecordDiagnosticsSnapshot(array $diagnostics, int $minInterval = 300): void
-{
-    $path = bluebotDiagnosticsHistoryPath();
-    if ($path === '') {
-        return;
-    }
-
-    $minInterval = max(60, $minInterval);
-    $mtime = is_file($path) ? @filemtime($path) : false;
-    if ($mtime !== false && (time() - $mtime) < $minInterval) {
-        return;
-    }
-
-    if (function_exists('bluebotRotateAuditLog')) {
-        bluebotRotateAuditLog($path, 2097152);
-    }
-
-    $record = [
-        'time' => date(DATE_ATOM),
-        'version' => (string) ($diagnostics['version'] ?? 'unknown'),
-        'mini_version' => (string) ($diagnostics['mini_version'] ?? 'unknown'),
-        'database_ok' => (bool) ($diagnostics['database_ok'] ?? false),
-        'storage_writable' => (bool) ($diagnostics['storage_writable'] ?? false),
-        'vendor_ready' => (bool) ($diagnostics['vendor_ready'] ?? false),
-        'installer_removed' => (bool) ($diagnostics['installer_removed'] ?? false),
-        'webhook_protected' => (bool) ($diagnostics['webhook_protected'] ?? false),
-        'api_token_configured' => (bool) ($diagnostics['api_token_configured'] ?? false),
-        'delivery_errors' => (int) ($diagnostics['delivery_errors'] ?? -1),
-        'delivery_reviewed' => (int) ($diagnostics['delivery_reviewed'] ?? -1),
-        'free_disk' => (string) ($diagnostics['free_disk'] ?? 'unknown'),
-        'bot_status' => (string) ($diagnostics['bot_status'] ?? 'unknown'),
-    ];
-
-    $encoded = json_encode($record, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
-    if (!is_string($encoded)) {
-        return;
-    }
-
-    @file_put_contents($path, $encoded . PHP_EOL, FILE_APPEND | LOCK_EX);
-    @chmod($path, 0640);
-}
-
-function bluebotReadDiagnosticsHistory(int $limit = 24): array
-{
-    $limit = max(1, min($limit, 100));
-    $path = bluebotDiagnosticsHistoryPath();
-
-    if ($path === '' || !is_file($path) || !is_readable($path)) {
-        return [];
-    }
-
-    $lines = @file($path, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
-    if (!is_array($lines)) {
-        return [];
-    }
-
-    $history = [];
-    foreach (array_reverse(array_slice($lines, -$limit)) as $line) {
-        $decoded = json_decode($line, true);
-        if (is_array($decoded)) {
-            $history[] = $decoded;
-        }
     }
 
     return $history;
