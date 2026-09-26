@@ -679,6 +679,26 @@ ensure_cron() {
 }
 export -f _crontab_present _cron_unit_name _cron_daemon_active ensure_cron
 
+install_update_worker() {
+    local source="${1:-$BOT_DIR_DEFAULT/scripts/bluebot-update-worker.sh}"
+    [ -f "$source" ] || return 1
+
+    install -d -m 0770 -o www-data -g www-data /var/lib/bluebot || return 1
+    install -m 0750 -o root -g root "$source" /usr/local/sbin/bluebot-update-worker || return 1
+    touch /var/lib/bluebot/update-status.json 2>/dev/null || true
+    chown www-data:www-data /var/lib/bluebot/update-status.json 2>/dev/null || true
+    chmod 0660 /var/lib/bluebot/update-status.json 2>/dev/null || true
+
+    local cron_line="* * * * * /usr/local/sbin/bluebot-update-worker --once >/dev/null 2>&1"
+    local temp
+    temp=$(mktemp)
+    { crontab -l 2>/dev/null | grep -vF '/usr/local/sbin/bluebot-update-worker' || true; echo "$cron_line"; } > "$temp"
+    crontab "$temp" || { rm -f "$temp"; return 1; }
+    rm -f "$temp"
+    return 0
+}
+export -f install_update_worker
+
 # Refuse to install on a server that already has conflicting software.
 # Only runs on a brand-new install (never on resume / BlueBot's own partial state).
 precheck_fresh_server() {
@@ -1315,6 +1335,9 @@ function import_bot() {
 }
 
 function show_menu() {
+    if [ "$ARG_BACKGROUND" = "1" ]; then
+        exit 1
+    fi
     show_logo
     _sec "Menu"
     _mi "1" "Install BlueBot"
@@ -2271,6 +2294,8 @@ EOF
         sleep 5
         run_step "Initializing database tables" "cd '$BOT_DIR' && php${PHP_VER} table.php" \
             || { show_step_error; install_pause "Initializing database tables"; }
+        run_step "Installing in-bot update worker" "install_update_worker '$BOT_DIR/scripts/bluebot-update-worker.sh'" \
+            || { show_step_error; install_pause "Installing in-bot update worker"; }
         mark_phase WEBHOOK
     fi
     # ╰─────────────────────────────────────────────────────────────╯
@@ -2334,11 +2359,13 @@ function update_bot() {
     echo ""
     echo -e "  ${C_DIM}Update target:${CR} ${C_KEY}${TARGET_LABEL}${CR}"
     print_header "Updating BlueBot"
-    run_step "Updating system packages" "apt update --allow-releaseinfo-change && apt upgrade -y" \
-        || { show_step_error; echo -e "\e[91mError updating the server. Exiting...\033[0m"; exit 1; }
+    if [ "$ARG_BACKGROUND" != "1" ]; then
+        run_step "Updating system packages" "apt update --allow-releaseinfo-change && apt upgrade -y" \
+            || { show_step_error; echo -e "\e[91mError updating the server. Exiting...\033[0m"; exit 1; }
+        echo -e "\e[92mServer packages updated successfully...\033[0m\n"
+    fi
     run_step "Ensuring cron is installed and running" "ensure_cron" \
         || { show_step_error; echo -e "\e[91mError: Failed to install or start cron.\033[0m"; exit 1; }
-    echo -e "\e[92mServer packages updated successfully...\033[0m\n"
     TEMP_DIR="/tmp/mirzaprobot_update"
     rm -rf "$TEMP_DIR"; mkdir -p "$TEMP_DIR"
     run_step "Downloading ${TARGET_LABEL}" "wget -q -O '$TEMP_DIR/bot.zip' '$ZIP_URL'" \
@@ -2370,6 +2397,9 @@ function update_bot() {
     LANG_OVERRIDE_BACKUP="/root/mirzapro_lang_override_backup"
     rm -rf "$LANG_OVERRIDE_BACKUP"
     [ -d "$BOT_DIR/lang/override" ] && cp -a "$BOT_DIR/lang/override" "$LANG_OVERRIDE_BACKUP"
+    STORAGE_BACKUP="/root/bluebot_storage_backup"
+    rm -rf "$STORAGE_BACKUP"
+    [ -d "$BOT_DIR/storage" ] && cp -a "$BOT_DIR/storage" "$STORAGE_BACKUP"
     run_step "Backing up vpnbots" "backup_vpnbots '$BOT_DIR'" \
         || { show_step_error
              echo -e "\e[91mError: Failed to backup vpnbots.\033[0m"
@@ -2405,6 +2435,11 @@ function update_bot() {
         sudo rm -rf "$BOT_DIR/lang/override"
         sudo mv "$LANG_OVERRIDE_BACKUP" "$BOT_DIR/lang/override"
     fi
+    if [ -d "$STORAGE_BACKUP" ]; then
+        sudo mkdir -p "$BOT_DIR/storage"
+        sudo cp -a "$STORAGE_BACKUP/." "$BOT_DIR/storage/"
+        sudo rm -rf "$STORAGE_BACKUP"
+    fi
     run_step "Restoring vpnbots" "restore_vpnbots '$BOT_DIR'" \
         || { show_step_error
              echo -e "\e[91mError: Failed to restore vpnbots. Backup: ${VPNBOT_BACKUP}\033[0m"; }
@@ -2428,6 +2463,8 @@ function update_bot() {
     fi
     sudo chown -R www-data:www-data "$BOT_DIR"
     sudo chmod -R 755 "$BOT_DIR"
+    install_update_worker "$BOT_DIR/scripts/bluebot-update-worker.sh" \
+        || echo -e "\e[93mWarning: in-bot update worker could not be installed.\033[0m"
     DOMAIN_NAME=""
     if [ -f "$CONFIG_PATH" ]; then
         DOMAIN_NAME=$(grep "^\$domainhosts" "$CONFIG_PATH" | cut -d"'" -f2 | cut -d'/' -f1)
@@ -2832,7 +2869,7 @@ EOF
 # ── Command-line argument parsing ────────────────────────────
 # Globals filled from flags (consumed by install/update where relevant)
 ARG_TOKEN=""    ARG_ADMIN=""   ARG_DOMAIN=""
-ARG_DBUSER=""   ARG_DBPASS=""  ARG_VERSION=""  ARG_CHANNEL=""
+ARG_DBUSER=""   ARG_DBPASS=""  ARG_VERSION=""  ARG_CHANNEL=""  ARG_BACKGROUND="0"
 
 print_usage() {
     cat <<USAGE
@@ -2892,6 +2929,7 @@ process_arguments() {
             --db-pass) ARG_DBPASS="$2";  shift 2 ;;
             --version) ARG_VERSION="$2"; shift 2 ;;
             --channel) ARG_CHANNEL="$2"; shift 2 ;;
+            --background) ARG_BACKGROUND="1"; shift ;;
             -h|--help) print_usage; exit 0 ;;
             *) echo -e "\e[91mUnknown option: $1\033[0m"; print_usage; exit 1 ;;
         esac
