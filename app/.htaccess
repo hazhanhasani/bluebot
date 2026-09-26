@@ -23,13 +23,27 @@ Options -Indexes
 
 <IfModule mod_headers.c>
     <FilesMatch "^index\.php$">
-        Header set Cache-Control "no-cache, no-store, must-revalidate"
-        Header set Pragma "no-cache"
+        Header always set Cache-Control "no-cache, no-store, must-revalidate"
+        Header always set Pragma "no-cache"
+        Header always set CDN-Cache-Control "no-store"
+        Header always set Cloudflare-CDN-Cache-Control "no-store"
     </FilesMatch>
 
     <FilesMatch "\.(?:js|css|woff2?|png|jpe?g|webp|svg|ico)$">
-        Header set Cache-Control "public, max-age=31536000, immutable"
+        Header always set Cache-Control "public, max-age=31536000, immutable"
+        Header always set CDN-Cache-Control "public, max-age=31536000, immutable"
+        Header always set Cloudflare-CDN-Cache-Control "public, max-age=31536000, immutable"
     </FilesMatch>
+
+    Header merge Vary "Accept-Encoding"
+</IfModule>
+
+<IfModule mod_brotli.c>
+    AddOutputFilterByType BROTLI_COMPRESS text/html text/plain text/css application/javascript text/javascript application/json image/svg+xml
+</IfModule>
+
+<IfModule mod_deflate.c>
+    AddOutputFilterByType DEFLATE text/html text/plain text/css application/javascript text/javascript application/json image/svg+xml
 </IfModule>
 
 <IfModule mod_expires.c>
