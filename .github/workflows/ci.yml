@@ -99,7 +99,11 @@ jobs:
           grep -Fq "BLUEBOT_VERIFY_PANEL_TLS" request.php
           grep -Fq "bluebotBuildDebugReport" admin.php
           grep -Fq "bluebotCollectDiagnostics" panel/diagnostics.php
+          grep -Fq "api_token_configured" src/Support/Diagnostics.php
+          grep -Fq "webhook_protected" src/Support/Diagnostics.php
           grep -Fq "Admin reviewed payment delivery error" panel/payment.php
+          grep -Fq "bluebot_qr" function.php
+          grep -Fq "require_once __DIR__ . '/config.php';" function.php
           echo "BlueBot safety contracts OK."
 
       - name: Validate installer syntax
