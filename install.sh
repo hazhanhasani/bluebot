@@ -816,6 +816,11 @@ get_installed_version() {
         return 0
     fi
 
+    if [ "$channel" = "release" ] && [ -n "$ref" ]; then
+        echo "${ref#v}"
+        return 0
+    fi
+
     echo "$base"
 }
 
@@ -2424,6 +2429,19 @@ function update_bot() {
     if [ "$_rc" -eq 2 ]; then show_menu; return 0; fi
     if [ "$_rc" -ne 0 ]; then sleep 2; show_menu; return 1; fi
     local ZIP_URL="$SRC_ZIP_URL" TARGET_LABEL="$SRC_LABEL"
+    local TARGET_CHANNEL="" TARGET_REF=""
+
+    case "$TARGET_LABEL" in
+        Beta*)
+            TARGET_CHANNEL="beta"
+            TARGET_REF="$(get_main_commit_sha)"
+            [ -n "$TARGET_REF" ] && TARGET_LABEL="Beta (main @ ${TARGET_REF:0:7})"
+            ;;
+        Release\ *)
+            TARGET_CHANNEL="release"
+            TARGET_REF="${TARGET_LABEL#Release }"
+            ;;
+    esac
 
     echo ""
     echo -e "  ${C_DIM}Update target:${CR} ${C_KEY}${TARGET_LABEL}${CR}"
@@ -2609,8 +2627,18 @@ EOF
         run_step "Setting vpnbot webhooks" "set_vpnbot_webhooks '$CONFIG_PATH'" \
             || echo -e "\e[93mWarning: vpnbot webhook update failed.\033[0m"
     fi
+    if [ -z "$TARGET_REF" ] && [ "$TARGET_CHANNEL" = "beta" ]; then
+        TARGET_REF="$(get_main_commit_sha)"
+    fi
+    if [ -n "$TARGET_CHANNEL" ] && [ -n "$TARGET_REF" ]; then
+        record_installed_build "$TARGET_CHANNEL" "$TARGET_REF" "$TARGET_LABEL" \
+            || echo -e "\e[93mWarning: installed build metadata could not be recorded.\033[0m"
+    fi
+
     rm -rf "$TEMP_DIR"
-    echo -e "\n\e[92mBlueBot updated to latest version successfully!\033[0m"
+    local installed_display
+    installed_display="$(get_installed_version)"
+    echo -e "\n\e[92mBlueBot updated successfully: ${installed_display:-unknown}\033[0m"
     if [ -f "/root/install.sh" ]; then
         sudo chmod +x /root/install.sh
         sudo ln -sf /root/install.sh /usr/local/bin/bluebot
