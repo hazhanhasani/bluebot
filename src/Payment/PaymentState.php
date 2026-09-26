@@ -24,7 +24,7 @@ function claimPaymentPaid($order_id)
 
     $changed = $stmt->rowCount() >= 1;
     if ($changed) {
-        bluebotLog('info', 'Payment marked paid', [
+        bluebotAudit('payment.paid', [
             'order_id' => (string) $order_id,
         ]);
     }
@@ -51,7 +51,7 @@ function markPaymentDeliveryError($order_id, $reason = '')
 
     $reason = trim((string) $reason);
     if ($reason !== '') {
-        bluebotLog('error', 'Payment service delivery failed', [
+        bluebotAudit('payment.delivery_error', [
             'order_id' => (string) $order_id,
             'reason' => $reason,
         ]);
@@ -79,7 +79,7 @@ function markPaymentDeliveryReviewed($order_id)
 
     $changed = $stmt->rowCount() >= 1;
     if ($changed) {
-        bluebotLog('audit', 'Payment delivery marked reviewed', [
+        bluebotAudit('payment.delivery_reviewed', [
             'order_id' => (string) $order_id,
         ]);
     }
