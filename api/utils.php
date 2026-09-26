@@ -185,9 +185,18 @@ function logApiRequest($headers, $data, $action)
         $stmt = $pdo->prepare(
             "INSERT IGNORE INTO logs_api (header, data, time, ip, actions) VALUES (?, ?, ?, ?, ?)"
         );
+        $normalizedHeaders = array_change_key_case((array) $headers);
+        $filteredHeaders = array_diff_key(
+            $normalizedHeaders,
+            array_flip(['token', 'authorization', 'cookie'])
+        );
+
+        $safeHeaders = bluebotRedactLogValue($filteredHeaders);
+        $safeData = bluebotRedactLogValue($data);
+
         $stmt->execute([
-            json_encode(array_diff_key(array_change_key_case((array) $headers), array_flip(['token', 'authorization', 'cookie']))),
-            json_encode($data),
+            json_encode($safeHeaders, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
+            json_encode($safeData, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
             date('Y/m/d H:i:s'),
             $_SERVER['REMOTE_ADDR'] ?? 'unknown',
             $action
