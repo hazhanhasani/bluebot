@@ -28,20 +28,20 @@ function blupalCallbackStateIcon(string $state): string
     };
 }
 
-function blupalCallbackBotUrl(): string
+function blupalCallbackBotUsername(): string
 {
     global $usernamebot;
 
     $username = ltrim(trim((string) $usernamebot), '@');
     if ($username !== '' && preg_match('/^[A-Za-z0-9_]{5,32}$/', $username)) {
-        return 'https://t.me/' . rawurlencode($username);
+        return $username;
     }
 
     try {
         $me = telegram('getMe');
         $username = ltrim(trim((string) ($me['result']['username'] ?? '')), '@');
         if ($username !== '' && preg_match('/^[A-Za-z0-9_]{5,32}$/', $username)) {
-            return 'https://t.me/' . rawurlencode($username);
+            return $username;
         }
     } catch (Throwable $error) {
         bluebotLog('warning', 'Unable to resolve bot username for Blupal callback', [
@@ -49,7 +49,19 @@ function blupalCallbackBotUrl(): string
         ]);
     }
 
-    return 'https://t.me/';
+    return '';
+}
+
+function blupalCallbackBotUrl(): string
+{
+    $username = blupalCallbackBotUsername();
+    return $username !== '' ? 'https://t.me/' . rawurlencode($username) : 'https://t.me/';
+}
+
+function blupalCallbackBotDeepLink(): string
+{
+    $username = blupalCallbackBotUsername();
+    return $username !== '' ? 'tg://resolve?domain=' . rawurlencode($username) : '';
 }
 
 function blupalCallbackFinish(
@@ -104,6 +116,9 @@ function blupalCallbackFinish(
 
     $buttonLabel = $state === 'pending' ? 'بررسی دوباره' : 'بازگشت به ربات';
     $botUrl = blupalCallbackBotUrl();
+    $botDeepLink = blupalCallbackBotDeepLink();
+    $botUrlJs = json_encode($botUrl, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+    $botDeepLinkJs = json_encode($botDeepLink, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
 
     echo '<!doctype html><html lang="fa" dir="rtl"><head>'
         . '<meta charset="utf-8">'
@@ -157,7 +172,7 @@ function blupalCallbackFinish(
         . $metaHtml
         . ($state === 'pending'
             ? '<button class="action" type="button" onclick="location.reload()">' . blupalCallbackEscape($buttonLabel) . '</button>'
-            : '<a class="action action-link" href="' . blupalCallbackEscape($botUrl) . '" rel="noopener noreferrer">' . blupalCallbackEscape($buttonLabel) . '</a>')
+            : '<a class="action action-link" href="' . blupalCallbackEscape($botUrl) . '" rel="noopener noreferrer" onclick="event.preventDefault();var app=' . blupalCallbackEscape($botDeepLinkJs) . ';var web=' . blupalCallbackEscape($botUrlJs) . ';if(app){window.location.href=app;setTimeout(function(){window.location.href=web},700)}else{window.location.href=web}">' . blupalCallbackEscape($buttonLabel) . '</a>')
         . '<div class="footer"><span class="lock">🔒</span><span>وضعیت پرداخت مستقیماً از API بلوپال بررسی شده است</span></div>'
         . '</article></section></main></body></html>';
     exit;
