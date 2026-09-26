@@ -1192,7 +1192,7 @@ if ($text == "/start" || $datain == "start" || $text == "start") {
             sendmessage($from_id, $textsub, $bakinfos, 'HTML');
             return;
         }
-        addBackgroundImage($urlimage, $qrCode, 'images.jpg');
+        addBackgroundImage($urlimage, $qrCode, bluebotQrBackgroundPath());
         telegram('sendphoto', [
             'chat_id' => $from_id,
             'photo' => new CURLFile($urlimage),
@@ -1281,7 +1281,7 @@ if ($text == "/start" || $datain == "start" || $text == "start") {
                 sendmessage($from_id, "<code>{$DataUserOut['links'][$i]}</code>", null, 'HTML');
                 continue;
             }
-            addBackgroundImage($urlimage, $qrCode, 'images.jpg');
+            addBackgroundImage($urlimage, $qrCode, bluebotQrBackgroundPath());
             telegram('sendphoto', [
                 'chat_id' => $from_id,
                 'photo' => new CURLFile($urlimage),
@@ -1299,7 +1299,7 @@ if ($text == "/start" || $datain == "start" || $text == "start") {
         sendmessage($from_id, "<code>{$DataUserOut['links'][$dataget[2]]}</code>", null, 'HTML');
         return;
     }
-    addBackgroundImage($urlimage, $qrCode, 'images.jpg');
+    addBackgroundImage($urlimage, $qrCode, bluebotQrBackgroundPath());
     telegram('sendphoto', [
         'chat_id' => $from_id,
         'photo' => new CURLFile($urlimage),
