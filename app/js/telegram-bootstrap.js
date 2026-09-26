@@ -3,7 +3,14 @@
 
   function queryParam(source, key) {
     if (!source) return '';
-    var value = new URLSearchParams(source.replace(/^[?#]/, '')).get(key);
+
+    var normalized = source.replace(/^[?#]/, '');
+    var queryIndex = normalized.indexOf('?');
+    if (queryIndex >= 0) {
+      normalized = normalized.slice(queryIndex + 1);
+    }
+
+    var value = new URLSearchParams(normalized).get(key);
     return typeof value === 'string' ? value : '';
   }
 
