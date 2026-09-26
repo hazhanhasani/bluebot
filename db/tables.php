@@ -33,4 +33,5 @@ return [
     'sms_settings',
     'sms_templates',
     'sms_deliveries',
+    'sms_otp_challenges',
 ];
