@@ -73,6 +73,15 @@ jobs:
           grep -Fq "localStorage.getItem('panel-theme') || 'bluebot'" panel/inc/layout_head.php
           grep -Fq '<title>BlueBot Web App</title>' app/index.php
 
+      - name: Verify panel page integrity
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(grep -Fc "include __DIR__ . '/inc/layout_foot.php'" panel/payment.php)" -eq 1
+          last_nonempty="$(awk 'NF { line=$0 } END { print line }' panel/payment.php)"
+          test "$last_nonempty" = "<?php include __DIR__ . '/inc/layout_foot.php'; ?>"
+          echo "Panel page integrity OK."
+
       - name: Validate installer syntax
         run: bash -n install.sh
 
