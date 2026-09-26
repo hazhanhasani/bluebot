@@ -5,6 +5,7 @@ require_once __DIR__ . '/Marzban.php';
 require_once __DIR__ . '/x-ui_single.php';
 require_once __DIR__ . '/hiddify.php';
 require_once __DIR__ . '/marzneshin.php';
+require_once __DIR__ . '/solidlayer.php';
 require_once __DIR__ . '/alireza_single.php';
 require_once __DIR__ . '/WGDashboard.php';
 require_once __DIR__ . '/s_ui.php';
@@ -146,6 +147,37 @@ class ManagePanel
                 $Output['subscription_url'] = $data_Output['subscription_url'];
                 $Output['configs'] = $links_user;
             }
+        } elseif ($Get_Data_Panel['type'] == "solidlayer") {
+            $configuredServices = $Get_Data_Product['inbounds'] ?? ($Get_Data_Panel['inbounds'] ?? null);
+            $solidlayer = solidlayerCreateSubscription(
+                $Get_Data_Panel['name_panel'],
+                $usernameC,
+                (int) $data_limit,
+                (int) $expire,
+                $note,
+                $configuredServices
+            );
+            if (empty($solidlayer['ok'])) {
+                return array(
+                    'status' => 'Unsuccessful',
+                    'msg' => $solidlayer['error'] ?? 'SolidLayer create failed'
+                );
+            }
+            $data_Output = $solidlayer['data'];
+            $subscriptionUrl = solidlayerAbsoluteSubscriptionUrl(
+                $Get_Data_Panel['name_panel'],
+                (string) ($data_Output['subscription_link'] ?? '')
+            );
+            $links_user = solidlayerGetSubscriptionLinks($Get_Data_Panel['name_panel'], $usernameC);
+            if ($invoice != false) {
+                $subscriptionUrl = "https://$domainhosts/sub/" . $invoice['id_invoice'];
+            }
+            $Output = array(
+                'status' => 'successful',
+                'username' => (string) ($data_Output['username'] ?? $usernameC),
+                'subscription_url' => $subscriptionUrl,
+                'configs' => $links_user
+            );
         } elseif ($Get_Data_Panel['type'] == "x-ui_single") {
             $subId = bin2hex(random_bytes(8));
             if (isset($Get_Data_Product['inbounds']) and $Get_Data_Product['inbounds'] != null) {
@@ -601,6 +633,11 @@ class ManagePanel
                         'uuid' => null
                     );
                 }
+            }
+        } elseif ($Get_Data_Panel['type'] == "solidlayer") {
+            $Output = solidlayerBluebotUser($Get_Data_Panel['name_panel'], $username);
+            if ($invoice != false && ($Output['status'] ?? 'Unsuccessful') !== 'Unsuccessful') {
+                $Output['subscription_url'] = "https://$domainhosts/sub/" . $invoice['id_invoice'];
             }
         } elseif ($Get_Data_Panel['type'] == "x-ui_single") {
             $user_data = get_clinets($username, $Get_Data_Panel);
@@ -1102,6 +1139,21 @@ class ManagePanel
                     'subscription_url' => $Data_User['subscription_url']
                 );
             }
+        } elseif ($Get_Data_Panel['type'] == "solidlayer") {
+            $revoke = solidlayerSubscriptionAction($name_panel, 'revoke', $username);
+            if (empty($revoke['ok'])) {
+                $Output = array(
+                    'status' => 'Unsuccessful',
+                    'msg' => $revoke['error'] ?? 'SolidLayer revoke failed'
+                );
+            } else {
+                $Data_User = $this->DataUser($name_panel, $username);
+                $Output = array(
+                    'status' => 'successful',
+                    'configs' => $Data_User['links'] ?? [],
+                    'subscription_url' => $Data_User['subscription_url'] ?? ''
+                );
+            }
         } elseif ($Get_Data_Panel['type'] == "x-ui_single") {
             $subId = bin2hex(random_bytes(8));
             $config = array(
@@ -1338,6 +1390,19 @@ class ManagePanel
                     'username' => $username,
                 );
             }
+        } elseif ($Get_Data_Panel['type'] == "solidlayer") {
+            $deleted = solidlayerDeleteSubscription($name_panel, $username);
+            if (empty($deleted['ok'])) {
+                $Output = array(
+                    'status' => 'Unsuccessful',
+                    'msg' => $deleted['error'] ?? 'SolidLayer delete failed'
+                );
+            } else {
+                $Output = array(
+                    'status' => 'successful',
+                    'username' => $username
+                );
+            }
         } elseif ($Get_Data_Panel['type'] == "x-ui_single") {
             $UsernameData = removeClient($Get_Data_Panel, $username);
             if (!empty($UsernameData['status']) && $UsernameData['status'] != 200) {
@@ -1559,6 +1624,18 @@ class ManagePanel
             return array(
                 'status' => true,
                 'data' => $modify
+            );
+        } elseif ($Get_Data_Panel['type'] == "solidlayer") {
+            $modify = solidlayerUpdateSubscription($name_panel, $username, $config);
+            if (empty($modify['ok'])) {
+                return array(
+                    'status' => false,
+                    'msg' => $modify['error'] ?? 'SolidLayer update failed'
+                );
+            }
+            return array(
+                'status' => true,
+                'data' => $modify['data'] ?? null
             );
         } elseif ($Get_Data_Panel['type'] == "x-ui_single") {
             $data_user = $this->DataUser($name_panel, $username);
@@ -1786,6 +1863,20 @@ class ManagePanel
                 'status' => 'successful',
                 'msg' => null
             );
+        } elseif ($Get_Data_Panel['type'] == "solidlayer") {
+            $action = $DataUserOut['status'] == "active" ? 'disable' : 'enable';
+            $changed = solidlayerSubscriptionAction($name_panel, $action, $username);
+            if (empty($changed['ok'])) {
+                $Output = array(
+                    'status' => 'Unsuccessful',
+                    'msg' => $changed['error'] ?? 'SolidLayer status change failed'
+                );
+            } else {
+                $Output = array(
+                    'status' => 'successful',
+                    'msg' => null
+                );
+            }
         } elseif ($Get_Data_Panel['type'] == "x-ui_single") {
             if ($DataUserOut['status'] == "active") {
                 $status = false;
@@ -1904,6 +1995,18 @@ class ManagePanel
                 return array(
                     'status' => false,
                     'msg' => $reset['detail']
+                );
+            }
+            return array(
+                'status' => true,
+                'msg' => 'successful'
+            );
+        } elseif ($panel['type'] == "solidlayer") {
+            $reset = solidlayerSubscriptionAction($panel['name_panel'], 'reset', $username);
+            if (empty($reset['ok'])) {
+                return array(
+                    'status' => false,
+                    'msg' => $reset['error'] ?? 'SolidLayer reset failed'
                 );
             }
             return array(
@@ -2108,6 +2211,12 @@ class ManagePanel
                 'expire_strategy' => $expire_strotegy,
                 'data_limit' => $data_limit_new
             );
+        } elseif ($panel['type'] == "solidlayer") {
+            $data = array(
+                'data_limit' => $data_limit_new,
+                'expire' => $time_new,
+                'enabled' => true
+            );
         } elseif ($panel['type'] == "x-ui_single") {
             $data = array(
                 "totalGB" => $data_limit_new,
@@ -2277,6 +2386,10 @@ class ManagePanel
             $data = array(
                 'data_limit' => $new_limit,
             );
+        } elseif ($panel['type'] == "solidlayer") {
+            $data = array(
+                'data_limit' => $new_limit
+            );
         } elseif ($panel['type'] == "x-ui_single") {
             $data = array(
                 "totalGB" => $new_limit,
@@ -2411,6 +2524,10 @@ class ManagePanel
                 'expire_date' => $new_limit,
                 'expire_strategy' => "fixed_date",
 
+            );
+        } elseif ($panel['type'] == "solidlayer") {
+            $data = array(
+                'expire' => $new_limit
             );
         } elseif ($panel['type'] == "x-ui_single") {
             $new_limit = $new_limit * 1000;

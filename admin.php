@@ -800,7 +800,7 @@ if ($text === "/debug") {
         savedata("save", "username", "null");
         savedata("save", "password", "null");
         return;
-    } elseif ($userdata['type'] == "s_ui" || $userdata['type'] == "WGDashboard" || $userdata['type'] == "x-ui_single" || $userdata['type'] == "mirza_agent" || $userdata['type'] == "rebecca") {
+    } elseif ($userdata['type'] == "s_ui" || $userdata['type'] == "WGDashboard" || $userdata['type'] == "x-ui_single" || $userdata['type'] == "mirza_agent" || $userdata['type'] == "rebecca" || $userdata['type'] == "solidlayer") {
         sendmessage($from_id, $textbotlang['Admin']['agentbot']['askToken'], $backadmin, 'HTML');
         step('add_password_panel', $from_id);
         savedata("save", "username", "null");
@@ -2742,6 +2742,22 @@ elseif ($datain == "systemsms") {
         } else {
             $text_marzban = (!empty($Check_token['error']) || !empty($Check_token['errror'])) ? panelErrorText($Check_token['error'] ?? $Check_token['errror']) : $textbotlang['Admin']['managepanel']['errorStatusPanel'] . json_encode($Check_token);
             sendmessage($from_id, $text_marzban, $optionMarzban, 'HTML');
+        }
+    } elseif ($marzban_list_get['type'] == "solidlayer") {
+        $overviewResponse = solidlayerRequest($marzban_list_get['name_panel'], 'GET', '/api/stats/overview');
+        $overviewError = solidlayerError($overviewResponse, 'SolidLayer connection failed.');
+        if ($overviewError !== null) {
+            sendmessage($from_id, "❌ <b>SolidLayer / GoGuard</b>\n\n" . htmlspecialchars($overviewError, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'), $optionsolidlayer, 'HTML');
+        } else {
+            $overview = solidlayerDecode($overviewResponse);
+            $solidlayerText = "🛡 <b>SolidLayer / GoGuard</b>\n\n"
+                . "👥 Total: " . number_format((int) ($overview['total'] ?? 0)) . "\n"
+                . "✅ Active: " . number_format((int) ($overview['active'] ?? 0)) . "\n"
+                . "⏳ On hold: " . number_format((int) ($overview['on_hold'] ?? 0)) . "\n"
+                . "⌛ Expired: " . number_format((int) ($overview['expired'] ?? 0)) . "\n"
+                . "📦 Limited: " . number_format((int) ($overview['limited'] ?? 0)) . "\n"
+                . "⛔ Disabled: " . number_format((int) ($overview['disabled'] ?? 0));
+            sendmessage($from_id, $solidlayerText, $optionsolidlayer, 'HTML');
         }
     } elseif ($marzban_list_get['type'] == "x-ui_single") {
         $status_server = status_server_xui($marzban_list_get);
