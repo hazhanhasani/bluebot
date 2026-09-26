@@ -746,9 +746,13 @@ final class BluebotSms
     ): ?string {
         global $pdo;
         try {
-            $stmt = $pdo->prepare('SELECT number FROM user WHERE id=? LIMIT 1');
+            $stmt = $pdo->prepare('SELECT number,sms_enabled FROM user WHERE id=? LIMIT 1');
             $stmt->execute([$userId]);
-            $phone = (string) ($stmt->fetchColumn() ?: '');
+            $user = $stmt->fetch(PDO::FETCH_ASSOC) ?: null;
+            if (!$user || (!$force && (int) ($user['sms_enabled'] ?? 1) !== 1)) {
+                return null;
+            }
+            $phone = (string) ($user['number'] ?? '');
             return self::queue($eventKey, $phone, $params, $userId, $invoiceId, $orderId, $dedupeSeed, $force);
         } catch (Throwable $e) {
             return null;
@@ -914,7 +918,7 @@ final class BluebotSms
             throw new RuntimeException('این پیام برای ارسال عمومی مجاز نیست.');
         }
 
-        $sql = "SELECT id,number FROM user WHERE number IS NOT NULL AND number<>''";
+        $sql = "SELECT id,number FROM user WHERE number IS NOT NULL AND number<>'' AND COALESCE(sms_enabled,1)=1";
         if ($onlyActive) {
             $sql .= " AND COALESCE(User_Status,'Active') NOT IN ('block','blocked')";
         }
