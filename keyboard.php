@@ -37,6 +37,14 @@ $replacements = [
 ];
 $admin_idss = select("admin", "*", "id_admin", $from_id, "count");
 $temp_addtional_key = [];
+$miniAppHost = trim((string) ($domainhosts ?? ''));
+$miniAppHost = preg_replace('~^https?://~i', '', $miniAppHost);
+$miniAppHost = trim((string) $miniAppHost, '/');
+$miniAppUrl = $miniAppHost !== '' ? 'https://' . $miniAppHost . '/app/' : '';
+$miniAppButton = $miniAppUrl !== '' ? [
+    'text' => $textbotlang['keyboard']['miniAppOpen'],
+    'web_app' => ['url' => $miniAppUrl],
+] : null;
 $keyboardLayout = json_decode($setting['keyboardmain'], true);
 $keyboardRows = [];
 if (is_array($keyboardLayout) && isset($keyboardLayout['keyboard']) && is_array($keyboardLayout['keyboard'])) {
@@ -119,7 +127,12 @@ if ($setting['inlinebtnmain'] == "oninline" && !empty($keyboardRows)) {
     $keyboard = ['inline_keyboard' => []];
     $keyboardcustom = $trace_keyboard;
     $keyboardcustom = applyKeyboardLabels($keyboardcustom, $replacements);
-    $keyboardcustom[] = $temp_addtional_key;
+    if ($miniAppButton !== null) {
+        $keyboardcustom[] = [$miniAppButton];
+    }
+    if (!empty($temp_addtional_key)) {
+        $keyboardcustom[] = $temp_addtional_key;
+    }
     $keyboard['inline_keyboard'] = $keyboardcustom;
     $keyboard = json_encode($keyboard);
 } else {
@@ -129,7 +142,12 @@ if ($setting['inlinebtnmain'] == "oninline" && !empty($keyboardRows)) {
     $keyboard = ['keyboard' => [], 'resize_keyboard' => true];
     $keyboardcustom = $keyboardRows;
     $keyboardcustom = applyKeyboardLabels($keyboardcustom, $replacements);
-    $keyboardcustom[] = $temp_addtional_key;
+    if ($miniAppButton !== null) {
+        $keyboardcustom[] = [$miniAppButton];
+    }
+    if (!empty($temp_addtional_key)) {
+        $keyboardcustom[] = $temp_addtional_key;
+    }
     $keyboard['keyboard'] = $keyboardcustom;
     $keyboard = json_encode($keyboard);
 }
