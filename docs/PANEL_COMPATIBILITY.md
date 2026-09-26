@@ -6,19 +6,19 @@ Last reviewed: 2026-09-26
 
 | BlueBot type | Upstream baseline | Adapter | Notes |
 |---|---|---|---|
-| `marzban` | Marzban v0.8.4 | `Marzban.php` | Handles the v0.8.4 delete-after-success HTTP 500 edge case by verifying deletion. |
-| `marzban` + `version_panel=1` | PasarGuard v5.4.1 | `Marzban.php` | Uses Marzban-compatible token/user API with `group_ids` and `proxy_settings`. |
-| `marzneshin` | Marzneshin v0.7.4 | `marzneshin.php` | Uses required `expire_strategy`, ISO datetimes and current service IDs. |
-| `solidlayer` | GoGuard API / Swagger 1.0 (2026-09-26) | `solidlayer.php` | Native `X-API-Key` subscription API integration. |
-| `x-ui_single` | 3x-ui v3.8.5 | `x-ui_single.php` | Full client replacement updates, `keepTraffic` delete option and JSON `inboundIds`. |
-| `alireza_single` | alireza0/x-ui v1.12.0 | `alireza_single.php` | Protocol-aware client identifier: id/password/email. |
-| `hiddify` | Hiddify Manager v12.3.3 stable | `hiddify.php` | v2 API with `Hiddify-API-Key`; Basic fallback retained for legacy installations. |
-| `s_ui` | S-UI v1.6.3 | `s_ui.php` | `/apiv2` token API and current `save` object contract. |
-| `WGDashboard` | WGDashboard v4.3.3 | `WGDashboard.php` | Current v4 peer, traffic and schedule APIs. |
-| `mikrotik` | RouterOS v7 REST API | `mikrotik.php` | Native REST CRUD with compatibility fallbacks for older v7 builds. |
-| `ibsng` | Legacy IBSng web API | `ibsng.php` | Bundled radiusApi adapter; no authoritative modern public API release baseline. |
-| `mirza_agent` | Current Mirza Agent protocol | `mirza_agent.php` | Matches current upstream adapter. |
-| `rebecca` | Current Rebecca custom API | `Rebecca.php` | Matches current upstream adapter. |
+| `marzban` | Marzban v0.8.4 | `src/Panel/Adapters/Marzban.php` | Handles the v0.8.4 delete-after-success HTTP 500 edge case by verifying deletion. |
+| `marzban` + `version_panel=1` | PasarGuard v5.4.1 | `src/Panel/Adapters/Marzban.php` | Uses Marzban-compatible token/user API with `group_ids` and `proxy_settings`. |
+| `marzneshin` | Marzneshin v0.7.4 | `src/Panel/Adapters/Marzneshin.php` | Uses required `expire_strategy`, ISO datetimes and current service IDs. |
+| `solidlayer` | GoGuard API / Swagger 1.0 (2026-09-26) | `src/Panel/Adapters/SolidLayer.php` | Native `X-API-Key` subscription API integration. |
+| `x-ui_single` | 3x-ui v3.8.5 | `src/Panel/Adapters/ThreeXUI.php` | Full client replacement updates, `keepTraffic` delete option and JSON `inboundIds`. |
+| `alireza_single` | alireza0/x-ui v1.12.0 | `src/Panel/Adapters/AlirezaXUI.php` | Protocol-aware client identifier: id/password/email. |
+| `hiddify` | Hiddify Manager v12.3.3 stable | `src/Panel/Adapters/Hiddify.php` | v2 API with `Hiddify-API-Key`; Basic fallback retained for legacy installations. |
+| `s_ui` | S-UI v1.6.3 | `src/Panel/Adapters/SUI.php` | `/apiv2` token API and current `save` object contract. |
+| `WGDashboard` | WGDashboard v4.3.3 | `src/Panel/Adapters/WGDashboard.php` | Current v4 peer, traffic and schedule APIs. |
+| `mikrotik` | RouterOS v7 REST API | `src/Panel/Adapters/MikroTik.php` | Native REST CRUD with compatibility fallbacks for older v7 builds. |
+| `ibsng` | Legacy IBSng web API | `src/Panel/Adapters/IBSng.php` | Bundled radiusApi adapter; no authoritative modern public API release baseline. |
+| `mirza_agent` | Current Mirza Agent protocol | `src/Panel/Adapters/MirzaAgent.php` | Matches current upstream adapter. |
+| `rebecca` | Current Rebecca custom API | `src/Panel/Adapters/Rebecca.php` | Matches current upstream adapter. |
 | `Manualsale` | BlueBot internal | `panels.php` | No external API dependency. |
 
 ## Compatibility policy
