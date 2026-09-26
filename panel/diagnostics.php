@@ -5,8 +5,6 @@ require_once __DIR__ . '/../src/Support/Diagnostics.php';
 require_auth();
 
 $diagnostics = bluebotCollectDiagnostics($pdo, is_array($setting ?? null) ? $setting : (select("setting", "*") ?: []));
-bluebotRecordDiagnosticsSnapshot($diagnostics);
-$diagnosticsHistory = bluebotReadDiagnosticsHistory(24);
 bluebotRecordHealthSnapshot($diagnostics);
 $healthHistory = bluebotReadHealthHistory(20);
 
@@ -211,60 +209,6 @@ include __DIR__ . '/inc/layout_head.php';
                 </span>
               </td>
               <td class="cell-mono"><?= htmlspecialchars((string) $snapshot['version']) ?></td>
-            </tr>
-          <?php endforeach; ?>
-        <?php endif; ?>
-      </tbody>
-    </table>
-  </div>
-</div>
-
-<div class="card fade-up" style="margin-top:24px">
-  <div class="card-head">
-    <div>
-      <div class="card-title"><?= htmlspecialchars($textbotlang['panel']['diagnosticsHistoryTitle']) ?></div>
-      <div class="card-subtitle"><?= htmlspecialchars($textbotlang['panel']['diagnosticsHistorySubtitle']) ?></div>
-    </div>
-  </div>
-
-  <div class="tbl-wrap">
-    <table class="tbl-lg">
-      <thead>
-        <tr>
-          <th><?= htmlspecialchars($textbotlang['panel']['diagnosticsCheckedAt']) ?></th>
-          <th><?= htmlspecialchars($textbotlang['panel']['diagnosticsDatabase']) ?></th>
-          <th><?= htmlspecialchars($textbotlang['panel']['diagnosticsStorage']) ?></th>
-          <th><?= htmlspecialchars($textbotlang['panel']['diagnosticsWebhook']) ?></th>
-          <th><?= htmlspecialchars($textbotlang['panel']['diagnosticsApiToken']) ?></th>
-          <th><?= htmlspecialchars($textbotlang['panel']['diagnosticsDeliveryErrors']) ?></th>
-          <th><?= htmlspecialchars($textbotlang['panel']['diagnosticsFreeDisk']) ?></th>
-        </tr>
-      </thead>
-      <tbody>
-        <?php if ($diagnosticsHistory === []): ?>
-          <tr>
-            <td colspan="7">
-              <div class="empty">
-                <div class="empty-mark">—</div>
-                <p><?= htmlspecialchars($textbotlang['panel']['diagnosticsHistoryEmpty']) ?></p>
-              </div>
-            </td>
-          </tr>
-        <?php else: ?>
-          <?php foreach ($diagnosticsHistory as $snapshot): ?>
-            <tr>
-              <td class="cell-mono" style="white-space:nowrap"><?= htmlspecialchars((string) ($snapshot['time'] ?? '—')) ?></td>
-              <?php foreach (['database_ok', 'storage_writable', 'webhook_protected', 'api_token_configured'] as $healthKey): ?>
-                <?php $ok = (bool) ($snapshot[$healthKey] ?? false); ?>
-                <td><span class="tag <?= $ok ? 'tag-ok' : 'tag-no' ?>"><?= htmlspecialchars($ok
-                    ? $textbotlang['panel']['diagnosticsHealthy']
-                    : $textbotlang['panel']['diagnosticsProblem']) ?></span></td>
-              <?php endforeach; ?>
-              <td>
-                <?php $deliveryCount = (int) ($snapshot['delivery_errors'] ?? -1); ?>
-                <span class="tag <?= $deliveryCount > 0 ? 'tag-no' : 'tag-ok' ?>"><?= $deliveryCount < 0 ? '—' : number_format($deliveryCount) ?></span>
-              </td>
-              <td class="cell-mono"><?= htmlspecialchars((string) ($snapshot['free_disk'] ?? 'unknown')) ?></td>
             </tr>
           <?php endforeach; ?>
         <?php endif; ?>
