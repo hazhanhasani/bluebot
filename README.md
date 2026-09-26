@@ -145,6 +145,8 @@ BlueBot از پرداخت دستی و چندین Gateway آنلاین پشتیب
 | Blupal | ✅ |
 | Webhook-based payment flows | ✅ |
 
+> **Blupal:** در پنل بلوپال هر دو آدرس باید ثبت شوند: `/payment/blupal_callback.php` به‌عنوان Callback و `/payment/blupal_webhook.php` به‌عنوان Webhook.
+
 > [!IMPORTANT]
 > قبل از استفاده در محیط Production، Callback URL، Webhook Secret و تنظیمات هر درگاه را با حساب واقعی خودتان بررسی کنید.
 
