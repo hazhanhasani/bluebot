@@ -6,8 +6,15 @@ require_once __DIR__ . '/RuntimeIdentity.php';
 
 function bluebotMiniAppUrl(): string
 {
-    // Optional dedicated edge/CDN hostname. When unset, BlueBot derives
-    // the Mini App URL from the reconciled runtime domain for the current bot.
+    // The active bot/domain is authoritative. This prevents an old Worker/CDN
+    // override from being inherited when BlueBot is moved to a new bot/domain.
+    $host = bluebotPublicDomain();
+    if ($host !== '') {
+        return 'https://' . $host . '/app/';
+    }
+
+    // Legacy edge/CDN override is fallback-only when BlueBot cannot determine
+    // any active public domain at runtime or from the current bot cache/config.
     $override = trim((string) getenv('BLUEBOT_MINIAPP_URL'));
     if ($override !== '' && filter_var($override, FILTER_VALIDATE_URL) !== false) {
         $parts = parse_url($override);
@@ -16,9 +23,7 @@ function bluebotMiniAppUrl(): string
         }
     }
 
-    $host = bluebotPublicDomain();
-
-    return $host === '' ? '' : 'https://' . $host . '/app/';
+    return '';
 }
 
 function bluebotEnsureMiniAppMenuButton(bool $force = false): bool
