@@ -862,16 +862,12 @@ final class BluebotSms
                 continue;
             }
 
-            $expected = array_map(static fn(array $v): string => (string) $v['name'], $spec['vars'] ?? []);
-            sort($expected, SORT_STRING);
             $best = null;
             foreach ($available as $code => $pattern) {
                 if (isset($used[$code])) {
                     continue;
                 }
-                $provided = array_values($pattern['variables'] ?? []);
-                sort($provided, SORT_STRING);
-                if ($provided !== $expected) {
+                if (!self::patternCompatibleWithSpec($pattern, $spec)) {
                     continue;
                 }
                 $haystack = self::normalizeText(($pattern['description'] ?? '') . ' ' . ($pattern['text'] ?? ''));
