@@ -1036,6 +1036,15 @@ https://t.me/%s?start=%s',
                         'notchanged' => '❌ 无法更改服务状态。',
                         'on_hold' => '❌ 未连接',
                         'panelNotConnected' => '❌ 所请求服务的查询系统目前不可用。请一小时后再试',
+                        'serviceLoadingShort' => '正在加载服务信息…',
+                        'serviceLoading' => '⏳ 正在获取 <code>{username}</code> 的最新状态…',
+                        'panelNotConnectedCached' => '⚠️ 暂时无法获取面板实时状态，但已选择该订单。
+
+👤 用户名：<code>{username}</code>
+🌿 服务：{service}
+🇺🇳 位置：{location}
+
+🔄 请稍后再次刷新。',
                         'remainingVolume' => '剩余服务流量：',
                         'removeservice' => '❌ 退款',
                         'sendUsername' => '📌 请发送您的用户名',
