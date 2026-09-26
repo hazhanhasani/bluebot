@@ -23,4 +23,6 @@ return [
     ['sms_deliveries', 'idx_sms_user_created', '`user_id`(100), `created_at`'],
     ['sms_deliveries', 'idx_sms_event', '`event_key`(80)'],
     ['sms_deliveries', 'idx_sms_invoice', '`invoice_id`(100)'],
+    ['sms_otp_challenges', 'idx_sms_otp_user_created', '`user_id`(100), `created_at`'],
+    ['sms_otp_challenges', 'idx_sms_otp_phone_created', '`phone`(30), `created_at`'],
 ];
