@@ -3907,6 +3907,7 @@ We hope you had a good experience with the ease and speed of your service. If yo
                 'freeLimit' => '🆓 Free limit',
                 'generalLimit' => '↙️ Overall limit',
                 'generalSettings' => '⚙️ General settings',
+                'updateCenter' => '🔄 BlueBot update',
                 'getAllConfigs' => '⚙️ Get all configs',
                 'getConfig' => 'Get config',
                 'getConfigBtn' => '🔗 Get config button',
