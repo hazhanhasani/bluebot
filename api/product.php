@@ -76,8 +76,30 @@ function prod_product(array $data, string $method): void
                 'product' => [],
             ]);
         }
-        $count_invoice = select("invoice", "*", "name_product", $prodcut['name_product'], "count");
-        $sum_invoice = select("invoice", "SUM(price_product) as sum_price", "name_product", $prodcut['name_product'], "select");
+        if (($prodcut['Location'] ?? '') === '/all') {
+            $count_invoice = select("invoice", "*", "name_product", $prodcut['name_product'], "count");
+            $sum_invoice = select("invoice", "SUM(price_product) as sum_price", "name_product", $prodcut['name_product'], "select");
+        } else {
+            $stmt = $pdo->prepare(
+                "SELECT COUNT(*) FROM invoice WHERE name_product = :name_product AND Service_location = :location"
+            );
+            $stmt->execute([
+                ':name_product' => $prodcut['name_product'],
+                ':location' => $prodcut['Location'],
+            ]);
+            $count_invoice = (int) $stmt->fetchColumn();
+
+            $stmt = $pdo->prepare(
+                "SELECT COALESCE(SUM(price_product), 0) AS sum_price
+                 FROM invoice
+                 WHERE name_product = :name_product AND Service_location = :location"
+            );
+            $stmt->execute([
+                ':name_product' => $prodcut['name_product'],
+                ':location' => $prodcut['Location'],
+            ]);
+            $sum_invoice = ['sum_price' => $stmt->fetchColumn()];
+        }
         $panel = select("marzban_panel", "name_panel,code_panel", "status", "active", "fetchAll");
         $category = select("category", "*", null, null, "fetchAll");
         $prodcut['hide_panel'] = json_decode($prodcut['hide_panel'] ?? '', true) ?: [];
@@ -104,17 +126,18 @@ function prod_product_add(array $data, string $method): void
     $dataLimit = requireInt($data, 'data_limit', 0);
     $serviceTime = requireInt($data, 'time', 0);
 
-    $prodcut = select("product", "*", "name_product", $data['name'], "count");
-    if ($prodcut != 0) {
-        sendJsonResponse(false, "product name exits", [], 200);
-    }
     if ($data['location'] === "/all") {
         $locationName = "/all";
     } else {
         $panel = select("marzban_panel", "*", "code_panel", $data['location'], "select");
-        if (!$panel)
+        if (!$panel) {
             sendJsonResponse(false, "location not found", [], 200);
+        }
         $locationName = $panel['name_panel'];
+    }
+
+    if (productNameLocationConflict((string) $data['name'], (string) $locationName)) {
+        sendJsonResponse(false, "product name exists for this panel", [], 200);
     }
     try {
         $randomString = bin2hex(random_bytes(3));
@@ -166,13 +189,6 @@ function prod_product_edit(array $data, string $method): void
     if (!$product) {
         sendJsonResponse(false, "product not found", [], 200);
     }
-    if (isset($data['name']) && $product['name_product'] != $data['name']) {
-        $product_check = select("product", "*", "name_product", $data['name'], "count");
-        if ($product_check != 0)
-            sendJsonResponse(false, "product name exits", [], 200);
-        update("invoice", "name_product", $data['name'], "name_product", $product['name_product']);
-    }
-
     // Location is stored as the panel *name*; the client sends a panel code.
     $location = $product['Location'];
     if (isset($data['location'])) {
@@ -180,15 +196,42 @@ function prod_product_edit(array $data, string $method): void
             $location = "/all";
         } else {
             $panel = select("marzban_panel", "*", "code_panel", $data['location'], "select");
-            if (!$panel)
+            if (!$panel) {
                 sendJsonResponse(false, "location not found", [], 200);
+            }
             $location = $panel['name_panel'];
+        }
+    }
+
+    $newName = isset($data['name']) ? trim((string) $data['name']) : (string) $product['name_product'];
+    if (productNameLocationConflict($newName, (string) $location, (int) $product['id'])) {
+        sendJsonResponse(false, "product name exists for this panel", [], 200);
+    }
+
+    if ($newName !== (string) $product['name_product']) {
+        if (($product['Location'] ?? '') === '/all') {
+            $stmt = $pdo->prepare("UPDATE invoice SET name_product = :new_name WHERE name_product = :old_name");
+            $stmt->execute([
+                ':new_name' => $newName,
+                ':old_name' => $product['name_product'],
+            ]);
+        } else {
+            $stmt = $pdo->prepare(
+                "UPDATE invoice
+                 SET name_product = :new_name
+                 WHERE name_product = :old_name AND Service_location = :old_location"
+            );
+            $stmt->execute([
+                ':new_name' => $newName,
+                ':old_name' => $product['name_product'],
+                ':old_location' => $product['Location'],
+            ]);
         }
     }
 
     try {
         $productData = [
-            'name_product' => isset($data['name']) ? $data['name'] : $product['name_product'],
+            'name_product' => $newName,
             'price_product' => isset($data['price']) ? $data['price'] : $product['price_product'],
             'Volume_constraint' => $data['volume'] ?? $data['data_limit'] ?? $product['Volume_constraint'],
             'Service_time' => isset($data['time']) ? $data['time'] : $product['Service_time'],
