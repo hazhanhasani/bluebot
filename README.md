@@ -91,22 +91,24 @@ flowchart LR
 BlueBot از چند Adapter مستقل برای اتصال به پنل‌های مختلف استفاده می‌کند. هر پنل بر اساس API و ساختار خودش مدیریت می‌شود.
 </p>
 
-| پنل | وضعیت اتصال | توضیح |
-|---|---:|---|
-| **Marzban** | ✅ Native | ساخت، ویرایش، حذف، تمدید و مدیریت کاربران |
-| **Marzneshin** | ✅ Native | مدیریت کامل کاربران و سرویس‌ها |
-| **PasarGuard** | ✅ Compatible | سازگاری از طریق مسیرهای Marzban-compatible |
-| **SolidLayer / GoGuard** | ✅ Native | اتصال مستقیم با <code>X-API-Key</code> و API اشتراک‌ها |
-| **Sanaei / X-UI Single** | ✅ Native | مدیریت Client، Traffic و Subscription |
-| **Alireza Single** | ✅ Native | مدیریت Clientهای X-UI |
-| **Hiddify** | ✅ Native | ایجاد، ویرایش و حذف کاربران |
-| **S-UI** | ✅ Native | مدیریت Client و Subscription |
-| **WGDashboard** | ✅ Native | مدیریت WireGuard Peer |
-| **MikroTik** | ✅ Integrated | مدیریت کاربران و Group |
-| **IBSng** | ✅ Integrated | مدیریت کاربران و سرویس‌ها |
-| **Mirza Agent** | ✅ Integrated | اتصال به Agent API |
-| **Rebecca** | ✅ Integrated | Adapter اختصاصی |
-| **Manual Sale** | ✅ Built-in | فروش دستی کانفیگ‌های از پیش ثبت‌شده |
+| پنل | نسخه / API هدف | وضعیت اتصال | توضیح |
+|---|---|---:|---|
+| **Marzban** | **v0.8.4** | ✅ Native | ساخت، ویرایش، حذف، تمدید و مدیریت کاربران |
+| **Marzneshin** | **v0.7.4** | ✅ Native | Schema جدید Expire Strategy و مدیریت سرویس‌ها |
+| **PasarGuard** | **v5.4.1** | ✅ Compatible | API سازگار با Marzban، Group و Proxy Settings |
+| **SolidLayer / GoGuard** | **Swagger API 1.0** | ✅ Native | اتصال مستقیم با <code>X-API-Key</code> و API اشتراک‌ها |
+| **3x-ui / Sanaei** | **v3.8.5** | ✅ Native | Client API، Traffic، Attach و Delete جدید |
+| **Alireza X-UI** | **v1.12.0** | ✅ Native | شناسه Client سازگار با VMess/VLESS/Trojan/SS |
+| **Hiddify Manager** | **v12.3.3 stable** | ✅ Native | API v2 و <code>Hiddify-API-Key</code> |
+| **S-UI** | **v1.6.3** | ✅ Native | <code>/apiv2</code> و قرارداد جدید Save |
+| **WGDashboard** | **v4.3.3** | ✅ Native | WireGuard Peer API v4 |
+| **MikroTik** | **RouterOS v7 REST** | ✅ Integrated | REST CRUD + User Manager |
+| **IBSng** | **Legacy Web API** | ✅ Integrated | Adapter داخلی radiusApi |
+| **Mirza Agent** | **Current upstream** | ✅ Integrated | اتصال به Agent API |
+| **Rebecca** | **Current upstream** | ✅ Integrated | Adapter اختصاصی |
+| **Manual Sale** | **Internal** | ✅ Built-in | فروش دستی کانفیگ‌های از پیش ثبت‌شده |
+
+> جزئیات نسخه‌های هدف، محدودیت‌ها و سیاست سازگاری در [Panel Compatibility Matrix](docs/PANEL_COMPATIBILITY.md) نگهداری می‌شود.
 
 <h3 dir="rtl" align="right">SolidLayer / GoGuard</h3>
 

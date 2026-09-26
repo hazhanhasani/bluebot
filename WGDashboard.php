@@ -3,66 +3,95 @@ include('config.php');
 ini_set('error_log', 'error_log');
 
 
+function wgDashboardRequest($namepanel, string $method, string $path, ?array $payload = null): array
+{
+    $panel = select("marzban_panel", "*", "name_panel", $namepanel, "select");
+    if (!is_array($panel)) {
+        return ['status' => null, 'body' => null, 'error' => 'panel not found'];
+    }
+
+    $req = new CurlRequest(rtrim((string) $panel['url_panel'], '/') . '/' . ltrim($path, '/'));
+    $req->setHeaders([
+        'Accept: application/json',
+        'Content-Type: application/json',
+        'wg-dashboard-apikey: ' . (string) $panel['password_panel'],
+    ]);
+
+    $body = $payload === null
+        ? null
+        : json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+
+    switch (strtoupper($method)) {
+        case 'GET':
+            return $req->get();
+        case 'POST':
+            return $req->post($body ?? '{}');
+        case 'DELETE':
+            return $req->delete($body);
+        default:
+            return ['status' => null, 'body' => null, 'error' => 'unsupported WGDashboard method'];
+    }
+}
+
+function wgDashboardConfigName(array $panel): string
+{
+    return rawurlencode((string) ($panel['inboundid'] ?? ''));
+}
+
 function get_userwg($username, $namepanel)
 {
-    $marzban_list_get = select("marzban_panel", "*", "name_panel", $namepanel, "select");
-    $curl = curl_init();
-    curl_setopt_array($curl, array(
-        CURLOPT_URL => $marzban_list_get['url_panel'] . '/api/getWireguardConfigurationInfo?configurationName=' . $marzban_list_get['inboundid'],
-        CURLOPT_RETURNTRANSFER => true,
-        CURLOPT_ENCODING => '',
-        CURLOPT_MAXREDIRS => 10,
-        CURLOPT_TIMEOUT_MS => ($GLOBALS['request_exec_timeout'] ?? null) ?: 10000,
-        CURLOPT_CONNECTTIMEOUT_MS => min((int) (($GLOBALS['request_exec_timeout'] ?? null) ?: 10000), 5000),
-        CURLOPT_FOLLOWLOCATION => true,
-        CURLOPT_HTTP_VERSION => CURL_HTTP_VERSION_1_1,
-        CURLOPT_CUSTOMREQUEST => 'GET',
-        CURLOPT_HTTPHEADER => array(
-            'Accept: application/json',
-            'wg-dashboard-apikey: ' . $marzban_list_get['password_panel']
-        ),
-    ));
-    $rawResponse = curl_exec($curl);
-    $curlError = $rawResponse === false ? curl_error($curl) : '';
-    curl_close($curl);
+    $panel = select("marzban_panel", "*", "name_panel", $namepanel, "select");
+    if (!is_array($panel)) {
+        return ['status' => false, 'error' => 'panel not found'];
+    }
 
-    if ($rawResponse === false) {
+    $response = wgDashboardRequest(
+        $namepanel,
+        'GET',
+        '/api/getWireguardConfigurationInfo?configurationName=' . rawurlencode((string) $panel['inboundid'])
+    );
+
+    if (!empty($response['error'])) {
         bluebotLog('warning', 'WGDashboard request failed', [
             'panel' => (string) $namepanel,
-            'error' => $curlError,
+            'error' => (string) $response['error'],
         ]);
-        return ['status' => false, 'error' => $curlError];
+        return ['status' => false, 'error' => $response['error']];
     }
 
-    $response = json_decode($rawResponse, true);
-    if (!is_array($response) || empty($response['status']))
-        return is_array($response) ? $response : ['status' => false, 'error' => 'invalid response'];
-    $configurationPeers = $response['data']['configurationPeers'];
-    $configurationRestrictedPeers = $response['data']['configurationRestrictedPeers'];
-    $output = [];
-    foreach ($configurationPeers as $userinfo) {
-        if ($userinfo['name'] == $username) {
-            $output = $userinfo;
-            break;
+    $decoded = json_decode((string) ($response['body'] ?? ''), true);
+    if (!is_array($decoded) || empty($decoded['status'])) {
+        return is_array($decoded) ? $decoded : ['status' => false, 'error' => 'invalid response'];
+    }
+
+    $data = is_array($decoded['data'] ?? null) ? $decoded['data'] : [];
+    $activePeers = is_array($data['configurationPeers'] ?? null) ? $data['configurationPeers'] : [];
+    $restrictedPeers = is_array($data['configurationRestrictedPeers'] ?? null) ? $data['configurationRestrictedPeers'] : [];
+
+    foreach ($activePeers as $userinfo) {
+        if (is_array($userinfo) && (string) ($userinfo['name'] ?? '') === (string) $username) {
+            return $userinfo;
         }
     }
-    if (count($output) != 0)
-        return $output;
-    foreach ($configurationRestrictedPeers as $userinfo) {
-        if ($userinfo['name'] == $username) {
-            $output = $userinfo;
-            $output['configuration']['Status'] = false;
-            break;
+
+    foreach ($restrictedPeers as $userinfo) {
+        if (is_array($userinfo) && (string) ($userinfo['name'] ?? '') === (string) $username) {
+            if (!isset($userinfo['configuration']) || !is_array($userinfo['configuration'])) {
+                $userinfo['configuration'] = [];
+            }
+            $userinfo['configuration']['Status'] = false;
+            return $userinfo;
         }
     }
-    return $output;
+
+    return [];
 }
 
 function ipslast($namepanel)
 {
 
     $marzban_list_get = select("marzban_panel", "*", "name_panel", $namepanel, "select");
-    $url = $marzban_list_get['url_panel'] . '/api/getAvailableIPs/' . $marzban_list_get['inboundid'];
+    $url = $marzban_list_get['url_panel'] . '/api/getAvailableIPs/' . wgDashboardConfigName($marzban_list_get);
     $headers = array(
         'Accept: application/json',
         'wg-dashboard-apikey: ' . $marzban_list_get['password_panel']
@@ -76,7 +105,7 @@ function downloadconfig($namepanel, $publickey)
 {
 
     $marzban_list_get = select("marzban_panel", "*", "name_panel", $namepanel, "select");
-    $url = $marzban_list_get['url_panel'] . "/api/downloadPeer/{$marzban_list_get['inboundid']}?id=" . urlencode($publickey);
+    $url = $marzban_list_get['url_panel'] . "/api/downloadPeer/" . wgDashboardConfigName($marzban_list_get) . "?id=" . rawurlencode((string) $publickey);
     $headers = array(
         'Accept: application/json',
         'wg-dashboard-apikey: ' . $marzban_list_get['password_panel']
@@ -117,7 +146,7 @@ function addpear($namepanel, $usernameac)
         'preshared_key' => $pubandprivate['preshared_key'],
     );
     $configpanel = json_encode($config);
-    $url = $marzban_list_get['url_panel'] . '/api/addPeers/' . $marzban_list_get['inboundid'];
+    $url = $marzban_list_get['url_panel'] . '/api/addPeers/' . wgDashboardConfigName($marzban_list_get);
     $headers = array(
         'Accept: application/json',
         'Content-Type: application/json',
@@ -163,7 +192,7 @@ function updatepear($namepanel, array $config)
 {
 
     $marzban_list_get = select("marzban_panel", "*", "name_panel", $namepanel, "select");
-    $url = $marzban_list_get['url_panel'] . '/api/updatePeerSettings/' . $marzban_list_get['inboundid'];
+    $url = $marzban_list_get['url_panel'] . '/api/updatePeerSettings/' . wgDashboardConfigName($marzban_list_get);
     $headers = array(
         'Accept: application/json',
         'wg-dashboard-apikey: ' . $marzban_list_get['password_panel']
@@ -198,7 +227,7 @@ function ResetUserDataUsagewg($publickey, $namepanel)
         "type" => "total"
     );
     $configpanel = json_encode($config, true);
-    $url = $marzban_list_get['url_panel'] . '/api/resetPeerData/' . $marzban_list_get['inboundid'];
+    $url = $marzban_list_get['url_panel'] . '/api/resetPeerData/' . wgDashboardConfigName($marzban_list_get);
     $headers = array(
         'Accept: application/json',
         'wg-dashboard-apikey: ' . $marzban_list_get['password_panel'],
@@ -214,7 +243,7 @@ function remove_userwg($location, $username)
     allowAccessPeers($location, $username);
     $marzban_list_get = select("marzban_panel", "*", "name_panel", $location, "select");
     $data_user = json_decode(select("invoice", "user_info", "username", $username, "select")['user_info'], true)['public_key'];
-    $url = $marzban_list_get['url_panel'] . '/api/deletePeers/' . $marzban_list_get['inboundid'];
+    $url = $marzban_list_get['url_panel'] . '/api/deletePeers/' . wgDashboardConfigName($marzban_list_get);
     $headers = array(
         'Accept: application/json',
         'wg-dashboard-apikey: ' . $marzban_list_get['password_panel'],
@@ -234,7 +263,7 @@ function allowAccessPeers($location, $username)
 
     $marzban_list_get = select("marzban_panel", "*", "name_panel", $location, "select");
     $data_user = json_decode(select("invoice", "user_info", "username", $username, "select")['user_info'], true)['public_key'];
-    $url = $marzban_list_get['url_panel'] . '/api/allowAccessPeers/' . $marzban_list_get['inboundid'];
+    $url = $marzban_list_get['url_panel'] . '/api/allowAccessPeers/' . wgDashboardConfigName($marzban_list_get);
     $headers = array(
         'Accept: application/json',
         'wg-dashboard-apikey: ' . $marzban_list_get['password_panel'],

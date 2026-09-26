@@ -55,6 +55,9 @@ jobs:
           done
           echo "PHP syntax OK."
 
+      - name: Panel API compatibility contracts
+        run: php tests/panel_compat_contract.php
+
       - name: Lint panel JavaScript
         shell: bash
         run: |

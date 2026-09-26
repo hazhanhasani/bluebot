@@ -125,14 +125,15 @@ function get_clinetsalireza($username, $namepanel)
     }
 
     foreach ($response as $client) {
-        $clientdata = json_decode($client['settings'], true)['clients'];
+        $settings = json_decode((string) ($client['settings'] ?? ''), true);
+        $clientdata = is_array($settings) && isset($settings['clients']) && is_array($settings['clients']) ? $settings['clients'] : [];
         foreach ($clientdata as $clinets) {
             if ($clinets['email'] == $username) {
                 $output[] = $clinets;
                 break;
             }
         }
-        $clientStats = $client['clientStats'];
+        $clientStats = isset($client['clientStats']) && is_array($client['clientStats']) ? $client['clientStats'] : [];
         foreach ($clientStats as $clinetsup) {
             if ($clinetsup['email'] == $username) {
                 $output[] = $clinetsup;
@@ -182,13 +183,36 @@ function addClientalireza_singel($namepanel, $usernameac, $Expire, $Total, $Uuid
     @unlink(alirezaCookiePath($marzban_list_get['code_panel']));
     return $response;
 }
+function alirezaClientIdentifier(array $client): string
+{
+    // Current x-ui API uses protocol-specific client IDs:
+    // VMess/VLESS => id, Trojan => password, Shadowsocks => email.
+    foreach (['id', 'password', 'email'] as $field) {
+        if (isset($client[$field]) && (string) $client[$field] !== '') {
+            return (string) $client[$field];
+        }
+    }
+
+    return '';
+}
+
 function updateClientalireza($namepanel, $username, array $config)
 {
-    $UsernameData = get_clinetsalireza($username, $namepanel)[0];
+    $clients = get_clinetsalireza($username, $namepanel);
+    $UsernameData = $clients[0] ?? null;
+    if (!is_array($UsernameData)) {
+        return ['status' => 404, 'body' => null, 'error' => 'client not found'];
+    }
+
+    $clientId = alirezaClientIdentifier($UsernameData);
+    if ($clientId === '') {
+        return ['status' => 400, 'body' => null, 'error' => 'client identifier not found'];
+    }
+
     $marzban_list_get = select("marzban_panel", "*", "name_panel", $namepanel, "select");
     login($marzban_list_get['code_panel']);
-    $configpanel = json_encode($config, true);
-    $url = $marzban_list_get['url_panel'] . '/xui/API/inbounds/updateClient/' . $UsernameData['id'];
+    $configpanel = json_encode($config, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+    $url = rtrim($marzban_list_get['url_panel'], '/') . '/xui/API/inbounds/updateClient/' . rawurlencode($clientId);
     $headers = array(
         'Accept: application/json',
         'Content-Type: application/json',
@@ -205,7 +229,7 @@ function ResetUserDataUsagealirezasin($usernamepanel, $namepanel)
     $data_user = get_clinetsalireza($usernamepanel, $namepanel)[0];
     $marzban_list_get = select("marzban_panel", "*", "name_panel", $namepanel, "select");
     login($marzban_list_get['code_panel']);
-    $url = $marzban_list_get['url_panel'] . "/xui/API/inbounds/{$marzban_list_get['inboundid']}/resetClientTraffic/" . $data_user['email'];
+    $url = rtrim($marzban_list_get['url_panel'], '/') . "/xui/API/inbounds/" . rawurlencode((string) $marzban_list_get['inboundid']) . "/resetClientTraffic/" . rawurlencode((string) $data_user['email']);
     $headers = array(
         'Accept: application/json',
         'Content-Type: application/json',
@@ -220,9 +244,21 @@ function ResetUserDataUsagealirezasin($usernamepanel, $namepanel)
 function removeClientalireza_single($location, $username)
 {
     $marzban_list_get = select("marzban_panel", "*", "name_panel", $location, "select");
-    $data_user = get_clinetsalireza($username, $location)[0];
+    $clients = get_clinetsalireza($username, $location);
+    $data_user = $clients[0] ?? null;
+    if (!is_array($data_user)) {
+        return ['status' => 404, 'body' => null, 'error' => 'client not found'];
+    }
+
+    $clientId = alirezaClientIdentifier($data_user);
+    if ($clientId === '') {
+        return ['status' => 400, 'body' => null, 'error' => 'client identifier not found'];
+    }
+
     login($marzban_list_get['code_panel']);
-    $url = $marzban_list_get['url_panel'] . "/xui/API/inbounds/{$marzban_list_get['inboundid']}/delClient/" . $data_user['id'];
+    $url = rtrim($marzban_list_get['url_panel'], '/') . "/xui/API/inbounds/"
+        . rawurlencode((string) $marzban_list_get['inboundid'])
+        . "/delClient/" . rawurlencode($clientId);
     $headers = array(
         'Accept: application/json',
         'Content-Type: application/json',
@@ -233,7 +269,6 @@ function removeClientalireza_single($location, $username)
     $response = $req->post(array());
     @unlink(alirezaCookiePath($marzban_list_get['code_panel']));
     return $response;
-
 }
 function get_onlineclialireza($name_panel, $username)
 {

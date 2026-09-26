@@ -3,19 +3,75 @@ require_once 'config.php';
 require_once 'request.php';
 ini_set('error_log', 'error_log');
 
-function get_clinets($username, $panel)
+function xuiRequest(array $panel, string $method, string $path, ?array $payload = null): array
 {
-    $url = $panel['url_panel'] . "/panel/api/clients/get/$username";
-    $headers = array(
+    $url = rtrim((string) $panel['url_panel'], '/') . '/' . ltrim($path, '/');
+    $req = new CurlRequest($url);
+    $req->setHeaders([
         'Accept: application/json',
         'Content-Type: application/json',
-    );
-    $req = new CurlRequest($url);
-    $req->setHeaders($headers);
-    $req->setBearerToken($panel['password_panel']);
-    $response = $req->get();
-    return $response;
+    ]);
+    $req->setBearerToken((string) $panel['password_panel']);
+
+    $body = $payload === null
+        ? null
+        : json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+
+    switch (strtoupper($method)) {
+        case 'GET':
+            return $req->get();
+        case 'POST':
+            return $req->post($body ?? '{}');
+        case 'PUT':
+            return $req->put($body ?? '{}');
+        case 'DELETE':
+            return $req->delete($body);
+        default:
+            return ['status' => null, 'body' => null, 'error' => 'unsupported x-ui method'];
+    }
 }
+
+function xuiResponseObject(array $response): array
+{
+    $decoded = json_decode((string) ($response['body'] ?? ''), true);
+    if (!is_array($decoded)) {
+        return [];
+    }
+
+    $obj = $decoded['obj'] ?? [];
+    return is_array($obj) ? $obj : [];
+}
+
+function xuiInboundIds($value): array
+{
+    if (is_string($value)) {
+        $decoded = json_decode($value, true);
+        $value = is_array($decoded) ? $decoded : preg_split('/[\s,;|]+/', $value, -1, PREG_SPLIT_NO_EMPTY);
+    }
+
+    if (!is_array($value)) {
+        $value = [$value];
+    }
+
+    $ids = [];
+    foreach ($value as $id) {
+        if (is_numeric($id) && (int) $id > 0) {
+            $ids[] = (int) $id;
+        }
+    }
+
+    return array_values(array_unique($ids));
+}
+
+function get_clinets($username, $panel)
+{
+    return xuiRequest(
+        $panel,
+        'GET',
+        '/panel/api/clients/get/' . rawurlencode((string) $username)
+    );
+}
+
 function addClient($panel, $usernameac, $Expire, $subId, $Total, $inboundid, $name_product, $note = "")
 {
     if ($name_product == "usertest") {
@@ -41,109 +97,108 @@ function addClient($panel, $usernameac, $Expire, $subId, $Total, $inboundid, $na
             $timeservice = $Expire * 1000;
         }
     }
-    $data = [
-        "email" => $usernameac,
-        "totalGB" => $Total,
-        "expiryTime" => $timeservice,
-        "tgId" => 0,
-        "comment" => $note,
-        "enable" => true,
-        "subId" => $subId
-    ];
-    $config = array(
-        "inboundIds" => json_decode($inboundid, true),
-        'client' => $data
-    );
-    $configpanel = json_encode($config, true);
-    $url = $panel['url_panel'] . '/panel/api/clients/add';
-    $headers = array(
-        'Accept: application/json',
-        'Content-Type: application/json',
-    );
-    $req = new CurlRequest($url);
-    $req->setHeaders($headers);
-    $req->setBearerToken($panel['password_panel']);
-    $response = $req->post($configpanel);
-    return $response;
-}
-function updateClient($panel, $uuid, array $config)
-{
 
-    $configpanel = json_encode($config, true);
-    $url = $panel['url_panel'] . '/panel/api/clients/update/' . $uuid;
-    $headers = array(
-        'Accept: application/json',
-        'Content-Type: application/json',
-    );
-    $req = new CurlRequest($url);
-    $req->setHeaders($headers);
-    $req->setBearerToken($panel['password_panel']);
-    $response = $req->post($configpanel);
-    return $response;
+    $client = [
+        "email" => (string) $usernameac,
+        "totalGB" => (int) $Total,
+        "expiryTime" => (int) $timeservice,
+        "tgId" => 0,
+        "comment" => (string) $note,
+        "enable" => true,
+        "subId" => (string) $subId
+    ];
+
+    return xuiRequest($panel, 'POST', '/panel/api/clients/add', [
+        "inboundIds" => xuiInboundIds($inboundid),
+        "client" => $client,
+    ]);
 }
+
+function updateClient($panel, $email, array $config)
+{
+    // 3x-ui v3.8+ treats client updates as replacement, not PATCH.
+    // Preserve fields BlueBot does not manage (limitIp, limitHwid, reset policy,
+    // group, protocol credentials, etc.) by merging over the current record.
+    $currentResponse = get_clinets($email, $panel);
+    $currentObj = xuiResponseObject($currentResponse);
+
+    if (isset($currentObj['client']) && is_array($currentObj['client'])) {
+        $current = $currentObj['client'];
+    } else {
+        $current = $currentObj;
+        unset($current['inboundIds'], $current['externalIds'], $current['traffic']);
+    }
+
+    if ($current === []) {
+        // Keep backward compatibility with older 3x-ui builds which accepted
+        // a partial update body.
+        $current = ['email' => (string) $email];
+    }
+
+    $payload = array_replace($current, $config);
+    $payload['email'] = (string) ($payload['email'] ?? $email);
+
+    return xuiRequest(
+        $panel,
+        'POST',
+        '/panel/api/clients/update/' . rawurlencode((string) $email),
+        $payload
+    );
+}
+
 function ResetUserDataUsagex_uisin($usernamepanel, $panel)
 {
-    $url = $panel['url_panel'] . "/panel/api/clients/resetTraffic/" . $usernamepanel;
-    $headers = array(
-        'Accept: application/json',
-        'Content-Type: application/json',
+    return xuiRequest(
+        $panel,
+        'POST',
+        '/panel/api/clients/resetTraffic/' . rawurlencode((string) $usernamepanel),
+        []
     );
-    $req = new CurlRequest($url);
-    $req->setHeaders($headers);
-    $req->setBearerToken($panel['password_panel']);
-    $response = $req->post(array());
-    return $response;
 }
+
 function removeClient($panel, $username)
 {
-    $url = $panel['url_panel'] . "/panel/api/clients/del/" . $username;
-    $headers = array(
-        'Accept: application/json',
-        'Content-Type: application/json',
+    // keepTraffic is required by current 3x-ui OpenAPI. 0 keeps the historical
+    // BlueBot behavior and removes the traffic record with the client.
+    return xuiRequest(
+        $panel,
+        'POST',
+        '/panel/api/clients/del/' . rawurlencode((string) $username) . '?keepTraffic=0',
+        []
     );
-    $req = new CurlRequest($url);
-    $req->setHeaders($headers);
-    $req->setBearerToken($panel['password_panel']);
-    $response = $req->post(array());
-    return $response;
 }
+
 function status_server_xui($panel)
 {
-    $url = $panel['url_panel'] . "/panel/api/server/status";
-    $headers = array(
-        'Accept: application/json',
-        'Content-Type: application/json',
-    );
-    $req = new CurlRequest($url);
-    $req->setHeaders($headers);
-    $req->setBearerToken($panel['password_panel']);
-    $response = $req->get();
-    return $response;
+    return xuiRequest($panel, 'GET', '/panel/api/server/status');
 }
+
 function attach_service($panel, $username, $configpanel)
 {
-    $url = $panel['url_panel'] . "/panel/api/clients/$username/attach";
-    $headers = array(
-        'Accept: application/json',
-        'Content-Type: application/json',
+    // Current 3x-ui expects {"inboundIds":[...]} JSON. Older BlueBot sent a
+    // form-encoded bare array which newer releases reject.
+    if (is_string($configpanel)) {
+        $decoded = json_decode($configpanel, true);
+        $configpanel = is_array($decoded) ? $decoded : $configpanel;
+    }
+
+    $ids = is_array($configpanel) && array_key_exists('inboundIds', $configpanel)
+        ? xuiInboundIds($configpanel['inboundIds'])
+        : xuiInboundIds($configpanel);
+
+    return xuiRequest(
+        $panel,
+        'POST',
+        '/panel/api/clients/' . rawurlencode((string) $username) . '/attach',
+        ['inboundIds' => $ids]
     );
-    $req = new CurlRequest($url);
-    $req->setHeaders($headers);
-    $req->setBearerToken($panel['password_panel']);
-    $response = $req->post($configpanel);
-    return $response;
 }
 
 function used_data_3xui($panel, $username)
 {
-    $url = $panel['url_panel'] . "/panel/api/clients/traffic/$username";
-    $headers = array(
-        'Accept: application/json',
-        'Content-Type: application/json',
+    return xuiRequest(
+        $panel,
+        'GET',
+        '/panel/api/clients/traffic/' . rawurlencode((string) $username)
     );
-    $req = new CurlRequest($url);
-    $req->setHeaders($headers);
-    $req->setBearerToken($panel['password_panel']);
-    $response = $req->get();
-    return $response;
 }
