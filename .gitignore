@@ -6,6 +6,9 @@
 composer.phar
 
 # Runtime / generated files
+*.log
+*.tmp
+*.cache
 error_log
 cronbot/.run.lock
 /storage/**
@@ -15,7 +18,7 @@ cronbot/.run.lock
 /api/hash.txt
 *.xlsx
 graphify-out
-docs
+/docs/generated/
 /lang/override/
 /deploy.sh
 
