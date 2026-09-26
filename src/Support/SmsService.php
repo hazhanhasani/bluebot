@@ -17,6 +17,13 @@ final class BluebotSms
         ];
 
         return [
+            'phone_verification' => [
+                'title' => 'تأیید شماره موبایل',
+                'category' => 'احراز هویت',
+                'body' => 'کد تأیید Blue VPN: %code%\nاین کد را در اختیار دیگران قرار ندهید.',
+                'vars' => [$v('code', 'numeric', 6)],
+                'default' => 1,
+            ],
             'service_activated' => [
                 'title' => 'فعال‌سازی سرویس',
                 'category' => 'سرویس',
@@ -275,8 +282,153 @@ final class BluebotSms
         return $base;
     }
 
+    private static function lineCachePath(): string
+    {
+        return dirname(__DIR__, 2) . '/storage/cache/sms_lines.json';
+    }
+
+    public static function lineCache(): array
+    {
+        $path = self::lineCachePath();
+        if (!is_file($path) || !is_readable($path)) {
+            return ['lines' => [], 'selected' => '', 'fetched_ts' => 0];
+        }
+        $data = json_decode((string) @file_get_contents($path), true);
+        return is_array($data) ? $data : ['lines' => [], 'selected' => '', 'fetched_ts' => 0];
+    }
+
+    private static function collectLineRows($node, array &$out, int $depth = 0): void
+    {
+        if ($depth > 7 || !is_array($node)) {
+            return;
+        }
+
+        $candidate = $node['line_number']
+            ?? $node['lineNumber']
+            ?? $node['number']
+            ?? $node['sender']
+            ?? $node['from']
+            ?? null;
+
+        if (is_scalar($candidate) && trim((string) $candidate) !== '') {
+            $out[] = $node;
+            return;
+        }
+
+        foreach ($node as $value) {
+            if (is_array($value)) {
+                self::collectLineRows($value, $out, $depth + 1);
+            }
+        }
+    }
+
+    private static function normalizeLine(array $row): ?array
+    {
+        $number = trim((string) (
+            $row['line_number']
+            ?? $row['lineNumber']
+            ?? $row['number']
+            ?? $row['sender']
+            ?? $row['from']
+            ?? ''
+        ));
+        $number = preg_replace('/\s+/', '', strtr($number, '۰۱۲۳۴۵۶۷۸۹', '0123456789')) ?: '';
+        if ($number === '' || !preg_match('/^[+0-9A-Za-z_-]{3,32}$/', $number)) {
+            return null;
+        }
+
+        $status = strtolower(trim((string) ($row['status'] ?? $row['state'] ?? 'active')));
+        if ($status !== '' && !in_array($status, ['active','enabled','approved','accepted','1','true'], true)) {
+            return null;
+        }
+
+        $dedicatedRaw = $row['is_dedicated'] ?? $row['dedicated'] ?? $row['isDedicated'] ?? false;
+        $dedicated = in_array(strtolower((string) $dedicatedRaw), ['1','true','yes','on'], true) || $dedicatedRaw === true;
+
+        return [
+            'number' => $number,
+            'is_dedicated' => $dedicated ? 1 : 0,
+            'title' => mb_substr(trim(strip_tags((string) ($row['title'] ?? $row['name'] ?? ''))), 0, 120),
+        ];
+    }
+
+    public static function refreshLines(bool $force = true): array
+    {
+        global $pdo;
+
+        $settings = self::settings();
+        $apiKey = self::decryptSecret((string) ($settings['api_key_enc'] ?? ''));
+        if ($apiKey === '') {
+            throw new RuntimeException('ابتدا API Key فراز اس‌ام‌اس را ذخیره کنید.');
+        }
+
+        $base = self::baseUrl($settings);
+        $keyHash = substr(hash('sha256', $apiKey . '|' . strtolower($base)), 0, 24);
+        $cache = self::lineCache();
+
+        if (!$force
+            && hash_equals($keyHash, (string) ($cache['key_hash'] ?? ''))
+            && time() - (int) ($cache['fetched_ts'] ?? 0) < self::PATTERN_CACHE_TTL
+            && trim((string) ($cache['selected'] ?? '')) !== '') {
+            return $cache;
+        }
+
+        $payload = self::request('GET', $base . '/lines/accessible', $apiKey, $settings);
+        $rows = [];
+        self::collectLineRows($payload, $rows);
+
+        $lines = [];
+        foreach ($rows as $row) {
+            $line = self::normalizeLine($row);
+            if ($line) {
+                $lines[$line['number']] = $line;
+            }
+        }
+        $lines = array_values($lines);
+        usort($lines, static function (array $a, array $b): int {
+            $dedicated = (int) $b['is_dedicated'] <=> (int) $a['is_dedicated'];
+            return $dedicated !== 0 ? $dedicated : strnatcasecmp($a['number'], $b['number']);
+        });
+
+        if ($lines === []) {
+            throw new RuntimeException('هیچ خط ارسال فعال و قابل‌استفاده‌ای برای این API Key پیدا نشد.');
+        }
+
+        $selected = (string) $lines[0]['number'];
+        $cache = [
+            'key_hash' => $keyHash,
+            'fetched_ts' => time(),
+            'selected' => $selected,
+            'lines' => $lines,
+            'count' => count($lines),
+        ];
+        self::writeJsonFile(self::lineCachePath(), $cache);
+
+        try {
+            $stmt = $pdo->prepare('UPDATE sms_settings SET from_number=?,updated_at=? WHERE id=1');
+            $stmt->execute([$selected, time()]);
+        } catch (Throwable $e) {
+            self::log('SMS sender line persistence failed', ['error' => $e->getMessage()]);
+        }
+
+        self::recordHealth(true, count($lines) . ' خط ارسال دریافت شد؛ خط ' . $selected . ' به‌صورت خودکار انتخاب شد.');
+        return $cache;
+    }
+
     private static function lineNumber(array $settings): string
     {
+        try {
+            $cache = self::refreshLines(false);
+            $line = trim((string) ($cache['selected'] ?? ''));
+            if ($line !== '') {
+                return $line;
+            }
+        } catch (Throwable $e) {
+            self::log('Automatic SMS sender line lookup failed', ['error' => $e->getMessage()]);
+        }
+
+        // Resilience fallback only: keep the last verified line if the provider
+        // is temporarily unavailable. New API keys refresh and replace it.
         $line = preg_replace('/\s+/', '', strtr((string) ($settings['from_number'] ?? ''), '۰۱۲۳۴۵۶۷۸۹', '0123456789')) ?: '';
         return preg_match('/^[+0-9A-Za-z_-]{3,32}$/', $line) ? $line : '';
     }
@@ -411,17 +563,18 @@ final class BluebotSms
     public static function sendTemplateNow(string $eventKey, string $phone, array $params): array
     {
         global $pdo;
+
         $spec = self::catalog()[$eventKey] ?? null;
         if (!$spec) {
             throw new RuntimeException('نوع پیام ناشناخته است.');
         }
-        $stmt = $pdo->prepare('SELECT * FROM sms_templates WHERE event_key=? LIMIT 1');
-        $stmt->execute([$eventKey]);
-        $template = $stmt->fetch(PDO::FETCH_ASSOC) ?: null;
-        if (!$template || trim((string) ($template['pattern_code'] ?? '')) === '') {
-            throw new RuntimeException('برای این پیام پترن انتخاب نشده است.');
+
+        $patternCode = self::ensurePatternForEvent($eventKey);
+        if ($patternCode === '') {
+            throw new RuntimeException('پترن سازگار و فعال برای «' . ($spec['title'] ?? $eventKey) . '» پیدا نشد.');
         }
-        return self::sendPattern($phone, (string) $template['pattern_code'], self::cleanParams($spec, $params));
+
+        return self::sendPattern($phone, $patternCode, self::cleanParams($spec, $params));
     }
 
     public static function refreshPatterns(bool $force = true): array
@@ -429,8 +582,9 @@ final class BluebotSms
         $settings = self::settings();
         $apiKey = self::decryptSecret((string) ($settings['api_key_enc'] ?? ''));
         if ($apiKey === '') {
-            throw new RuntimeException('ابتدا API Key را ذخیره کنید.');
+            throw new RuntimeException('ابتدا API Key فراز اس‌ام‌اس را ذخیره کنید.');
         }
+
         $base = self::baseUrl($settings);
         $cachePath = self::patternCachePath();
         $keyHash = substr(hash('sha256', $apiKey . '|' . strtolower($base)), 0, 24);
@@ -445,15 +599,28 @@ final class BluebotSms
         }
 
         $patterns = [];
-        $seenPageCodes = [];
+        $seenProviderCodes = [];
+        $pagesFetched = 0;
         $page = 1;
-        for (; $page <= 30; $page++) {
-            $payload = self::request('GET', $base . '/patterns?page=' . $page . '&limit=100', $apiKey, $settings);
+        $maxPages = 50;
+
+        while ($page <= $maxPages) {
+            $payload = self::request(
+                'GET',
+                $base . '/patterns?page=' . $page . '&limit=100',
+                $apiKey,
+                $settings
+            );
+
             $rows = [];
             self::collectPatternRows($payload, $rows);
+            $stats = self::patternPageStats($payload, $rows);
+
             if ($rows === []) {
                 break;
             }
+
+            $pagesFetched++;
             $newCodes = 0;
             foreach ($rows as $row) {
                 $normalized = self::normalizePattern($row);
@@ -461,18 +628,29 @@ final class BluebotSms
                     continue;
                 }
                 $code = $normalized['code'];
-                if (!isset($seenPageCodes[$code])) {
+                if (!isset($seenProviderCodes[$code])) {
+                    $seenProviderCodes[$code] = true;
                     $newCodes++;
-                    $seenPageCodes[$code] = true;
                 }
                 $patterns[$code] = $normalized;
             }
+
+            $current = (int) ($stats['current_page'] ?? 0);
+            $last = (int) ($stats['last_page'] ?? 0);
+            $hasNext = $stats['has_next'] ?? null;
+
+            if ($last > 0 && ($current > 0 ? $current : $page) >= $last) {
+                break;
+            }
+            if ($hasNext === false) {
+                break;
+            }
+            // Some deployments ignore page/limit and return page one forever.
             if ($page > 1 && $newCodes === 0) {
                 break;
             }
-            if (count($rows) < 15) {
-                break;
-            }
+
+            $page++;
         }
 
         $patterns = array_values($patterns);
@@ -485,11 +663,60 @@ final class BluebotSms
             'fetched_ts' => time(),
             'patterns' => $patterns,
             'count' => count($patterns),
-            'pages_fetched' => max(1, $page - 1),
+            'pages_fetched' => $pagesFetched,
+            'provider_rows_seen' => count($seenProviderCodes),
         ];
         self::writeJsonFile($cachePath, $cache);
-        self::recordHealth(true, count($patterns) . ' پترن فعال دریافت شد.');
+        self::recordHealth(true, count($patterns) . ' پترن فعال در ' . $pagesFetched . ' صفحه دریافت شد.');
         return $cache;
+    }
+
+    private static function patternPageStats(array $payload, array $rows): array
+    {
+        $current = 0;
+        $last = 0;
+        $hasNext = null;
+
+        $candidates = [$payload];
+        foreach (['meta','pagination','data'] as $key) {
+            if (isset($payload[$key]) && is_array($payload[$key])) {
+                $candidates[] = $payload[$key];
+                if (isset($payload[$key]['meta']) && is_array($payload[$key]['meta'])) {
+                    $candidates[] = $payload[$key]['meta'];
+                }
+            }
+        }
+
+        foreach ($candidates as $node) {
+            foreach (['current_page','currentPage','page'] as $key) {
+                if ($current <= 0 && isset($node[$key]) && is_numeric($node[$key])) {
+                    $current = (int) $node[$key];
+                }
+            }
+            foreach (['last_page','lastPage','total_pages','totalPages'] as $key) {
+                if ($last <= 0 && isset($node[$key]) && is_numeric($node[$key])) {
+                    $last = (int) $node[$key];
+                }
+            }
+            foreach (['has_next','hasNext','has_more','hasMore'] as $key) {
+                if (array_key_exists($key, $node)) {
+                    $value = $node[$key];
+                    $hasNext = is_bool($value)
+                        ? $value
+                        : in_array(strtolower((string) $value), ['1','true','yes'], true);
+                }
+            }
+            if ($hasNext === null && isset($node['next_page_url'])) {
+                $hasNext = trim((string) $node['next_page_url']) !== '';
+            }
+        }
+
+        return [
+            'row_count' => count($rows),
+            'current_page' => $current,
+            'last_page' => $last,
+            'has_next' => $hasNext,
+        ];
     }
 
     public static function patternCache(): array
@@ -529,45 +756,75 @@ final class BluebotSms
         if ($code === '') {
             return null;
         }
+
         $status = strtolower(trim((string) ($row['status'] ?? $row['state'] ?? 'active')));
         if ($status !== '' && !in_array($status, ['active','approved','accepted','accept','1','true'], true)) {
             return null;
         }
+
         $text = trim(strip_tags((string) ($row['text'] ?? $row['pattern'] ?? $row['body'] ?? '')));
         $description = trim(strip_tags((string) ($row['description'] ?? $row['title'] ?? '')));
         $vars = [];
+        $specs = [];
+
         foreach (['vars','variables','attributes'] as $key) {
             $raw = $row[$key] ?? null;
             if (!is_array($raw)) {
                 continue;
             }
-            foreach ($raw as $item) {
+
+            foreach ($raw as $itemKey => $item) {
+                $name = '';
+                $type = 'text';
+                $length = 160;
+
                 if (is_string($item)) {
                     $name = $item;
                 } elseif (is_array($item)) {
-                    $name = (string) ($item['var'] ?? $item['name'] ?? $item['key'] ?? $item['attribute'] ?? '');
-                } else {
-                    $name = '';
+                    $name = (string) ($item['var'] ?? $item['name'] ?? $item['key'] ?? $item['attribute'] ?? (is_string($itemKey) ? $itemKey : ''));
+                    $rawType = strtolower((string) ($item['type'] ?? $item['data_type'] ?? $item['variable_type'] ?? ''));
+                    if (in_array($rawType, ['int','integer','number','numeric'], true)) {
+                        $type = 'numeric';
+                    }
+                    foreach (['length','max_length','maxLength','limit'] as $lengthKey) {
+                        if (isset($item[$lengthKey]) && is_numeric($item[$lengthKey])) {
+                            $length = max(1, min(500, (int) $item[$lengthKey]));
+                            break;
+                        }
+                    }
                 }
+
                 $name = preg_replace('/[^A-Za-z0-9_-]/', '', trim($name)) ?: '';
-                if ($name !== '' && !in_array($name, $vars, true)) {
+                if ($name === '') {
+                    continue;
+                }
+                if (!in_array($name, $vars, true)) {
                     $vars[] = $name;
                 }
+                $specs[$name] = ['name' => $name, 'type' => $type, 'length' => $length];
             }
         }
+
         if ($text !== '' && preg_match_all('/%([A-Za-z0-9_-]+)%/', $text, $matches)) {
             foreach ($matches[1] as $name) {
                 if (!in_array($name, $vars, true)) {
                     $vars[] = $name;
                 }
+                if (!isset($specs[$name])) {
+                    $specs[$name] = ['name' => $name, 'type' => 'text', 'length' => 160];
+                }
             }
         }
+
         sort($vars, SORT_STRING);
+        ksort($specs, SORT_STRING);
+
         return [
             'code' => mb_substr($code, 0, 180),
             'text' => mb_substr($text, 0, 600),
             'description' => mb_substr($description, 0, 250),
             'variables' => $vars,
+            'variable_specs' => array_values($specs),
         ];
     }
 
@@ -640,6 +897,80 @@ final class BluebotSms
         }
 
         return ['assigned' => $assigned, 'mappings' => $mappings];
+    }
+
+    private static function patternCompatibleWithSpec(array $pattern, array $spec): bool
+    {
+        $expected = [];
+        foreach (($spec['vars'] ?? []) as $var) {
+            $expected[(string) ($var['name'] ?? '')] = (string) ($var['type'] ?? 'text');
+        }
+        unset($expected['']);
+
+        $provided = [];
+        foreach ((array) ($pattern['variable_specs'] ?? []) as $var) {
+            if (is_array($var) && !empty($var['name'])) {
+                $provided[(string) $var['name']] = (string) ($var['type'] ?? 'text');
+            }
+        }
+        if ($provided === []) {
+            foreach ((array) ($pattern['variables'] ?? []) as $name) {
+                $provided[(string) $name] = 'text';
+            }
+        }
+
+        if (array_keys($expected) !== array_keys($provided)) {
+            $expectedNames = array_keys($expected);
+            $providedNames = array_keys($provided);
+            sort($expectedNames, SORT_STRING);
+            sort($providedNames, SORT_STRING);
+            if ($expectedNames !== $providedNames) {
+                return false;
+            }
+        }
+
+        foreach ($expected as $name => $type) {
+            if ($type === 'numeric' && ($provided[$name] ?? 'text') !== 'numeric') {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    public static function ensurePatternForEvent(string $eventKey, bool $forceRefresh = false): string
+    {
+        global $pdo;
+
+        $spec = self::catalog()[$eventKey] ?? null;
+        if (!$spec) {
+            return '';
+        }
+
+        $loadCurrent = static function () use ($pdo, $eventKey): string {
+            $stmt = $pdo->prepare('SELECT pattern_code FROM sms_templates WHERE event_key=? LIMIT 1');
+            $stmt->execute([$eventKey]);
+            return trim((string) ($stmt->fetchColumn() ?: ''));
+        };
+
+        $cache = self::refreshPatterns($forceRefresh);
+        $byCode = [];
+        foreach ((array) ($cache['patterns'] ?? []) as $pattern) {
+            if (is_array($pattern) && !empty($pattern['code'])) {
+                $byCode[(string) $pattern['code']] = $pattern;
+            }
+        }
+
+        $current = $loadCurrent();
+        if ($current !== '' && isset($byCode[$current]) && self::patternCompatibleWithSpec($byCode[$current], $spec)) {
+            return $current;
+        }
+
+        self::smartAssignPatterns((array) ($cache['patterns'] ?? []), true);
+        $current = $loadCurrent();
+        return $current !== '' && isset($byCode[$current]) && self::patternCompatibleWithSpec($byCode[$current], $spec)
+            ? $current
+            : '';
     }
 
     private static function normalizeText(string $text): string
@@ -1018,6 +1349,170 @@ final class BluebotSms
             return (string) jdate('Y/m/d', $timestamp);
         }
         return date('Y/m/d', $timestamp);
+    }
+
+    public static function phoneOtpEnabled(): bool
+    {
+        $settings = self::settings();
+        return !empty($settings['active']) && !empty($settings['otp_active']);
+    }
+
+    private static function otpHash(string $challengeId, string $userId, string $phone, string $code): string
+    {
+        return hash_hmac(
+            'sha256',
+            $challengeId . ':' . $userId . ':' . $phone . ':' . $code,
+            self::encryptionKey()
+        );
+    }
+
+    public static function requestPhoneOtp(string $userId, string $phone, bool $resend = false): array
+    {
+        global $pdo;
+
+        if (!self::phoneOtpEnabled()) {
+            throw new RuntimeException('تأیید پیامکی شماره در پنل مدیریت فعال نیست.');
+        }
+
+        $phone = self::normalizePhone($phone);
+        if ($phone === '') {
+            throw new RuntimeException('شماره موبایل معتبر نیست.');
+        }
+
+        $settings = self::settings();
+        $ttl = max(60, min(600, (int) ($settings['otp_ttl_seconds'] ?? 120)));
+        $resendDelay = max(30, min(600, (int) ($settings['otp_resend_seconds'] ?? 60)));
+        $maxAttempts = max(3, min(10, (int) ($settings['otp_max_attempts'] ?? 5)));
+
+        $stmt = $pdo->prepare(
+            'SELECT * FROM sms_otp_challenges
+             WHERE user_id=? AND consumed_at IS NULL
+             ORDER BY created_at DESC LIMIT 1'
+        );
+        $stmt->execute([$userId]);
+        $latest = $stmt->fetch(PDO::FETCH_ASSOC) ?: null;
+
+        if ($latest && (int) ($latest['resend_at'] ?? 0) > time()) {
+            $wait = max(1, (int) $latest['resend_at'] - time());
+            throw new RuntimeException($wait . ' ثانیه تا ارسال دوباره کد صبر کنید.');
+        }
+
+        if ($latest) {
+            $pdo->prepare('UPDATE sms_otp_challenges SET consumed_at=? WHERE id=?')
+                ->execute([time(), $latest['id']]);
+        }
+
+        $challengeId = self::uuid4();
+        $code = (string) random_int(100000, 999999);
+        $now = time();
+
+        $insert = $pdo->prepare(
+            'INSERT INTO sms_otp_challenges
+             (id,user_id,phone,code_hash,attempts,max_attempts,expires_at,resend_at,consumed_at,created_at)
+             VALUES (?,?,?,?,?,?,?,?,?,?)'
+        );
+        $insert->execute([
+            $challengeId,
+            $userId,
+            $phone,
+            self::otpHash($challengeId, $userId, $phone, $code),
+            0,
+            $maxAttempts,
+            $now + $ttl,
+            $now + $resendDelay,
+            null,
+            $now,
+        ]);
+
+        try {
+            self::sendTemplateNow('phone_verification', $phone, ['code' => $code]);
+        } catch (Throwable $e) {
+            $pdo->prepare('DELETE FROM sms_otp_challenges WHERE id=?')->execute([$challengeId]);
+            throw $e;
+        }
+
+        return [
+            'ok' => true,
+            'challenge_id' => $challengeId,
+            'phone' => $phone,
+            'expires_in' => $ttl,
+            'resend_after' => $resendDelay,
+        ];
+    }
+
+    public static function resendPhoneOtp(string $userId): array
+    {
+        global $pdo;
+
+        $stmt = $pdo->prepare(
+            'SELECT phone FROM sms_otp_challenges
+             WHERE user_id=? AND consumed_at IS NULL
+             ORDER BY created_at DESC LIMIT 1'
+        );
+        $stmt->execute([$userId]);
+        $phone = trim((string) ($stmt->fetchColumn() ?: ''));
+        if ($phone === '') {
+            throw new RuntimeException('درخواست فعال تأیید شماره پیدا نشد؛ شماره را دوباره ارسال کنید.');
+        }
+
+        return self::requestPhoneOtp($userId, $phone, true);
+    }
+
+    public static function verifyPhoneOtp(string $userId, string $code): array
+    {
+        global $pdo;
+
+        $code = strtr(trim($code), '۰۱۲۳۴۵۶۷۸۹', '0123456789');
+        $code = preg_replace('/\D+/', '', $code) ?: '';
+        if (strlen($code) !== 6) {
+            throw new RuntimeException('کد تأیید باید دقیقاً ۶ رقم باشد.');
+        }
+
+        $stmt = $pdo->prepare(
+            'SELECT * FROM sms_otp_challenges
+             WHERE user_id=? AND consumed_at IS NULL
+             ORDER BY created_at DESC LIMIT 1'
+        );
+        $stmt->execute([$userId]);
+        $challenge = $stmt->fetch(PDO::FETCH_ASSOC) ?: null;
+        if (!$challenge) {
+            throw new RuntimeException('درخواست تأیید شماره پیدا نشد؛ شماره را دوباره ارسال کنید.');
+        }
+
+        if ((int) $challenge['expires_at'] <= time()) {
+            $pdo->prepare('UPDATE sms_otp_challenges SET consumed_at=? WHERE id=?')
+                ->execute([time(), $challenge['id']]);
+            throw new RuntimeException('مهلت کد تأیید تمام شده است؛ کد جدید بگیرید.');
+        }
+
+        $attempts = (int) $challenge['attempts'] + 1;
+        $maxAttempts = max(1, (int) $challenge['max_attempts']);
+        $expected = self::otpHash(
+            (string) $challenge['id'],
+            $userId,
+            (string) $challenge['phone'],
+            $code
+        );
+
+        if (!hash_equals((string) $challenge['code_hash'], $expected)) {
+            $consumed = $attempts >= $maxAttempts ? time() : null;
+            $pdo->prepare('UPDATE sms_otp_challenges SET attempts=?,consumed_at=? WHERE id=?')
+                ->execute([$attempts, $consumed, $challenge['id']]);
+            $remaining = max(0, $maxAttempts - $attempts);
+            throw new RuntimeException(
+                $remaining > 0
+                    ? 'کد تأیید نادرست است؛ ' . $remaining . ' تلاش باقی مانده.'
+                    : 'تعداد تلاش‌های ناموفق تمام شد؛ کد جدید بگیرید.'
+            );
+        }
+
+        $pdo->prepare('UPDATE sms_otp_challenges SET attempts=?,consumed_at=? WHERE id=?')
+            ->execute([$attempts, time(), $challenge['id']]);
+
+        return [
+            'ok' => true,
+            'phone' => (string) $challenge['phone'],
+        ];
     }
 
     public static function stats(): array
