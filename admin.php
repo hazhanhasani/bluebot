@@ -7282,8 +7282,11 @@ if ($datain == "settimecornremove" && $adminrulecheck['rule'] == "administrator"
         $filePath = $response['result']['file_path'];
         $fileUrl = "https://api.telegram.org/file/bot$APIKEY/$filePath";
         $fileContent = file_get_contents($fileUrl);
-        file_put_contents("custom.jpg", $fileContent);
-        file_put_contents("images.jpg", $fileContent);
+        if ($fileContent === false || !bluebotStoreQrBackground($fileContent)) {
+            sendmessage($from_id, "❌ ذخیره تصویر پس‌زمینه QR انجام نشد.", $setting_panel, 'HTML');
+            step("home", $from_id);
+            return;
+        }
         sendmessage($from_id, $textbotlang['Admin']['managepanel']['qrBackgroundSaved'], $setting_panel, 'HTML');
         step("home", $from_id);
     }
