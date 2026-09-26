@@ -4520,6 +4520,8 @@ We hope you had a good experience with the ease and speed of your service. If yo
                 'settingsTabSystem' => 'System',
                 'settingsThemeBlack' => 'Black',
                 'settingsThemeBlackDesc' => 'Colorless · minimal',
+                'settingsThemeBlueBot' => 'BlueBot',
+                'settingsThemeBlueBotDesc' => 'Official BlueBot blue theme',
                 'settingsThemeBlueSea' => 'Blue sea',
                 'settingsThemeBlueSeaDesc' => 'Default · turquoise',
                 'settingsThemeCreamPaper' => 'Cream paper',
