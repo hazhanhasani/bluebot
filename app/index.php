@@ -24,7 +24,7 @@
 
     <script defer src="./js/telegram-web-app.js?v=0.1.4"></script>
     <script defer src="./js/telegram-bootstrap.js?v=0.1.4"></script>
-    <script type="module" crossorigin src="./assets/index-C-2a0Dur.js?v=0.1.4"></script>
+    <script defer src="./js/app-loader.js?v=0.1.4"></script>
   </head>
   <body>
     <div id="root">
