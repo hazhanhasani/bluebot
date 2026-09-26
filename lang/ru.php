@@ -3908,6 +3908,7 @@ ID пользователя : %s
                 'generalLimit' => '↙️ Общий лимит',
                 'generalSettings' => '⚙️ Общие настройки',
                 'updateCenter' => '🔄 Обновление BlueBot',
+                'miniAppOpen' => '📱 Личный кабинет',
                 'getAllConfigs' => '⚙️ Получить все конфиги',
                 'getConfig' => 'Получить конфиг',
                 'getConfigBtn' => '🔗 Кнопка получения конфига',
