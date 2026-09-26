@@ -991,17 +991,29 @@ get_server_ip() {
 
 # ── Dashboard sections ───────────────────────────────────────
 version_section() {
-    local inst latest
+    local inst latest channel ref
     inst=$(get_installed_version)
     latest=$(get_latest_version)
+    channel=$(get_installed_build_field channel)
+    ref=$(get_installed_build_field ref)
+
     _sec "Version"
     if [ -n "$inst" ]; then
         _kv "Installed" "$(_dot ok) ${C_OK}${inst}${CR}"
     else
         _kv "Installed" "$(_dot bad) ${C_BAD}not installed${CR}"
     fi
-    if [ -n "$latest" ]; then
-        if [ -n "$inst" ] && [ "$inst" = "$latest" ]; then
+
+    if [ "$channel" = "beta" ]; then
+        _kv "Channel" "${C_WARN}Beta${CR}"
+        [ -n "$ref" ] && _kv "Build" "${C_DIM}${ref:0:7}${CR}"
+        if [ -n "$latest" ]; then
+            _kv "Stable" "${C_DIM}${latest}${CR}"
+        else
+            _kv "Stable" "${C_DIM}unknown (offline)${CR}"
+        fi
+    elif [ -n "$latest" ]; then
+        if [ -n "$inst" ] && [ "$inst" = "${latest#v}" ]; then
             _kv "Latest" "$(_dot ok) ${C_OK}${latest}${CR} ${C_DIM}(up to date)${CR}"
         elif [ -n "$inst" ]; then
             _kv "Latest" "$(_dot warn) ${C_WARN}${latest}${CR} ${C_WARN}(update available!)${CR}"
@@ -1011,6 +1023,7 @@ version_section() {
     else
         _kv "Latest" "$(_dot warn) ${C_DIM}unknown (offline)${CR}"
     fi
+
     _kv "Repository" "${C_DIM}github.com/hazhanhasani/bluebot${CR}"
     _kv "License" "${C_DIM}AGPL-3.0-or-later${CR}"
 }
