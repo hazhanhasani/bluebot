@@ -73,12 +73,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
   <div class="auth">
     <aside class="auth-aside">
       <div class="auth-mark">
-        <div class="dot">M</div>
+        <div class="dot">B</div>
         <span><?= $textbotlang['panel']['loginHeading'] ?></span>
       </div>
       <div class="auth-quote">
         <h2><?= $textbotlang['panel']['loginSubtitle'] ?> <a style="color:#a8dafd !important  "
-            href="https://github.com/mahdiMGF2/mirzabot"><?= $textbotlang['panel']['loginUsernameLabel'] ?></a>
+            href="https://github.com/hazhanhasani/bluebot"><?= $textbotlang['panel']['loginUsernameLabel'] ?></a>
           <?= $textbotlang['panel']['loginUsernamePlaceholder'] ?></h2>
         <cite><?= $textbotlang['panel']['loginPasswordLabel'] ?></cite>
       </div>
