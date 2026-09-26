@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 require_once dirname(__DIR__) . '/Support/Logger.php';
+require_once dirname(__DIR__) . '/Support/SmsService.php';
 
 function claimPaymentPaid($order_id)
 {
@@ -27,6 +28,30 @@ function claimPaymentPaid($order_id)
         bluebotAudit('payment.paid', [
             'order_id' => (string) $order_id,
         ]);
+
+        try {
+            $paymentStmt = $pdo->prepare('SELECT id_user,price,id_order FROM Payment_report WHERE id_order=? LIMIT 1');
+            $paymentStmt->execute([$order_id]);
+            $payment = $paymentStmt->fetch(PDO::FETCH_ASSOC) ?: null;
+            if (is_array($payment) && !empty($payment['id_user'])) {
+                BluebotSms::queueAndDispatchForUser(
+                    'payment_success',
+                    (string) $payment['id_user'],
+                    [
+                        'amount' => (string) max(0, (int) $payment['price']),
+                        'order_id' => mb_substr((string) $payment['id_order'], 0, 40),
+                    ],
+                    null,
+                    (string) $payment['id_order'],
+                    'payment-success:' . (string) $payment['id_order']
+                );
+            }
+        } catch (Throwable $smsError) {
+            bluebotLog('warning', 'Payment success SMS failed', [
+                'order_id' => (string) $order_id,
+                'error' => $smsError->getMessage(),
+            ]);
+        }
     }
 
     return $changed;
