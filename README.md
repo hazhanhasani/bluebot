@@ -2,154 +2,426 @@
 
 # 🔵 BlueBot
 
-### Telegram VPN sales, automation and subscription management platform
+### پلتفرم متن‌باز فروش، مدیریت و اتوماسیون سرویس‌های VPN در تلگرام
 
+<p>
+  <strong>Telegram Bot • Web Admin • Mini App • Multi-Panel • Payments • Automation</strong>
+</p>
+
+[![BlueBot CI](https://github.com/hazhanhasani/bluebot/actions/workflows/ci.yml/badge.svg)](https://github.com/hazhanhasani/bluebot/actions/workflows/ci.yml)
+[![Version](https://img.shields.io/badge/version-0.5.8-0A84FF?style=flat-square)](version)
 [![PHP](https://img.shields.io/badge/PHP-8.2%2B-777BB4?style=flat-square&logo=php&logoColor=white)](https://www.php.net/)
 [![License](https://img.shields.io/badge/License-AGPL--3.0-blue?style=flat-square)](LICENSE)
 [![GitHub](https://img.shields.io/badge/GitHub-hazhanhasani%2Fbluebot-181717?style=flat-square&logo=github)](https://github.com/hazhanhasani/bluebot)
+
+<p>
+  <a href="#install">نصب سریع</a> •
+  <a href="#features">امکانات</a> •
+  <a href="#panels">پنل‌های پشتیبانی‌شده</a> •
+  <a href="#payments">پرداخت</a> •
+  <a href="#security">امنیت</a> •
+  <a href="#structure">ساختار پروژه</a>
+</p>
 
 </div>
 
 ---
 
-## Overview
+<a id="overview"></a>
+<h2 dir="rtl" align="right">🚀 BlueBot چیست؟</h2>
 
-**BlueBot** is a self-hosted Telegram platform for selling and managing VPN subscriptions. It automates the customer flow from payment and service creation to renewals, balance management, reminders, configuration delivery and administration.
+<p dir="rtl" align="right">
+<strong>BlueBot</strong> یک پلتفرم Self-Hosted برای فروش و مدیریت اشتراک‌های VPN از طریق تلگرام است.
+این پروژه فرآیند کامل فروش سرویس را از انتخاب محصول و پرداخت تا ساخت اکانت، تحویل لینک اشتراک، تمدید، افزایش حجم، مدیریت کیف پول، اطلاع‌رسانی و مدیریت کاربران خودکار می‌کند.
+</p>
 
-The project includes a Telegram bot, web administration panel, Telegram Mini App, installer/update workflow, database migrations, payment integrations and support for multiple VPN management panels.
+<p dir="rtl" align="right">
+BlueBot فقط یک ربات تلگرام نیست؛ پروژه شامل <strong>ربات فروش</strong>، <strong>پنل مدیریت وب</strong>، <strong>Telegram Mini App</strong>، سیستم نصب و بروزرسانی، مهاجرت دیتابیس، اتصال به چندین پنل VPN، سیستم پرداخت، ابزارهای Diagnostics و زیرساخت CI/CD است.
+</p>
 
-## Main capabilities
+> [!NOTE]
+> BlueBot برای اجرا روی سرور شخصی طراحی شده است و کنترل داده‌ها، دیتابیس، توکن‌ها و اتصال به پنل‌های VPN در اختیار مدیر سرور باقی می‌ماند.
 
-- Automated VPN sales and configuration delivery
-- Trial accounts, renewals and extra-volume purchases
-- Customer wallet and balance management
-- Web admin panel and Telegram Mini App
-- Multiple administrators and role-aware management
-- Discount, gift, referral, cashback and reseller features
-- Automatic backups, cron jobs and expiry notifications
-- QR-code generation and subscription links
-- Multi-language support
-- Release bundles generated through GitHub Actions
+<a id="architecture"></a>
+<h2 dir="rtl" align="right">🧩 معماری کلی</h2>
 
-## Supported panels
+~~~mermaid
+flowchart LR
+    U["👤 کاربر"] --> T["🤖 ربات تلگرام"]
+    U --> M["📱 Mini App"]
+    T --> C["🔵 هسته BlueBot"]
+    M --> C
+    C --> A["🖥️ پنل مدیریت وب"]
+    C --> P["💳 درگاه‌های پرداخت"]
+    C --> V["🛡️ پنل‌های VPN"]
+    C --> D[("🗄️ MySQL")]
+    C --> J["⏱️ Cron / Automation"]
+~~~
 
-BlueBot currently contains integrations for:
+<a id="features"></a>
+<h2 dir="rtl" align="right">✨ امکانات اصلی</h2>
 
-- Marzban
-- Marzneshin
-- Sanaei / Alireza
-- S-UI
-- Hiddify
-- WGDashboard / WireGuard
-- MikroTik
-- IBSng
-- PasarGuard
+| قابلیت | توضیح |
+|---|---|
+| 🤖 فروش خودکار | فروش سرویس VPN و تحویل خودکار کانفیگ یا لینک اشتراک |
+| 🧪 اکانت تست | ایجاد سرویس آزمایشی با محدودیت زمان و حجم |
+| ♻️ تمدید سرویس | تمدید زمان، حجم یا هر دو با روش‌های مختلف |
+| 📦 حجم اضافه | فروش و اعمال حجم اضافه روی سرویس فعال |
+| ⏳ زمان اضافه | افزایش زمان سرویس بدون نیاز به ساخت اکانت جدید |
+| 💰 کیف پول | مدیریت موجودی، شارژ حساب و پرداخت از اعتبار |
+| 👥 نمایندگی | امکانات مخصوص Agent / Reseller و قیمت‌گذاری متفاوت |
+| 🎁 تخفیف و هدیه | کد تخفیف، Gift Code، Referral و Cashback |
+| 📲 Mini App | رابط کاربری وب داخل تلگرام |
+| 🖥️ Web Admin | مدیریت کاربران، سفارش‌ها، محصولات، پرداخت‌ها و تنظیمات |
+| 🔗 Subscription | تحویل لینک اشتراک و Configهای قابل استفاده |
+| 📷 QR Code | تولید QR برای دسترسی سریع کاربران |
+| 🔔 اعلان‌ها | مدیریت هشدارها، وضعیت سرویس و رویدادهای مهم |
+| 🗄️ Backup | پشتیبان‌گیری و ابزارهای نگهداری دیتابیس |
+| ⏱️ Cron Jobs | اجرای خودکار وظایف دوره‌ای و بررسی سرویس‌ها |
+| 🌐 چندزبانه | ساختار ترجمه در پوشه <code>lang/</code> |
+| 🩺 Diagnostics | بررسی سلامت دیتابیس، PHP، Storage، Webhook و سرویس‌ها |
+| 🧾 Audit | ثبت و مشاهده رویدادهای مدیریتی در پنل وب |
+| 🔄 بروزرسانی | Installer/Updater داخلی با کانال Stable و Beta |
+| ✅ CI/CD | بررسی Syntax، Composer، UI contracts و Release automation با GitHub Actions |
 
-## Payment integrations
+<a id="panels"></a>
+<h2 dir="rtl" align="right">🛡️ پنل‌های پشتیبانی‌شده</h2>
 
-The repository includes support for manual card-to-card flows and multiple online/crypto gateways, including gateway-specific callback/webhook handlers under `payment/`.
+<p dir="rtl" align="right">
+BlueBot از چند Adapter مستقل برای اتصال به پنل‌های مختلف استفاده می‌کند. هر پنل بر اساس API و ساختار خودش مدیریت می‌شود.
+</p>
 
-## Requirements
+| پنل | وضعیت اتصال | توضیح |
+|---|---:|---|
+| **Marzban** | ✅ Native | ساخت، ویرایش، حذف، تمدید و مدیریت کاربران |
+| **Marzneshin** | ✅ Native | مدیریت کامل کاربران و سرویس‌ها |
+| **PasarGuard** | ✅ Compatible | سازگاری از طریق مسیرهای Marzban-compatible |
+| **SolidLayer / GoGuard** | ✅ Native | اتصال مستقیم با <code>X-API-Key</code> و API اشتراک‌ها |
+| **Sanaei / X-UI Single** | ✅ Native | مدیریت Client، Traffic و Subscription |
+| **Alireza Single** | ✅ Native | مدیریت Clientهای X-UI |
+| **Hiddify** | ✅ Native | ایجاد، ویرایش و حذف کاربران |
+| **S-UI** | ✅ Native | مدیریت Client و Subscription |
+| **WGDashboard** | ✅ Native | مدیریت WireGuard Peer |
+| **MikroTik** | ✅ Integrated | مدیریت کاربران و Group |
+| **IBSng** | ✅ Integrated | مدیریت کاربران و سرویس‌ها |
+| **Mirza Agent** | ✅ Integrated | اتصال به Agent API |
+| **Rebecca** | ✅ Integrated | Adapter اختصاصی |
+| **Manual Sale** | ✅ Built-in | فروش دستی کانفیگ‌های از پیش ثبت‌شده |
 
-- Ubuntu 22.04 or 24.04 recommended
-- Root access for the automated installer
-- Domain pointed to the server
-- PHP 8.2+
-- MySQL
-- Apache
-- Composer
+<h3 dir="rtl" align="right">SolidLayer / GoGuard</h3>
 
-The installer can provision the required web stack on a clean server.
+<p dir="rtl" align="right">
+اتصال SolidLayer / GoGuard به‌صورت مستقل داخل BlueBot پیاده‌سازی شده و از API Key استفاده می‌کند.
+</p>
 
-## Installation
+- <code>POST /api/subscriptions</code> — ساخت اشتراک
+- <code>GET /api/subscriptions</code> — دریافت اطلاعات کاربر
+- <code>PUT /api/subscriptions</code> — ویرایش حجم، زمان و سرویس
+- <code>DELETE /api/subscriptions</code> — حذف اشتراک
+- <code>/api/subscriptions/enable</code> و <code>/disable</code> — فعال/غیرفعال
+- <code>/api/subscriptions/reset</code> — ریست مصرف
+- <code>/api/subscriptions/revoke</code> — تغییر Access Key
+- <code>/api/subscriptions/{username}/links</code> — دریافت لینک‌ها
+- <code>/api/services</code> — دریافت سرویس‌ها
+- <code>/api/stats/overview</code> — نمایش آمار پنل
 
-Run:
+<a id="payments"></a>
+<h2 dir="rtl" align="right">💳 سیستم پرداخت</h2>
 
-```bash
+<p dir="rtl" align="right">
+BlueBot از پرداخت دستی و چندین Gateway آنلاین پشتیبانی می‌کند. Callback و Webhook هر درگاه در پوشه <code>payment/</code> نگهداری می‌شود.
+</p>
+
+| درگاه / روش | وضعیت |
+|---|---:|
+| کارت به کارت / تایید دستی | ✅ |
+| Zarinpal | ✅ |
+| AqayePardakht | ✅ |
+| NowPayments | ✅ |
+| IranPay 1 / 2 / 4 | ✅ |
+| Variza | ✅ |
+| Webhook-based payment flows | ✅ |
+
+> [!IMPORTANT]
+> قبل از استفاده در محیط Production، Callback URL، Webhook Secret و تنظیمات هر درگاه را با حساب واقعی خودتان بررسی کنید.
+
+<a id="requirements"></a>
+<h2 dir="rtl" align="right">⚙️ پیش‌نیازها</h2>
+
+| مورد | مقدار پیشنهادی |
+|---|---|
+| سیستم‌عامل | Ubuntu 22.04 / 24.04 / 26.04 |
+| دسترسی | Root |
+| PHP | 8.2 یا جدیدتر |
+| Database | MySQL |
+| Web Server | Apache |
+| Dependency Manager | Composer |
+| Domain | دامنه متصل به IP سرور |
+| SSL | HTTPS معتبر برای Production |
+
+> [!WARNING]
+> Installer برای نصب جدید، یک **سرور تمیز** را توصیه می‌کند. وجود Web Server، دیتابیس یا پنل‌های دیگر روی سرور ممکن است با نصب خودکار تداخل ایجاد کند.
+
+<a id="install"></a>
+<h2 dir="rtl" align="right">⚡ نصب سریع</h2>
+
+<p dir="rtl" align="right">
+روی یک Ubuntu تازه، با کاربر <strong>root</strong> دستورات زیر را اجرا کنید:
+</p>
+
+~~~bash
 curl -o install.sh -L https://raw.githubusercontent.com/hazhanhasani/bluebot/main/install.sh
 bash install.sh
-```
+~~~
 
-After installation, the management command is:
+<p dir="rtl" align="right">
+Installer وابستگی‌ها، PHP، MySQL، Apache، Composer و فایل‌های مورد نیاز BlueBot را آماده می‌کند.
+</p>
 
-```bash
+<h3 dir="rtl" align="right">دستور مدیریت</h3>
+
+~~~bash
 bluebot
-```
+~~~
 
-For backward compatibility with existing installations, the legacy `mirza` command may continue to be available during the transition.
+<p dir="rtl" align="right">
+برای مشاهده تمام دستورات:
+</p>
 
-## Update
+~~~bash
+bluebot --help
+~~~
 
-Run the same installer and select the update option, or use:
+<h3 dir="rtl" align="right">نصب غیرتعاملی با کانال مشخص</h3>
 
-```bash
+~~~bash
+bluebot install --channel auto
+~~~
+
+<a id="update"></a>
+<h2 dir="rtl" align="right">🔄 بروزرسانی</h2>
+
+<p dir="rtl" align="right">
+BlueBot دارای Updater داخلی است و می‌تواند از Release یا شاخه اصلی پروژه بروزرسانی شود.
+</p>
+
+**نسخه پایدار / Release:**
+
+~~~bash
 bluebot update --channel release
-```
+~~~
 
-Beta/main builds can be selected with:
+**نسخه Beta / آخرین تغییرات main:**
 
-```bash
+~~~bash
 bluebot update --channel beta
-```
+~~~
 
-## Repository structure
+**نسخه مشخص:**
 
-```text
-.
-├── admin.php              # Web/admin application
-├── index.php              # Main Telegram bot entry point
-├── function.php           # Shared application/business helpers
-├── keyboard.php           # Telegram keyboards and menu definitions
-├── panels.php             # Panel management flows
-├── app/                   # Telegram Mini App
-├── api/                   # API endpoints
-├── db/                    # Schema, migrations and database bootstrap
-├── payment/               # Payment gateways and callbacks
-├── cronbot/               # Scheduled jobs
-├── lang/                  # Translations
-├── install/               # Web installer resources
-├── install.sh             # Server installer/updater
-└── .github/workflows/     # Release automation
-```
+~~~bash
+bluebot update --version 0.5.8
+~~~
 
-## Diagnostics
+> [!NOTE]
+> کانال <code>release</code> از آخرین Tag منتشرشده استفاده می‌کند. اگر Release قابل دریافت نباشد، Installer می‌تواند طبق منطق داخلی خود به منبع جایگزین برگردد.
 
-Administrators can run the following Telegram command:
+<a id="admin"></a>
+<h2 dir="rtl" align="right">🖥️ مدیریت سیستم</h2>
 
-```text
+### Web Admin
+
+<p dir="rtl" align="right">
+پنل مدیریت وب در مسیر <code>panel/</code> قرار دارد و بخش‌های اصلی مدیریت BlueBot را پوشش می‌دهد:
+</p>
+
+- کاربران
+- سرویس‌ها و محصولات
+- سفارش‌ها و Invoiceها
+- درگاه‌های پرداخت
+- تنظیمات ربات
+- متن‌ها و Keyboardها
+- Diagnostics
+- Audit Log
+
+### Telegram Admin
+
+<p dir="rtl" align="right">
+بخش بزرگی از مدیریت از داخل خود ربات تلگرام نیز در دسترس مدیران قرار دارد؛ از جمله افزودن پنل، مدیریت سرویس‌ها، تغییر قیمت، ساخت اکانت و تنظیم امکانات فروش.
+</p>
+
+<a id="diagnostics"></a>
+<h2 dir="rtl" align="right">🩺 Diagnostics و Debug</h2>
+
+<p dir="rtl" align="right">
+مدیر ربات می‌تواند دستور زیر را در تلگرام اجرا کند:
+</p>
+
+~~~text
 /debug
-```
+~~~
 
-The report is admin-only and intentionally excludes secrets. It checks the BlueBot version, Mini App version, PHP runtime, database connectivity, writable storage, Composer vendor availability, webhook protection, dedicated API-token configuration, leftover installer files, payment delivery errors and free disk space.
+<p dir="rtl" align="right">
+گزارش Debug برای مدیر ساخته می‌شود و اطلاعات حساس را عمداً نمایش نمی‌دهد. مواردی مانند وضعیت دیتابیس، نسخه PHP، فضای دیسک، Writable Storage، Composer Vendor، Webhook protection، API token و خطاهای Delivery بررسی می‌شوند.
+</p>
 
-The same health information is available in the Web admin panel: **Diagnostics**.
+<p dir="rtl" align="right">
+همین اطلاعات در صفحه <strong>Diagnostics</strong> پنل مدیریت وب نیز قابل مشاهده است.
+</p>
 
-Payment records that are financially confirmed but fail during service delivery are marked as `delivery_error` so they remain visible for administrator review instead of being silently treated as fully delivered.
+<a id="security"></a>
+<h2 dir="rtl" align="right">🔐 امنیت</h2>
 
-## Security notes
+- فایل <code>config.php</code>، Token ربات، اطلاعات دیتابیس و API Key پنل‌ها را در Commit عمومی قرار ندهید.
+- برای Webhook تلگرام و Callback درگاه‌ها از HTTPS معتبر استفاده کنید.
+- دسترسی مدیران و Agentها را به‌صورت دوره‌ای بررسی کنید.
+- قبل از بروزرسانی‌های بزرگ Backup دیتابیس تهیه کنید.
+- PHP، Composer و Packageهای سیستم‌عامل را بروزرسانی نگه دارید.
+- Credential پنل‌های VPN را فقط داخل تنظیمات امن BlueBot نگهداری کنید.
+- برای بررسی سخت‌گیرانه Certificate پنل‌های خارجی می‌توانید متغیر محیطی زیر را فعال کنید:
 
-- Keep `config.php`, database credentials and Telegram tokens out of public commits.
-- Use HTTPS for bot webhooks and payment callbacks.
-- Keep the operating system, PHP and Composer dependencies updated.
-- Review admin access and backup permissions before production deployment.
-- Test payment callbacks and VPN-panel credentials in a staging environment when possible.
+~~~bash
+export BLUEBOT_VERIFY_PANEL_TLS=1
+~~~
 
-## Development direction
+> [!CAUTION]
+> غیرفعال‌کردن بررسی TLS فقط برای سازگاری با برخی پنل‌های قدیمی یا Self-Signed در نظر گرفته شده است. برای محیط Production استفاده از Certificate معتبر توصیه می‌شود.
 
-BlueBot is being progressively separated from its upstream identity and modernized around its own branding, release pipeline, installer, documentation and maintainable architecture. Existing installations are kept compatible while the internal structure is refactored incrementally.
+<a id="structure"></a>
+<h2 dir="rtl" align="right">📁 ساختار پروژه</h2>
 
-## License and upstream attribution
+~~~text
+bluebot/
+├── index.php               # Telegram bot entry point
+├── admin.php               # Telegram admin flows
+├── function.php            # Shared business/application helpers
+├── keyboard.php            # Telegram keyboards and menus
+├── panels.php              # Unified VPN panel lifecycle manager
+├── Marzban.php             # Marzban adapter
+├── marzneshin.php          # Marzneshin adapter
+├── solidlayer.php          # SolidLayer / GoGuard adapter
+├── hiddify.php             # Hiddify adapter
+├── x-ui_single.php         # X-UI / Sanaei adapter
+├── app/                    # Telegram Mini App
+├── panel/                  # Web administration panel
+├── api/                    # Internal/API endpoints
+├── db/                     # Schema, migrations and bootstrap
+├── payment/                # Payment gateways and callbacks
+├── cronbot/                # Scheduled jobs
+├── lang/                   # Language files
+├── src/                    # Modular application/support code
+├── storage/                # Runtime storage and logs
+├── install/                # Installer resources
+├── install.sh              # Installer / updater CLI
+└── .github/workflows/      # CI and release automation
+~~~
 
-BlueBot is distributed under **AGPL-3.0-or-later**, matching the license of the codebase it was derived from.
+<a id="workflow"></a>
+<h2 dir="rtl" align="right">🧠 جریان فروش سرویس</h2>
 
-This repository is based on and contains work originating from **Mirza Bot / mahdiMGF2**. The original license and attribution are intentionally preserved. BlueBot's branding, maintenance, packaging and subsequent modifications are maintained in this repository.
+~~~text
+Customer
+   │
+   ▼
+Telegram Bot / Mini App
+   │
+   ├── Select Product
+   ├── Apply Discount
+   ├── Payment / Wallet
+   │
+   ▼
+Payment Verification
+   │
+   ▼
+ManagePanel
+   │
+   ├── Marzban
+   ├── Marzneshin
+   ├── SolidLayer / GoGuard
+   ├── X-UI
+   ├── Hiddify
+   └── Other adapters
+   │
+   ▼
+Subscription / Config Delivery
+   │
+   ▼
+Renewal • Extra Volume • Notifications • Support
+~~~
 
-See [LICENSE](LICENSE) for the full license text.
+<a id="database"></a>
+<h2 dir="rtl" align="right">🗄️ دیتابیس و Migration</h2>
+
+<p dir="rtl" align="right">
+Schema دیتابیس به‌صورت ماژولار داخل <code>db/</code> مدیریت می‌شود. BlueBot هنگام نصب و بروزرسانی می‌تواند ساختار دیتابیس و ستون‌های مورد نیاز نسخه‌های جدید را آماده کند.
+</p>
+
+<p dir="rtl" align="right">
+برای جلوگیری از از دست رفتن اطلاعات، قبل از Migration یا تغییرات مهم نسخه حتماً Backup تهیه کنید.
+</p>
+
+<a id="development"></a>
+<h2 dir="rtl" align="right">🧪 توسعه و کنترل کیفیت</h2>
+
+<p dir="rtl" align="right">
+Workflow اصلی CI در <code>.github/workflows/ci.yml</code> اجرا می‌شود و بخش‌های مهم پروژه را بررسی می‌کند.
+</p>
+
+- Composer metadata validation
+- نصب Dependencyها
+- PHP syntax lint
+- JavaScript lint
+- UI contract checks
+- Panel integrity checks
+- Security / safety contracts
+- Diagnostics tests
+- Installer syntax validation
+- Payment callback contracts
+
+<p dir="rtl" align="right">
+برای تغییرات مهم، توسعه روی Branch جدا و Merge از طریق Pull Request توصیه می‌شود.
+</p>
+
+<a id="troubleshooting"></a>
+<h2 dir="rtl" align="right">🛠️ عیب‌یابی سریع</h2>
+
+| مشکل | بررسی پیشنهادی |
+|---|---|
+| ربات پاسخ نمی‌دهد | Webhook، Token و وضعیت PHP/Apache |
+| ساخت سرویس خطا دارد | URL، Credential/API Key و دسترسی پنل VPN |
+| پرداخت تایید نمی‌شود | Callback URL، Webhook Secret و لاگ درگاه |
+| بروزرسانی ناقص است | اجرای مجدد <code>bluebot update</code> و بررسی اینترنت سرور |
+| پنل وب باز نمی‌شود | Apache، Domain، SSL و Permission فایل‌ها |
+| خطای نامشخص | اجرای <code>/debug</code> یا صفحه Diagnostics |
+
+<a id="license"></a>
+<h2 dir="rtl" align="right">📜 مجوز و Attribution</h2>
+
+<p dir="rtl" align="right">
+BlueBot تحت مجوز <strong>GNU Affero General Public License v3.0 or later (AGPL-3.0-or-later)</strong> منتشر می‌شود.
+</p>
+
+<p dir="rtl" align="right">
+این پروژه بر پایه کدی توسعه یافته که بخشی از آن از پروژه <strong>Mirza Bot</strong> متعلق به <strong>mahdiMGF2</strong> منشأ گرفته است. مجوز اصلی و Attribution پروژه بالادستی عمداً حفظ شده‌اند.
+</p>
+
+- [LICENSE](LICENSE)
+- [NOTICE.md](NOTICE.md)
+- [Upstream: mahdiMGF2/mirzabot](https://github.com/mahdiMGF2/mirzabot)
+
+> [!IMPORTANT]
+> اگر نسخه تغییر‌یافته BlueBot را توزیع می‌کنید یا به‌عنوان سرویس تحت شبکه در اختیار دیگران قرار می‌دهید، الزامات AGPL-3.0 از جمله شرایط مربوط به دسترسی به Source Code را بررسی و رعایت کنید.
 
 ---
 
 <div align="center">
 
-**BlueBot** · maintained at **hazhanhasani/bluebot**
+### 🔵 BlueBot
+
+**ساخته‌شده برای مدیریت ساده‌تر، حرفه‌ای‌تر و قابل توسعه‌تر فروش سرویس‌های VPN**
+
+[Repository](https://github.com/hazhanhasani/bluebot) • [Actions](https://github.com/hazhanhasani/bluebot/actions) • [License](LICENSE) • [Notice](NOTICE.md)
+
+<sub>Maintained by hazhanhasani • Version 0.5.8</sub>
 
 </div>
