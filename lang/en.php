@@ -4781,6 +4781,8 @@ We hope you had a good experience with the ease and speed of your service. If yo
                 ],
                 'statusSuccess' => 'Payment successful',
                 'statusFailed' => 'Failed',
+                'statusDeliveryFailed' => 'Payment verified',
+                'deliveryFailed' => 'Payment was verified, but service delivery failed. Please contact support.',
                 'descThanks' => 'Thank you for completing the transaction!',
                 'giftReport' => '🎁 Dear user, the amount of %s Toman has been deposited into your account as a gift.',
                 'reportZarinpal' => '💵 New payment
