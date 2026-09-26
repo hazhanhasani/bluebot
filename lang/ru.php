@@ -2389,15 +2389,13 @@ f,n.n2',
 🔹 | Также, если вам нужна <b>помощь</b> или поддержка, вы можете связаться с командой поддержки в личных сообщениях.
 
 📩 | Чтобы отправить отчёт, предложение или запрос помощи, оставьте сообщение в <b>группе BlueBot</b>:
-<a href="https://t.me/mirzapanelgroup" rel="nofollow" target="_blank">BlueBot Group</a>',
+<a href="https://github.com/hazhanhasani/bluebot/issues" rel="nofollow" target="_blank">BlueBot Issues</a>',
                         'aboutBot' => '💎 | Version Bot: %s
 📌 | Version Mini App: 0.1.1
 
-<blockquote>🔹 | Этот бот полностью бесплатный и разработан командой BlueBot</blockquote>
+<blockquote>🔹 | BlueBot — программное обеспечение с открытым исходным кодом под лицензией AGPL-3.0-or-later.</blockquote>
 
-<blockquote>🔹 | Любая продажа или взимание платы за этого бота считается нарушением.</blockquote>
-
-<blockquote>🔹 | Если вы заметили продажу или взимание платы, пожалуйста, отследите и верните свои деньги.</blockquote>
+<blockquote>🔹 | Коммерческое распространение и размещённые сервисы допускаются при соблюдении требований лицензии и предоставления исходного кода.</blockquote>
 
 <blockquote>🐞 | Если вы столкнулись с ошибкой или проблемой в работе бота, свяжитесь с нами через кнопку **📬 Отчёт о боте** в панели администратора.</blockquote>',
                         'gatewayRow' => '
