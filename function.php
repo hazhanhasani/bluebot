@@ -690,28 +690,57 @@ function nowPayments($payment, $price_amount, $order_id, $order_description)
     ]));
 
     $response = curl_exec($curl);
-    return json_decode($response, true);
+    $curlError = $response === false ? curl_error($curl) : '';
+    curl_close($curl);
+
+    if ($response === false) {
+        bluebotLog('warning', 'NOWPayments invoice request failed', [
+            'order_id' => (string) $order_id,
+            'error' => $curlError,
+        ]);
+        return ['error' => $curlError ?: 'request failed'];
+    }
+
+    $decoded = json_decode($response, true);
+    return is_array($decoded) ? $decoded : ['error' => 'invalid response'];
 }
 function StatusPayment($paymentid)
 {
     $apinowpayments = select("PaySetting", "*", "NamePay", "marchent_tronseller", "select")['ValuePay'];
     $curl = curl_init();
     curl_setopt_array($curl, array(
-        CURLOPT_URL => 'https://api.nowpayments.io/v1/payment/' . $paymentid,
+        CURLOPT_URL => 'https://api.nowpayments.io/v1/payment/' . rawurlencode((string) $paymentid),
         CURLOPT_RETURNTRANSFER => true,
         CURLOPT_ENCODING => '',
-        CURLOPT_MAXREDIRS => 10,
-        CURLOPT_TIMEOUT => 0,
+        CURLOPT_MAXREDIRS => 3,
+        CURLOPT_TIMEOUT_MS => 7000,
+        CURLOPT_CONNECTTIMEOUT_MS => 4000,
         CURLOPT_FOLLOWLOCATION => true,
+        CURLOPT_PROTOCOLS => CURLPROTO_HTTPS,
+        CURLOPT_REDIR_PROTOCOLS => CURLPROTO_HTTPS,
+        CURLOPT_SSL_VERIFYPEER => true,
+        CURLOPT_SSL_VERIFYHOST => 2,
         CURLOPT_HTTP_VERSION => CURL_HTTP_VERSION_1_1,
         CURLOPT_CUSTOMREQUEST => 'GET',
         CURLOPT_HTTPHEADER => array(
-            'x-api-key:' . $apinowpayments
+            'x-api-key:' . $apinowpayments,
+            'Accept: application/json'
         ),
     ));
     $response = curl_exec($curl);
-    $response = json_decode($response, true);
-    return $response;
+    $curlError = $response === false ? curl_error($curl) : '';
+    curl_close($curl);
+
+    if ($response === false) {
+        bluebotLog('warning', 'NOWPayments status request failed', [
+            'payment_id' => (string) $paymentid,
+            'error' => $curlError,
+        ]);
+        return ['payment_status' => 'unknown', 'error' => $curlError ?: 'request failed'];
+    }
+
+    $decoded = json_decode($response, true);
+    return is_array($decoded) ? $decoded : ['payment_status' => 'unknown', 'error' => 'invalid response'];
 }
 function channel(array $id_channel)
 {
