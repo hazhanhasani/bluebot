@@ -6,6 +6,16 @@ function bluebotMiniAppUrl(): string
 {
     global $domainhosts;
 
+    // Optional dedicated edge/CDN hostname. When unset, BlueBot always derives
+    // the Mini App URL from the bot's configured domain automatically.
+    $override = trim((string) getenv('BLUEBOT_MINIAPP_URL'));
+    if ($override !== '' && filter_var($override, FILTER_VALIDATE_URL) !== false) {
+        $parts = parse_url($override);
+        if (is_array($parts) && strtolower((string) ($parts['scheme'] ?? '')) === 'https') {
+            return rtrim($override, '/') . '/';
+        }
+    }
+
     $host = trim((string) $domainhosts);
     $host = preg_replace('~^https?://~i', '', $host);
     $host = trim((string) $host, '/');
@@ -75,6 +85,16 @@ function bluebotMiniAppHealth(): array
         ],
     ]);
 
+    $headers = [];
+    curl_setopt($curl, CURLOPT_HEADERFUNCTION, static function ($handle, string $line) use (&$headers): int {
+        $length = strlen($line);
+        $parts = explode(':', $line, 2);
+        if (count($parts) === 2) {
+            $headers[strtolower(trim($parts[0]))] = trim($parts[1]);
+        }
+        return $length;
+    });
+
     $body = curl_exec($curl);
     $status = (int) curl_getinfo($curl, CURLINFO_HTTP_CODE);
     $error = $body === false ? curl_error($curl) : '';
@@ -89,6 +109,15 @@ function bluebotMiniAppHealth(): array
 
     if ($cloudflareEmpty) {
         return ['ok' => false, 'state' => 'cloudflare_empty_worker', 'http_status' => $status];
+    }
+
+    $cdnChallenge = strtolower((string) ($headers['cf-mitigated'] ?? '')) === 'challenge'
+        || stripos($body, 'Just a moment') !== false
+        || stripos($body, 'cf-chl-') !== false
+        || stripos($body, 'Attention Required! | Cloudflare') !== false;
+
+    if ($cdnChallenge) {
+        return ['ok' => false, 'state' => 'cdn_challenge', 'http_status' => $status];
     }
 
     $bluebot = stripos($body, '<title>BlueBot Web App</title>') !== false;
