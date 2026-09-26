@@ -16,6 +16,17 @@ function getdatauser($username, $location)
     ));
 
     $output = curl_exec($ch);
+    $curlError = $output === false ? curl_error($ch) : '';
+    curl_close($ch);
+
+    if ($output === false) {
+        bluebotLog('warning', 'Hiddify user request failed', [
+            'panel' => (string) $location,
+            'error' => $curlError,
+        ]);
+        return [];
+    }
+
     $data_useer = json_decode($output, true);
     if (isset($data_useer['message']))
         return $data_useer;
