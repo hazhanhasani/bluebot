@@ -475,7 +475,7 @@ class ManagePanel
         }
         return $Output;
     }
-    function DataUser($name_panel, $username)
+    function DataUser($name_panel, $username, $includeLinks = true)
     {
         $Output = array();
         global $pdo, $domainhosts;
@@ -635,7 +635,7 @@ class ManagePanel
                 }
             }
         } elseif ($Get_Data_Panel['type'] == "solidlayer") {
-            $Output = solidlayerBluebotUser($Get_Data_Panel['name_panel'], $username);
+            $Output = solidlayerBluebotUser($Get_Data_Panel['name_panel'], $username, (bool) $includeLinks);
             if ($invoice != false && ($Output['status'] ?? 'Unsuccessful') !== 'Unsuccessful') {
                 $Output['subscription_url'] = "https://$domainhosts/sub/" . $invoice['id_invoice'];
             }
