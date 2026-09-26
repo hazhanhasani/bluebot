@@ -2389,7 +2389,7 @@ f,n.n2',
 📩 | برای ارسال گزارش، پیشنهاد یا درخواست راهنمایی، در <b>صفحه گزارش مشکلات BlueBot</b> پیام بگذارید:
 <a href="https://github.com/hazhanhasani/bluebot/issues" rel="nofollow" target="_blank">BlueBot Issues</a>',
                         'aboutBot' => '💎 | Version Bot: %s
-📌 | Version Mini App: 0.1.2
+📌 | Version Mini App: 0.1.3
 
 <blockquote>🔹 | BlueBot یک پروژه متن‌باز تحت مجوز AGPL-3.0-or-later است و در این مخزن نگهداری می‌شود.</blockquote>
 
@@ -3891,6 +3891,8 @@ f,n.n2',
                 'freeLimit' => '🆓 محدودیت رایگان',
                 'generalLimit' => '↙️ محدودیت کلی',
                 'generalSettings' => '⚙️ تنظیمات عمومی',
+                'updateCenter' => '🔄 بروزرسانی BlueBot',
+                'miniAppOpen' => '📱 پنل کاربری',
                 'getAllConfigs' => '⚙️ دریافت همه کانفیگ ها',
                 'getConfig' => 'دریافت کانفیگ',
                 'getConfigBtn' => '🔗 دکمه دریافت کانفیگ',

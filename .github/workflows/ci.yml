@@ -67,6 +67,12 @@ jobs:
       - name: Telegram Mini App bootstrap tests
         run: node tests/telegram_bootstrap_test.js
 
+      - name: In-bot updater contracts
+        run: php tests/inbot_updater_contract.php
+
+      - name: Validate update worker syntax
+        run: bash -n scripts/bluebot-update-worker.sh
+
       - name: Lint panel JavaScript
         shell: bash
         run: |

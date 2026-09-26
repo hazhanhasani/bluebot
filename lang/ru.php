@@ -2392,7 +2392,7 @@ f,n.n2',
 📩 | Чтобы отправить отчёт, предложение или запрос помощи, оставьте сообщение в <b>группе BlueBot</b>:
 <a href="https://github.com/hazhanhasani/bluebot/issues" rel="nofollow" target="_blank">BlueBot Issues</a>',
                         'aboutBot' => '💎 | Version Bot: %s
-📌 | Version Mini App: 0.1.2
+📌 | Version Mini App: 0.1.3
 
 <blockquote>🔹 | BlueBot — программное обеспечение с открытым исходным кодом под лицензией AGPL-3.0-or-later.</blockquote>
 
@@ -3907,6 +3907,8 @@ ID пользователя : %s
                 'freeLimit' => '🆓 Бесплатный лимит',
                 'generalLimit' => '↙️ Общий лимит',
                 'generalSettings' => '⚙️ Общие настройки',
+                'updateCenter' => '🔄 Обновление BlueBot',
+                'miniAppOpen' => '📱 Личный кабинет',
                 'getAllConfigs' => '⚙️ Получить все конфиги',
                 'getConfig' => 'Получить конфиг',
                 'getConfigBtn' => '🔗 Кнопка получения конфига',
