@@ -13,6 +13,9 @@ $checks = [
     "serviceBackKeyboard" => 'Service selection must keep a back action available during slow panel requests.',
     "panelNotConnectedCached" => 'Service selection must show cached order details when the panel is temporarily unavailable.',
     "bluebotEnsureMiniAppMenuButton(false);" => 'Bot /start must automatically synchronize the Mini App menu button.',
+    "Service status lookup crashed" => 'Service detail lookup must catch panel adapter exceptions.',
+    "includePanelLinks" => 'Service detail lookup must support lazy panel links.',
+    "is_numeric(\$onlineValue)" => 'Service detail must safely accept Unix online timestamps.',
 ];
 
 foreach ($checks as $needle => $message) {
