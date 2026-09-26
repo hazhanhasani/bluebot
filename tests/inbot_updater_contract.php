@@ -68,6 +68,25 @@ foreach ([
     }
 }
 
+$worker = @file_get_contents($root . '/scripts/bluebot-update-worker.sh');
+if ($worker === false || !str_contains($worker, 'bluebotUpdateCurrentVersion')) {
+    $failures[] = 'Update worker does not read the build-aware installed version.';
+}
+if ($worker === false || !str_contains($worker, 'INSTALLED_CHANNEL')) {
+    $failures[] = 'Update worker does not preserve the resolved installed source channel.';
+}
+if ($worker !== false) {
+    $managerPos = strpos($worker, 'bluebotUpdateCurrentVersion');
+    $fallbackPos = strpos($worker, 'tr -d');
+    if ($managerPos === false || $fallbackPos === false || $managerPos > $fallbackPos) {
+        $failures[] = 'Update worker must prefer build-aware version resolution before file fallback.';
+    }
+}
+
+if ($manager === false || !str_contains($manager, "'installed_channel' => \$installedChannel")) {
+    $failures[] = 'Queued update payload does not carry the resolved installed channel.';
+}
+
 $setting = @file_get_contents($root . '/db/tables/setting.php');
 foreach ([
     'update_channel',
