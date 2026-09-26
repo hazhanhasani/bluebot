@@ -14,6 +14,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'revie
   }
 
   if (markPaymentDeliveryReviewed($orderId)) {
+    bluebotLog('audit', 'Admin reviewed payment delivery error', [
+      'order_id' => $orderId,
+      'admin' => (string) ($_SESSION['admin_user'] ?? 'unknown'),
+      'ip' => (string) ($_SERVER['REMOTE_ADDR'] ?? 'unknown'),
+    ]);
     flash('success', $textbotlang['panel']['paymentDeliveryReviewSuccess']);
   } else {
     flash('warning', $textbotlang['panel']['paymentDeliveryReviewNoop']);
