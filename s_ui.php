@@ -1,6 +1,22 @@
 <?php
 require_once 'config.php';
+require_once __DIR__ . '/src/Support/Logger.php';
 ini_set('error_log', 'error_log');
+
+function suiCurlJson($curl): array
+{
+    $raw = curl_exec($curl);
+    $error = $raw === false ? curl_error($curl) : '';
+    curl_close($curl);
+
+    if ($raw === false) {
+        bluebotLog('warning', 'S-UI request failed', ['error' => $error]);
+        return [];
+    }
+
+    $decoded = json_decode($raw, true);
+    return is_array($decoded) ? $decoded : [];
+}
 
 
 function get_Clients_ui($username, $namepanel)
@@ -21,10 +37,9 @@ function get_Clients_ui($username, $namepanel)
             'Token: ' . $marzban_list_get['password_panel']
         ),
     ));
-    $response = curl_exec($curl);
-    if ($response === false)
+    $response = suiCurlJson($curl);
+    if ($response === [])
         return [];
-    $response = json_decode($response, true);
     if (!$response['success'])
         return [];
     if (!isset($response['obj']['clients']))
@@ -55,10 +70,9 @@ function GetClientsS_UI($username, $namepanel)
             'Token: ' . $marzban_list_get['password_panel']
         ),
     ));
-    $response = curl_exec($curl);
-    if ($response === false)
+    $response = suiCurlJson($curl);
+    if ($response === [])
         return [];
-    $response = json_decode($response, true);
     if (empty($response['success']))
         return [];
     return $response['obj']['clients'][0] ?? [];
@@ -158,8 +172,7 @@ function addClientS_ui($namepanel, $usernameac, $Expire, $Total, $inboundid, $no
             'Token: ' . $marzban_list_get['password_panel']
         ),
     ));
-    $response = curl_exec($curl);
-    return json_decode($response, true);
+    return suiCurlJson($curl);
 }
 function updateClientS_ui($namepanel, array $config)
 {
@@ -233,8 +246,7 @@ function removeClientS_ui($location, $username)
         ),
     ));
 
-    $response = json_decode(curl_exec($curl), true);
-    return $response;
+    return suiCurlJson($curl);
 }
 function get_onlineclients_ui($name_panel, $username)
 {
@@ -253,10 +265,10 @@ function get_onlineclients_ui($name_panel, $username)
             'Token: ' . $marzban_list_get['password_panel']
         ),
     ));
-    $response = curl_exec($curl);
-    if ($response == null)
+    $decoded = suiCurlJson($curl);
+    if ($decoded === [])
         return "offline";
-    $response = json_decode($response, true)['obj']['user'];
+    $response = $decoded['obj']['user'] ?? null;
     if (!is_array($response))
         return "offline";
     if (in_array($username, $response))
@@ -281,10 +293,10 @@ function get_settig($name_panel)
             'Token: ' . $marzban_list_get['password_panel']
         ),
     ));
-    $response = curl_exec($curl);
-    if ($response == null)
+    $decoded = suiCurlJson($curl);
+    if ($decoded === [])
         return [];
-    $response = json_decode($response, true)['obj'];
+    $response = $decoded['obj'] ?? null;
     if (!is_array($response))
         return [];
     return $response;
