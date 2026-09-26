@@ -2,6 +2,8 @@
 
 declare(strict_types=1);
 
+require_once __DIR__ . '/Logger.php';
+
 /**
  * Build the admin-only BlueBot diagnostic report.
  *
@@ -15,7 +17,10 @@ function bluebotBuildDebugReport(PDO $pdo, array $setting, array $webhookSecret 
     try {
         $dbOk = (bool) $pdo->query('SELECT 1')->fetchColumn();
     } catch (Throwable $error) {
-        error_log('BlueBot /debug database check failed: ' . $error->getMessage());
+        bluebotLog('error', 'Debug database check failed', [
+            'exception' => get_class($error),
+            'reason' => $error->getMessage(),
+        ]);
     }
 
     $readVersion = static function (string $path): string {
@@ -42,7 +47,10 @@ function bluebotBuildDebugReport(PDO $pdo, array $setting, array $webhookSecret 
             ->fetchColumn();
     } catch (Throwable $error) {
         $deliveryErrors = -1;
-        error_log('BlueBot /debug payment check failed: ' . $error->getMessage());
+        bluebotLog('error', 'Debug payment check failed', [
+            'exception' => get_class($error),
+            'reason' => $error->getMessage(),
+        ]);
     }
 
     $freeBytes = @disk_free_space($root);
