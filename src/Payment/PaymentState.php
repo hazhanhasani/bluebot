@@ -49,15 +49,19 @@ function markPaymentDeliveryError($order_id, $reason = '')
         clearSelectCache('Payment_report');
     }
 
-    $reason = trim((string) $reason);
-    if ($reason !== '') {
-        bluebotAudit('payment.delivery_error', [
+    $changed = $stmt->rowCount() >= 1;
+    if ($changed) {
+        $reason = trim((string) $reason);
+        $context = [
             'order_id' => (string) $order_id,
-            'reason' => $reason,
-        ]);
+        ];
+        if ($reason !== '') {
+            $context['reason'] = $reason;
+        }
+        bluebotAudit('payment.delivery_error', $context);
     }
 
-    return $stmt->rowCount() >= 1;
+    return $changed;
 }
 
 function markPaymentDeliveryReviewed($order_id)
