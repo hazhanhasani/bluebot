@@ -1850,11 +1850,15 @@ nowpayments.io
                         'askBlupalCardNumber' => '💳 شماره کارت مقصد بلوپال را بدون فاصله وارد کنید. این گزینه اختیاری است و برای حذف آن عدد 0 را ارسال کنید.
 
 شماره فعلی: <code>%s</code>',
-                        'blupalWebhookInfo' => '🔗 آدرس وب‌هوک بلوپال:
+                        'blupalWebhookInfo' => '🔷 <b>آدرس‌های اتصال بلوپال</b>
 
+↩️ <b>Callback URL</b> — ثبت آن در پنل بلوپال اجباری است:
 <code>%s</code>
 
-این آدرس را در تنظیمات Webhook حساب بلوپال ثبت کنید.',
+⚡ <b>Webhook URL</b>:
+<code>%s</code>
+
+هر دو آدرس را دقیقاً با HTTPS در پنل بلوپال ثبت کنید.',
                         'askMerchant' => '💳 مرچنت کد خود را دریافت و در این قسمت وارد کنید
         
 مرچنت کد فعلی شما : %s',
@@ -4171,7 +4175,7 @@ f,n.n2',
                 'blupalGateway' => 'بلوپال',
                 'blupalApiKey' => '🔑 کلید API بلوپال',
                 'blupalCardNumber' => '💳 شماره کارت بلوپال',
-                'blupalWebhookUrl' => '🔗 آدرس وب‌هوک بلوپال',
+                'blupalWebhookUrl' => '🔗 Callback / Webhook بلوپال',
                 'cashbackBlupal' => '🎁 کش‌بک بلوپال',
                 'minAmountBlupal' => '⬇️ حداقل واریز بلوپال',
                 'maxAmountBlupal' => '⬆️ حداکثر واریز بلوپال',
