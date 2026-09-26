@@ -60,13 +60,13 @@ foreach ($checks as [$source, $needle, $message]) {
 require_once $root . '/src/Support/SmsService.php';
 
 $phones = [
-    '09121234567' => '+989121234567',
-    '+989121234567' => '+989121234567',
-    '989121234567' => '+989121234567',
-    '00989121234567' => '+989121234567',
-    '۰۹۱۲۱۲۳۴۵۶۷' => '+989121234567',
+    ['09121234567', '+989121234567'],
+    ['+989121234567', '+989121234567'],
+    ['989121234567', '+989121234567'],
+    ['00989121234567', '+989121234567'],
+    ['۰۹۱۲۱۲۳۴۵۶۷', '+989121234567'],
 ];
-foreach ($phones as $input => $expected) {
+foreach ($phones as [$input, $expected]) {
     $actual = BluebotSms::normalizePhone($input);
     if ($actual !== $expected) {
         $failures[] = "Phone normalization failed for {$input}: {$actual}";
