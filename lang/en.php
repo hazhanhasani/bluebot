@@ -2386,7 +2386,7 @@ Current amount: %s',
 ➖➖➖➖➖➖➖➖➖➖➖
 🔹 | If you have a suggestion for <b>adding a new feature</b> or an idea to improve the bot\'s performance, we\'d be happy to hear it.
 ➖➖➖➖➖➖➖➖➖➖➖
-🔹 | Also, if you need <b>guidance</b> or help, you can contact the support team via direct message.
+🔹 | If you need <b>guidance</b> or help, use the project issue tracker.
 
 📩 | To send a report, suggestion, or request for guidance, leave a message in the <b>BlueBot issue tracker</b>:
 <a href="https://github.com/hazhanhasani/bluebot/issues" rel="nofollow" target="_blank">BlueBot Issues</a>',
@@ -2395,9 +2395,7 @@ Current amount: %s',
 
 <blockquote>🔹 | BlueBot is open-source software distributed under AGPL-3.0-or-later and maintained in this repository.</blockquote>
 
-<blockquote>🔹 | Any sale or charging of money for this bot is considered a violation.</blockquote>
-
-<blockquote>🔹 | If you see any sale or charging of money, please track and reclaim your money.</blockquote>
+<blockquote>🔹 | Commercial distribution or hosted services are permitted when the applicable AGPL source-code and license obligations are satisfied.</blockquote>
 
 <blockquote>🐞 | If you encounter a bug or problem in the bot\'s operation, contact us via the **📬 Bot report** button in the admin panel.</blockquote>',
                         'gatewayRow' => '
@@ -4342,15 +4340,14 @@ We hope you had a good experience with the ease and speed of your service. If yo
                 'loginHeading' => 'BlueBot Admin Panel',
                 'loginHidePassword' => 'Access to this panel is only allowed for authorized administrators.',
                 'loginPanelTitle' => 'Login — BlueBot Admin Panel',
-                'loginPasswordLabel' => 'BlueBot Admin Panel',
+                'loginPasswordLabel' => 'BlueBot Admin',
                 'loginPasswordPlaceholder' => '· BlueBot',
                 'loginRememberMe' => 'To manage the bot, enter your account information.',
                 'loginShowPassword' => 'Login to panel',
-                'loginSubtitle' => 'To support, please ',
+                'loginSubtitle' => 'Official repository:',
                 'loginTooManyAttempts' => 'Too many failed attempts. Please wait 15 minutes.',
-                'loginUsernameLabel' => 'Project',
-                'loginUsernamePlaceholder' => 'Star and
-          donate',
+                'loginUsernameLabel' => 'BlueBot',
+                'loginUsernamePlaceholder' => 'on GitHub',
                 'loginWelcomeBack' => 'Welcome, ',
                 'loginWrongCredentials' => 'The username or password is incorrect.',
                 'paymentAllMethods' => 'Since the start of activity',
