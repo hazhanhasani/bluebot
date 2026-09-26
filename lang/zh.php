@@ -371,6 +371,7 @@ return [
 💰 金额：%s 托曼',
                         'refundCreateFailed' => '💎  尊敬的用户，由于服务未创建，金额 %s 托曼已添加到您的钱包。',
                         'refundRenewFailed' => '💎  尊敬的用户，由于服务未续费，金额 %s 托曼已添加到您的钱包。',
+                        'refundAddonFailed' => '💎 尊敬的用户，服务附加项未能应用。您的钱包余额已恢复至 %s 托曼。',
                         'transactionCreated' => '✅ 您的交易已创建
         
 🛒 跟踪码：<code>%s</code> 
