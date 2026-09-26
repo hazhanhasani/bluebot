@@ -5,6 +5,8 @@ require_once __DIR__ . '/../src/Support/Diagnostics.php';
 require_auth();
 
 $diagnostics = bluebotCollectDiagnostics($pdo, is_array($setting ?? null) ? $setting : (select("setting", "*") ?: []));
+bluebotRecordHealthSnapshot($diagnostics);
+$healthHistory = bluebotReadHealthHistory(20);
 
 $pageTitle = $textbotlang['panel']['diagnosticsTitle'];
 $pageLede = $textbotlang['panel']['diagnosticsSubtitle'];
@@ -143,6 +145,75 @@ include __DIR__ . '/inc/layout_head.php';
         </tbody>
       </table>
     </div>
+  </div>
+</div>
+
+<div class="card fade-up" style="margin-top:24px">
+  <div class="card-head">
+    <div>
+      <div class="card-title"><?= htmlspecialchars($textbotlang['panel']['diagnosticsHistory']) ?></div>
+      <div class="card-subtitle"><?= htmlspecialchars($textbotlang['panel']['diagnosticsHistorySubtitle']) ?></div>
+    </div>
+  </div>
+
+  <div class="tbl-wrap">
+    <table class="tbl-lg">
+      <thead>
+        <tr>
+          <th><?= htmlspecialchars($textbotlang['panel']['diagnosticsCheckedAt']) ?></th>
+          <th><?= htmlspecialchars($textbotlang['panel']['diagnosticsOverall']) ?></th>
+          <th><?= htmlspecialchars($textbotlang['panel']['diagnosticsDatabase']) ?></th>
+          <th><?= htmlspecialchars($textbotlang['panel']['diagnosticsSecurity']) ?></th>
+          <th><?= htmlspecialchars($textbotlang['panel']['diagnosticsDeliveryErrors']) ?></th>
+          <th><?= htmlspecialchars($textbotlang['panel']['diagnosticsVersion']) ?></th>
+        </tr>
+      </thead>
+      <tbody>
+        <?php if ($healthHistory === []): ?>
+          <tr>
+            <td colspan="6">
+              <div class="empty">
+                <div class="empty-mark">—</div>
+                <p><?= htmlspecialchars($textbotlang['panel']['diagnosticsNoHistory']) ?></p>
+              </div>
+            </td>
+          </tr>
+        <?php else: ?>
+          <?php foreach ($healthHistory as $snapshot): ?>
+            <tr>
+              <td class="cell-mono" style="white-space:nowrap"><?= htmlspecialchars((string) $snapshot['time']) ?></td>
+              <td>
+                <span class="tag <?= $snapshot['overall_healthy'] ? 'tag-ok' : 'tag-warn' ?>">
+                  <?= htmlspecialchars($snapshot['overall_healthy']
+                    ? $textbotlang['panel']['diagnosticsHealthy']
+                    : $textbotlang['panel']['diagnosticsProblem']) ?>
+                </span>
+              </td>
+              <td>
+                <span class="tag <?= $snapshot['database_ok'] ? 'tag-ok' : 'tag-no' ?>">
+                  <?= htmlspecialchars($snapshot['database_ok']
+                    ? $textbotlang['panel']['diagnosticsHealthy']
+                    : $textbotlang['panel']['diagnosticsProblem']) ?>
+                </span>
+              </td>
+              <td>
+                <span class="tag <?= $snapshot['security_healthy'] ? 'tag-ok' : 'tag-warn' ?>">
+                  <?= htmlspecialchars($snapshot['security_healthy']
+                    ? $textbotlang['panel']['diagnosticsHealthy']
+                    : $textbotlang['panel']['diagnosticsProblem']) ?>
+                </span>
+              </td>
+              <td>
+                <span class="tag <?= ((int) $snapshot['delivery_errors']) > 0 ? 'tag-no' : 'tag-ok' ?>">
+                  <?= number_format((int) $snapshot['delivery_errors']) ?>
+                </span>
+              </td>
+              <td class="cell-mono"><?= htmlspecialchars((string) $snapshot['version']) ?></td>
+            </tr>
+          <?php endforeach; ?>
+        <?php endif; ?>
+      </tbody>
+    </table>
   </div>
 </div>
 
