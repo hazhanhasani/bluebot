@@ -62,3 +62,98 @@ function bluebotLog(string $level, string $message, array $context = []): void
 
     error_log('[BlueBot][' . $normalizedLevel . '] ' . $message . $payload);
 }
+
+
+function bluebotAuditLogPath(): string
+{
+    $root = dirname(__DIR__, 2);
+    $directory = $root . '/storage/logs';
+
+    if (!is_dir($directory) && !@mkdir($directory, 0750, true) && !is_dir($directory)) {
+        return '';
+    }
+
+    @chmod($directory, 0750);
+    return $directory . '/audit.log';
+}
+
+function bluebotRotateAuditLog(string $path, int $maxBytes = 5242880): void
+{
+    if ($path === '' || !is_file($path)) {
+        return;
+    }
+
+    $size = @filesize($path);
+    if ($size === false || $size < $maxBytes) {
+        return;
+    }
+
+    $archive = $path . '.1';
+    if (is_file($archive)) {
+        @unlink($archive);
+    }
+    @rename($path, $archive);
+    if (is_file($archive)) {
+        @chmod($archive, 0640);
+    }
+}
+
+function bluebotAudit(string $event, array $context = []): void
+{
+    $event = preg_replace('/[^A-Za-z0-9._-]+/', '_', trim($event)) ?: 'unknown';
+    $sanitizedContext = bluebotRedactLogValue($context);
+
+    $path = bluebotAuditLogPath();
+    if ($path !== '') {
+        bluebotRotateAuditLog($path);
+
+        $record = [
+            'time' => date(DATE_ATOM),
+            'event' => $event,
+            'context' => is_array($sanitizedContext) ? $sanitizedContext : [],
+        ];
+
+        $encoded = json_encode(
+            $record,
+            JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES
+        );
+
+        if (is_string($encoded)) {
+            @file_put_contents($path, $encoded . PHP_EOL, FILE_APPEND | LOCK_EX);
+            @chmod($path, 0640);
+        }
+    }
+
+    bluebotLog('audit', $event, $context);
+}
+
+function bluebotReadAuditLog(int $limit = 100): array
+{
+    $limit = max(1, min($limit, 500));
+    $path = bluebotAuditLogPath();
+
+    if ($path === '' || !is_file($path) || !is_readable($path)) {
+        return [];
+    }
+
+    $lines = @file($path, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
+    if (!is_array($lines)) {
+        return [];
+    }
+
+    $records = [];
+    foreach (array_reverse(array_slice($lines, -$limit)) as $line) {
+        $decoded = json_decode($line, true);
+        if (!is_array($decoded)) {
+            continue;
+        }
+
+        $records[] = [
+            'time' => (string) ($decoded['time'] ?? ''),
+            'event' => (string) ($decoded['event'] ?? 'unknown'),
+            'context' => is_array($decoded['context'] ?? null) ? $decoded['context'] : [],
+        ];
+    }
+
+    return $records;
+}
