@@ -38,6 +38,64 @@ $events = array_values(array_filter($sourceEvents, static function (array $event
 }));
 $events = array_slice($events, 0, $limit);
 
+$exportParams = [
+    'q' => $query,
+    'event' => $eventFilter,
+    'limit' => $limit,
+    'export' => 'csv',
+];
+$exportUrl = 'audit.php?' . http_build_query($exportParams);
+
+if (($_GET['export'] ?? '') === 'csv') {
+    bluebotAudit('admin.audit_export', [
+        'admin' => (string) ($_SESSION['admin_user'] ?? 'unknown'),
+        'ip' => (string) ($_SERVER['REMOTE_ADDR'] ?? 'unknown'),
+        'query' => $query,
+        'event_filter' => $eventFilter,
+        'limit' => $limit,
+        'exported_rows' => count($events),
+    ]);
+
+    header('Content-Type: text/csv; charset=UTF-8');
+    header('Content-Disposition: attachment; filename="bluebot-audit-' . date('Ymd-His') . '.csv"');
+    header('X-Content-Type-Options: nosniff');
+    header('Cache-Control: no-store, private');
+
+    $output = fopen('php://output', 'wb');
+    if ($output === false) {
+        http_response_code(500);
+        exit;
+    }
+
+    // UTF-8 BOM keeps Persian/Russian/Chinese readable in spreadsheet apps.
+    fwrite($output, "\xEF\xBB\xBF");
+
+    $csvSafe = static function ($value): string {
+        $value = (string) $value;
+        if (preg_match('/^[=+\\-@]/u', $value)) {
+            return "'" . $value;
+        }
+        return $value;
+    };
+
+    fputcsv($output, ['time', 'event', 'context']);
+    foreach ($events as $event) {
+        $contextJson = json_encode(
+            $event['context'] ?? [],
+            JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES
+        ) ?: '{}';
+
+        fputcsv($output, [
+            $csvSafe($event['time'] ?? ''),
+            $csvSafe($event['event'] ?? ''),
+            $csvSafe($contextJson),
+        ]);
+    }
+
+    fclose($output);
+    exit;
+}
+
 $pageTitle = $textbotlang['panel']['auditTitle'];
 $pageLede = $textbotlang['panel']['auditSubtitle'];
 $activeNav = 'audit';
@@ -69,6 +127,7 @@ include __DIR__ . '/inc/layout_head.php';
         <?php endforeach; ?>
       </select>
       <button type="submit" class="search-btn"><?= htmlspecialchars($textbotlang['panel']['auditFilter']) ?></button>
+      <a href="<?= htmlspecialchars($exportUrl) ?>" class="btn-link"><?= htmlspecialchars($textbotlang['panel']['auditExport']) ?></a>
       <a href="audit.php?limit=<?= $limit ?>" class="btn-link"><?= htmlspecialchars($textbotlang['panel']['auditRefresh']) ?></a>
     </form>
   </div>
