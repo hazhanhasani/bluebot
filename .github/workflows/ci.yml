@@ -55,6 +55,24 @@ jobs:
           done
           echo "PHP syntax OK."
 
+      - name: Lint panel JavaScript
+        shell: bash
+        run: |
+          set -euo pipefail
+          for file in panel/js/*.js; do
+            [ -f "$file" ] || continue
+            node --check "$file"
+          done
+
+      - name: Verify BlueBot UI contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -Fq '[data-theme=bluebot]' panel/css/style.css
+          grep -Fq "'bluebot' =>" panel/settings.php
+          grep -Fq "localStorage.getItem('panel-theme') || 'bluebot'" panel/inc/layout_head.php
+          grep -Fq '<title>BlueBot Web App</title>' app/index.php
+
       - name: Validate installer syntax
         run: bash -n install.sh
 
