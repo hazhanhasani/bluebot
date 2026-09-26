@@ -48,6 +48,11 @@ contractContains($callback, "Payment_Method'] ?? '') === 'blupal'", 'Blupal brow
 contractContains($callback, 'BlueBot Payments · Blupal', 'Blupal callback must render the BlueBot branded payment surface.', $failures);
 contractContains($callback, 'meta-card', 'Blupal callback must render payment details in the result card.', $failures);
 contractContains($callback, 'backdrop-filter:blur(22px)', 'Blupal callback visual treatment is missing.', $failures);
+contractContains($callback, "'https://t.me/' . rawurlencode(\$username)", 'Blupal callback must deep-link directly to the configured Telegram bot.', $failures);
+contractContains($callback, 'href="' . blupalCallbackEscape($botUrl)', 'Blupal return action must be a bot link instead of browser history navigation.', $failures);
+if (str_contains($callback, 'history.back()')) {
+    $failures[] = 'Blupal callback must not return to the gateway via browser history.';
+}
 
 $webhook = (string) @file_get_contents($root . '/payment/blupal_webhook.php');
 contractContains($webhook, <<<'PHP'
