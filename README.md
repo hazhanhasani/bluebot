@@ -142,6 +142,7 @@ BlueBot از پرداخت دستی و چندین Gateway آنلاین پشتیب
 | NowPayments | ✅ |
 | IranPay 1 / 2 / 4 | ✅ |
 | Variza | ✅ |
+| Blupal | ✅ |
 | Webhook-based payment flows | ✅ |
 
 > [!IMPORTANT]
