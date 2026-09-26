@@ -2,12 +2,12 @@
 
 declare(strict_types=1);
 
+require_once __DIR__ . '/RuntimeIdentity.php';
+
 function bluebotMiniAppUrl(): string
 {
-    global $domainhosts;
-
-    // Optional dedicated edge/CDN hostname. When unset, BlueBot always derives
-    // the Mini App URL from the bot's configured domain automatically.
+    // Optional dedicated edge/CDN hostname. When unset, BlueBot derives
+    // the Mini App URL from the reconciled runtime domain for the current bot.
     $override = trim((string) getenv('BLUEBOT_MINIAPP_URL'));
     if ($override !== '' && filter_var($override, FILTER_VALIDATE_URL) !== false) {
         $parts = parse_url($override);
@@ -16,9 +16,7 @@ function bluebotMiniAppUrl(): string
         }
     }
 
-    $host = trim((string) $domainhosts);
-    $host = preg_replace('~^https?://~i', '', $host);
-    $host = trim((string) $host, '/');
+    $host = bluebotPublicDomain();
 
     return $host === '' ? '' : 'https://' . $host . '/app/';
 }
@@ -33,9 +31,11 @@ function bluebotEnsureMiniAppMenuButton(bool $force = false): bool
     $cacheDir = dirname(__DIR__, 2) . '/storage/cache';
     $cacheFile = $cacheDir . '/miniapp_menu.json';
     $cached = is_file($cacheFile) ? json_decode((string) file_get_contents($cacheFile), true) : null;
+    $botKey = bluebotRuntimeBotKey();
 
     if (!$force && is_array($cached)
         && ($cached['url'] ?? '') === $url
+        && ($cached['bot_key'] ?? '') === $botKey
         && isset($cached['time'])
         && (time() - (int) $cached['time']) < 21600) {
         return true;
@@ -53,6 +53,7 @@ function bluebotEnsureMiniAppMenuButton(bool $force = false): bool
     if ($ok) {
         @mkdir($cacheDir, 0775, true);
         @file_put_contents($cacheFile, json_encode([
+            'bot_key' => $botKey,
             'url' => $url,
             'time' => time(),
         ], JSON_UNESCAPED_SLASHES), LOCK_EX);
