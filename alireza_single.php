@@ -4,11 +4,25 @@ require_once 'request.php';
 ini_set('error_log', 'error_log');
 function alirezaCookiePath($code_panel)
 {
-    return sys_get_temp_dir() . '/mirza_alireza_' . md5((string) $code_panel) . '.cookie';
+    return sys_get_temp_dir() . '/bluebot_alireza_' . md5((string) $code_panel) . '.cookie';
+}
+
+function alirezaPrepareCookieFile($code_panel)
+{
+    $path = alirezaCookiePath($code_panel);
+    if (!is_file($path)) {
+        @touch($path);
+    }
+    @chmod($path, 0600);
+    return $path;
 }
 function panel_login_cookie($code_panel)
 {
     $panel = select("marzban_panel", "*", "code_panel", $code_panel, "select");
+    if (!is_array($panel) || empty($panel['url_panel'])) {
+        return json_encode(['success' => false, 'msg' => 'panel not found']);
+    }
+    $cookieFile = alirezaPrepareCookieFile($code_panel);
     $curl = curl_init();
     curl_setopt_array($curl, array(
         CURLOPT_URL => $panel['url_panel'] . '/login',
@@ -20,15 +34,19 @@ function panel_login_cookie($code_panel)
         CURLOPT_HTTP_VERSION => CURL_HTTP_VERSION_1_1,
         CURLOPT_CUSTOMREQUEST => 'POST',
         CURLOPT_POSTFIELDS => "username=" . urlencode($panel['username_panel']) . "&password=" . urlencode($panel['password_panel']),
-        CURLOPT_COOKIEJAR => alirezaCookiePath($code_panel),
+        CURLOPT_COOKIEJAR => $cookieFile,
     ));
     $response = curl_exec($curl);
-    if (curl_error($curl)) {
+    if ($response === false) {
+        $error = curl_error($curl);
+        curl_close($curl);
         return json_encode(array(
             'success' => false,
-            'msg' => curl_error($curl)
+            'msg' => $error
         ));
     }
+    curl_close($curl);
+    @chmod($cookieFile, 0600);
     return $response;
 }
 function login($code_panel, $verify = true)
@@ -40,7 +58,8 @@ function login($code_panel, $verify = true)
         if (isset($date['time']) && !empty($date['access_token'])) {
             $start_date = time() - strtotime($date['time']);
             if ($start_date <= 3000) {
-                file_put_contents($cookieFile, $date['access_token']);
+                file_put_contents($cookieFile, $date['access_token'], LOCK_EX);
+                @chmod($cookieFile, 0600);
                 return;
             }
         }
@@ -82,9 +101,24 @@ function get_clinetsalireza($username, $namepanel)
         CURLOPT_COOKIEFILE => alirezaCookiePath($marzban_list_get['code_panel']),
     ));
     $output = [];
-    $response = json_decode(curl_exec($curl), true)['obj'];
-    if (!isset($response))
-        return;
+    $rawResponse = curl_exec($curl);
+    $curlError = $rawResponse === false ? curl_error($curl) : '';
+    curl_close($curl);
+
+    if ($rawResponse === false) {
+        error_log('Alireza clients request failed: ' . $curlError);
+        @unlink(alirezaCookiePath($marzban_list_get['code_panel']));
+        return [];
+    }
+
+    $decodedResponse = json_decode($rawResponse, true);
+    $response = is_array($decodedResponse) ? ($decodedResponse['obj'] ?? null) : null;
+    if (!is_array($response)) {
+        error_log('Alireza clients request returned an invalid response');
+        @unlink(alirezaCookiePath($marzban_list_get['code_panel']));
+        return [];
+    }
+
     foreach ($response as $client) {
         $clientdata = json_decode($client['settings'], true)['clients'];
         foreach ($clientdata as $clinets) {
@@ -102,7 +136,6 @@ function get_clinetsalireza($username, $namepanel)
         }
 
     }
-    curl_close($curl);
     @unlink(alirezaCookiePath($marzban_list_get['code_panel']));
     return $output;
 }
@@ -207,7 +240,8 @@ function get_onlineclialireza($name_panel, $username)
         CURLOPT_RETURNTRANSFER => true,
         CURLOPT_ENCODING => '',
         CURLOPT_MAXREDIRS => 10,
-        CURLOPT_TIMEOUT => 0,
+        CURLOPT_TIMEOUT_MS => ($GLOBALS['request_exec_timeout'] ?? null) ?: 10000,
+        CURLOPT_CONNECTTIMEOUT_MS => min((int) (($GLOBALS['request_exec_timeout'] ?? null) ?: 10000), 5000),
         CURLOPT_SSL_VERIFYHOST => false,
         CURLOPT_SSL_VERIFYPEER => false,
         CURLOPT_FOLLOWLOCATION => true,
@@ -218,10 +252,20 @@ function get_onlineclialireza($name_panel, $username)
         ),
         CURLOPT_COOKIEFILE => alirezaCookiePath($marzban_list_get['code_panel']),
     ));
-    $response = json_decode(curl_exec($curl), true)['obj'] ?? null;
-    if ($response == null)
+    $rawResponse = curl_exec($curl);
+    if ($rawResponse === false) {
+        error_log('Alireza online-clients request failed: ' . curl_error($curl));
+        curl_close($curl);
+        @unlink(alirezaCookiePath($marzban_list_get['code_panel']));
         return "offline";
-    if (in_array($username, $response))
+    }
+    $decoded = json_decode($rawResponse, true);
+    curl_close($curl);
+    @unlink(alirezaCookiePath($marzban_list_get['code_panel']));
+    $response = is_array($decoded) ? ($decoded['obj'] ?? null) : null;
+    if (!is_array($response))
+        return "offline";
+    if (in_array($username, $response, true))
         return "online";
     return "offline";
 
