@@ -1840,6 +1840,17 @@ nowpayments.io
 
 🔗 URL вебхука для регистрации в профиле Variza:
 <code>%s</code>',
+                        'askBlupalApiKey' => '🔑 Введите API-ключ Blupal.
+
+Текущий ключ: <code>%s</code>',
+                        'askBlupalCardNumber' => '💳 Введите 16-значный номер карты Blupal. Поле необязательное; отправьте 0 для очистки.
+
+Текущая карта: <code>%s</code>',
+                        'blupalWebhookInfo' => '🔗 URL вебхука Blupal:
+
+<code>%s</code>
+
+Зарегистрируйте этот URL в настройках Blupal.',
                         'askZarinpalMerchant' => '💳 Получите ваш код продавца от ZarinPal и введите его в этом разделе
         
 Ваш текущий код продавца: %s',
@@ -3711,6 +3722,7 @@ ID пользователя : %s
                 'wheelLuck' => '🎲 Колесо фортуны',
                 'zarinPal' => '🟡 ZarinPal',
                 'variza' => '💳 Variza (автоматический перевод с карты на карту)',
+                'blupal' => '🔷 Blupal (мгновенный перевод карта-карта)',
         ],
         'keyboard' => [
                 'acceptRules' => '✅ Я принимаю правила',
@@ -4167,6 +4179,14 @@ ID пользователя : %s
                 'minAmountVariza' => 'Минимальная сумма Variza',
                 'maxAmountVariza' => 'Максимальная сумма Variza',
                 'setEducationVariza' => 'Инструкция Variza',
+                'blupalGateway' => 'Blupal',
+                'blupalApiKey' => '🔑 API-ключ Blupal',
+                'blupalCardNumber' => '💳 Карта Blupal',
+                'blupalWebhookUrl' => '🔗 Webhook Blupal',
+                'cashbackBlupal' => '🎁 Кэшбэк Blupal',
+                'minAmountBlupal' => '⬇️ Минимум Blupal',
+                'maxAmountBlupal' => '⬆️ Максимум Blupal',
+                'setEducationBlupal' => '📚 Инструкция Blupal',
                 'zarinPalMerchant' => 'Продавец ZarinPal',
                 'zeroBalance' => '0️⃣ Обнулить баланс',
                 'panelSetting' => '🎛 Настройка панели',
@@ -4840,6 +4860,12 @@ ID пользователя : %s
 - 🧾 Номер заказа : %s
 - 🔗 Slug платежа Variza : %s
 - 💳 Способ оплаты : Variza',
+                'reportBlupal' => '💵 Новый платёж
+- 👤 Пользователь: @%s
+- 🆔 ID: %s
+- 💸 Сумма: %s томан
+- 🔗 Счёт Blupal: %s
+- 💳 Способ оплаты: Blupal',
                 'invoiceTitle' => 'Счёт на оплату',
                 'invoiceTransactionNo' => 'Номер транзакции:',
                 'invoiceAmount' => 'Оплаченная сумма:',
