@@ -70,6 +70,9 @@ jobs:
       - name: Product panel scope contract
         run: php tests/product_panel_scope_contract.php
 
+      - name: SMS panel contract
+        run: php tests/sms_panel_contract.php
+
       - name: Telegram Mini App bootstrap tests
         run: node tests/telegram_bootstrap_test.js
 
