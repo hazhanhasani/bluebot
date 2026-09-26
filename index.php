@@ -26,15 +26,23 @@ if ($storedWebhookSecret === '') {
     if (!$telegramIpAllowed) {
         die("Unauthorized access");
     }
+
+    // This is now an authenticated Telegram request, so its HTTPS Host is safe
+    // to adopt as the active public domain. A changed token also refreshes the
+    // bot username through getMe and persists both values into config.php.
+    bluebotAdoptRuntimeIdentity(true, true);
     $webhookSecret = ensureWebhookSecret();
 } else {
     // Normal operation is authenticated by Telegram's secret token. If an old
     // webhook reaches us directly from Telegram without the token, accept that
     // single verified request and repair the webhook immediately.
+    if (!$telegramSecretAllowed && !$telegramIpAllowed) {
+        die("Unauthorized access");
+    }
+
+    bluebotAdoptRuntimeIdentity(true, true);
+
     if (!$telegramSecretAllowed) {
-        if (!$telegramIpAllowed) {
-            die("Unauthorized access");
-        }
         bluebotSetMainWebhook($storedWebhookSecret);
     }
     $webhookSecret = ['secret' => $storedWebhookSecret, 'created' => false];
