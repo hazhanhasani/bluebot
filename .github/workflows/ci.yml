@@ -67,6 +67,9 @@ jobs:
       - name: Service selection contract
         run: php tests/service_selection_contract.php
 
+      - name: Product panel scope contract
+        run: php tests/product_panel_scope_contract.php
+
       - name: Telegram Mini App bootstrap tests
         run: node tests/telegram_bootstrap_test.js
 
