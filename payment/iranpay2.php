@@ -186,6 +186,7 @@ try {
     DirectPayment($data_order_id, "../images.jpg");
 } catch (Throwable $directPaymentError) {
     error_log("DirectPayment failed for order {$data_order_id}: " . $directPaymentError->getMessage());
+    markPaymentDeliveryError($data_order_id, $directPaymentError->getMessage());
     return;
 }
 $pricecashback = select("PaySetting", "ValuePay", "NamePay", "chashbackiranpay2", "select")['ValuePay'];
