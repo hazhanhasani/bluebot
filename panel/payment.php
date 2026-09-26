@@ -47,6 +47,7 @@ $statusMap = [
   'expire' => ['tag-plain', $textbotlang['panel']['paymentStatusExpired']],
   'reject' => ['tag-no', $textbotlang['panel']['paymentStatusRejected']],
   'waiting' => ['tag-warn', $textbotlang['panel']['paymentStatusWaiting']],
+  'delivery_error' => ['tag-no', $textbotlang['panel']['paymentStatusDeliveryError']],
 ];
 $methodMap = [
   'cart to cart' => $textbotlang['panel']['paymentMethodCardToCard'],
