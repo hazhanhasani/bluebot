@@ -61,6 +61,12 @@ jobs:
       - name: Project structure contract
         run: php tests/project_structure_contract.php
 
+      - name: Telegram Mini App contract
+        run: php tests/telegram_miniapp_contract.php
+
+      - name: Telegram Mini App bootstrap tests
+        run: node tests/telegram_bootstrap_test.js
+
       - name: Lint panel JavaScript
         shell: bash
         run: |

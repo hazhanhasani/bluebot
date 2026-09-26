@@ -5,7 +5,7 @@ require_once __DIR__ . '/utils.php';
 $textbotlang = languagechange();
 require_once __DIR__ . '/../botapi.php';
 require_once __DIR__ . '/../panels.php';
-require_once __DIR__ . '/../jdf.php';
+require_once __DIR__ . '/../src/Support/JalaliDate.php';
 require_once __DIR__ . '/../keyboard.php';
 
 header('Content-Type: application/json; charset=utf-8');

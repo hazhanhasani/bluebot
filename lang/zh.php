@@ -2392,7 +2392,7 @@ f,n.n2',
 📩 | 要发送报告、建议或请求指导，请在 <b>BlueBot 群组</b>中留言：
 <a href="https://github.com/hazhanhasani/bluebot/issues" rel="nofollow" target="_blank">BlueBot Issues</a>',
                         'aboutBot' => '💎 | Version Bot: %s
-📌 | Version Mini App: 0.1.1
+📌 | Version Mini App: 0.1.2
 
 <blockquote>🔹 | BlueBot 是依据 AGPL-3.0-or-later 许可证发布的开源软件。</blockquote>
 
