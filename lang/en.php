@@ -4389,6 +4389,7 @@ We hope you had a good experience with the ease and speed of your service. If yo
                 'paymentStatusRejected' => 'Rejected',
                 'paymentStatusUnpaid' => 'Not paid',
                 'paymentStatusWaiting' => 'Pending',
+                'paymentStatusDeliveryError' => 'Service delivery error',
                 'paymentTransactionsHeading' => 'Total successful transactions',
                 'paymentTransactionsSubtitle' => 'Report of all panel financial transactions.',
                 'paymentTransactionsTitle' => 'Transactions',
