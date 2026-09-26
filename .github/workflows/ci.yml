@@ -105,8 +105,6 @@ jobs:
           grep -Fq "BLUEBOT_VERIFY_PANEL_TLS" request.php
           grep -Fq "bluebotBuildDebugReport" admin.php
           grep -Fq "bluebotCollectDiagnostics" panel/diagnostics.php
-          grep -Fq "bluebotRecordDiagnosticsSnapshot" panel/diagnostics.php
-          grep -Fq "bluebotReadDiagnosticsHistory" src/Support/Diagnostics.php
           grep -Fq "bluebotAuditLogPath" src/Support/Logger.php
           grep -Fq "bluebotReadAuditLog" panel/audit.php
           grep -Fq "auditSearchPlaceholder" panel/audit.php
@@ -118,6 +116,8 @@ jobs:
           grep -Fq "webhook_protected" src/Support/Diagnostics.php
           grep -Fq "bluebotRecordHealthSnapshot" src/Support/Diagnostics.php
           grep -Fq "bluebotReadHealthHistory" panel/diagnostics.php
+          test "$(grep -Fc 'bluebotRecordHealthSnapshot($diagnostics)' panel/diagnostics.php)" -eq 1
+          test "$(grep -Fc 'bluebotReadHealthHistory' panel/diagnostics.php)" -eq 1
           grep -Fq "bluebot_qr" function.php
           grep -Fq "require_once __DIR__ . '/config.php';" function.php
           echo "BlueBot safety contracts OK."
