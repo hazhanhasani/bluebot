@@ -186,6 +186,9 @@ jobs:
           grep -Fq "deliveryFailed" payment/aqayepardakht.php
           echo "AqayePardakht callback contract OK."
 
+      - name: Blupal payment contract
+        run: php tests/blupal_payment_contract.php
+
       - name: Validate installer syntax
         run: bash -n install.sh
 
