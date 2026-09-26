@@ -1,6 +1,7 @@
 <?php
 require_once __DIR__ . '/src/Support/Diagnostics.php';
 require_once __DIR__ . '/src/Support/UpdateManager.php';
+require_once __DIR__ . '/src/Support/ApiToken.php';
 require_once __DIR__ . '/src/Support/MiniApp.php';
 #----------------[  admin section  ]------------------#
 $version = file_get_contents('version');
@@ -5244,8 +5245,16 @@ if ($datain == "settimecornremove" && $adminrulecheck['rule'] == "administrator"
     outtypepanel($typepanel['type'], $textbotlang['Admin']['algorithmExtend']['saveData']);
     step('home', $from_id);
 } elseif ($text == "/token2") {
-    $token = bin2hex(random_bytes(16));
-    file_put_contents('api/hash.txt', $token);
+    try {
+        $token = bluebotGenerateDedicatedApiToken();
+    } catch (Throwable $error) {
+        bluebotLog('error', 'Dedicated API token generation failed', [
+            'exception' => get_class($error),
+            'reason' => $error->getMessage(),
+        ]);
+        sendmessage($from_id, '❌ ساخت توکن مستقل API ناموفق بود. دسترسی نوشتن پوشه API را بررسی کنید.', null, 'HTML');
+        return;
+    }
     sendmessage($from_id, sprintf($textbotlang['Admin']['api']['token'], $token), null, 'HTML');
     $apiDocsUrl = "https://$domainhostsEscaped/api/index.html";
     sendmessage($from_id, sprintf($textbotlang['Admin']['api']['docsLink'], $apiDocsUrl), null, 'HTML');
