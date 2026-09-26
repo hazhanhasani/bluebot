@@ -7298,17 +7298,16 @@ if ($datain == "settimecornremove" && $adminrulecheck['rule'] == "administrator"
         } else {
             update("PaySetting", "ValuePay", json_encode(['type' => 'text', 'text' => $text]), "NamePay", "helpblupal");
         }
-        sendmessage($from_id, $textbotlang['Admin']['Help']['saved'], $keyboardblupal, 'HTML');
-        step('home', $from_id);
     } elseif (!empty($photoid)) {
         update("PaySetting", "ValuePay", json_encode(['type' => 'photo', 'photoid' => $photoid, 'text' => $caption ?? '']), "NamePay", "helpblupal");
-        sendmessage($from_id, $textbotlang['Admin']['Help']['saved'], $keyboardblupal, 'HTML');
-        step('home', $from_id);
     } elseif (!empty($videoid)) {
         update("PaySetting", "ValuePay", json_encode(['type' => 'video', 'videoid' => $videoid, 'text' => $caption ?? '']), "NamePay", "helpblupal");
-        sendmessage($from_id, $textbotlang['Admin']['Help']['saved'], $keyboardblupal, 'HTML');
-        step('home', $from_id);
+    } else {
+        sendmessage($from_id, $textbotlang['Admin']['Help']['invalidContent'], $backadmin, 'HTML');
+        return;
     }
+    step('home', $from_id);
+    sendmessage($from_id, $textbotlang['Admin']['Help']['tutorialSaved'], $keyboardblupal, 'HTML');
 } elseif ($text == $textbotlang['keyboard']['setEducationVariza'] && $adminrulecheck['rule'] == "administrator") {
     sendmessage($from_id, $textbotlang['Admin']['Help']['askTutorialMedia'], $backadmin, 'HTML');
     step("helpvariza", $from_id);
