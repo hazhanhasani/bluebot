@@ -451,8 +451,13 @@ if ($text == "/start" || $datain == "start" || $text == "start") {
                         ['text' => $textbotlang['users']['backbtn'], 'callback_data' => 'backuser'],
                     ],
                 ],
-                'remove_keyboard' => true,
             ], JSON_UNESCAPED_UNICODE);
+            sendmessage(
+                $from_id,
+                'شماره دریافت شد؛ برای تکمیل تأیید، کد پیامکی را وارد کنید.',
+                json_encode(['remove_keyboard' => true]),
+                'html'
+            );
             sendmessage(
                 $from_id,
                 'یک کد تأیید ۶ رقمی با فراز اس‌ام‌اس برای شماره شما ارسال شد. کد را همین‌جا وارد کنید.' .
