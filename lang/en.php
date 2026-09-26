@@ -4382,6 +4382,7 @@ We hope you had a good experience with the ease and speed of your service. If yo
                 'auditAllEvents' => 'All events',
                 'auditSearchPlaceholder' => 'Search event or context',
                 'auditFilter' => 'Filter',
+                'auditExport' => 'Export CSV',
                 'auditLimit' => 'Latest events',
                 'diagnosticsNav' => 'Diagnostics',
                 'diagnosticsTitle' => 'BlueBot Health',
