@@ -7,6 +7,7 @@ require_once __DIR__ . '/../config.php';
 require_once __DIR__ . '/../botapi.php';
 require_once __DIR__ . '/../panels.php';
 require_once __DIR__ . '/../function.php';
+require_once __DIR__ . '/../src/Support/SmsService.php';
 $textbotlang = languagechange();
 class ServiceMonitor
 {
@@ -46,6 +47,16 @@ class ServiceMonitor
             $data = $this->processInvoice($invoice);
             if (!is_array($data))
                 continue;
+
+            try {
+                BluebotSms::syncServiceStatus($data['invoice'], $data['user'], $data['userData']);
+            } catch (Throwable $smsError) {
+                bluebotLog('warning', 'Service status SMS sync failed', [
+                    'invoice_id' => (string) ($invoice['id_invoice'] ?? ''),
+                    'error' => $smsError->getMessage(),
+                ]);
+            }
+
             $result = false;
             if (!$check_send['volume']) {
                 if ($this->status_cron['volume'])
