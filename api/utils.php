@@ -68,6 +68,14 @@ function apiTokens()
 
     $tokens = [];
 
+    // Prefer a dedicated API credential so the Telegram bot token does not need
+    // to double as an administrative API secret. Existing installations remain
+    // compatible through hash.txt and the legacy fallback below.
+    $envToken = getenv('BLUEBOT_API_TOKEN');
+    if (is_string($envToken) && trim($envToken) !== '') {
+        $tokens[] = trim($envToken);
+    }
+
     $hashFile = __DIR__ . '/hash.txt';
     if (is_file($hashFile)) {
         $fileToken = trim((string) file_get_contents($hashFile));
@@ -79,6 +87,11 @@ function apiTokens()
     if (empty($tokens) && isset($APIKEY) && $APIKEY !== '') {
         $tokens[] = (string) $APIKEY;
     }
+
+    $tokens = array_values(array_unique(array_filter(
+        $tokens,
+        static fn($token) => is_string($token) && $token !== ''
+    )));
 
     return $tokens;
 }
