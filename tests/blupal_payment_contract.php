@@ -45,6 +45,9 @@ contractContains($callback, <<<'PHP'
 $_GET['invoice_id']
 PHP, 'Blupal browser callback must accept the invoice identifier returned by the gateway.', $failures);
 contractContains($callback, "Payment_Method'] ?? '') === 'blupal'", 'Blupal browser callback must only resolve local Blupal orders.', $failures);
+contractContains($callback, 'BlueBot Payments · Blupal', 'Blupal callback must render the BlueBot branded payment surface.', $failures);
+contractContains($callback, 'meta-card', 'Blupal callback must render payment details in the result card.', $failures);
+contractContains($callback, 'backdrop-filter:blur(22px)', 'Blupal callback visual treatment is missing.', $failures);
 
 $webhook = (string) @file_get_contents($root . '/payment/blupal_webhook.php');
 contractContains($webhook, <<<'PHP'
