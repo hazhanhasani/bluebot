@@ -1843,6 +1843,17 @@ Current key: <code>%s</code>
 
 🔗 Webhook URL to register in your Variza profile:
 <code>%s</code>',
+                        'askBlupalApiKey' => '🔑 Enter your Blupal API key.
+
+Current key: <code>%s</code>',
+                        'askBlupalCardNumber' => '💳 Enter the 16-digit destination card number for Blupal. This is optional; send 0 to clear it.
+
+Current card: <code>%s</code>',
+                        'blupalWebhookInfo' => '🔗 Blupal webhook URL:
+
+<code>%s</code>
+
+Register this URL in your Blupal webhook settings.',
                         'askMerchant' => '💳 Obtain your merchant code and enter it in this section
         
 Your current merchant code: %s',
@@ -3711,6 +3722,7 @@ We hope you had a good experience with the ease and speed of your service. If yo
                 'wheelLuck' => '🎲 Wheel of fortune',
                 'zarinPal' => '🟡 ZarinPal',
                 'variza' => '💳 Variza (auto card-to-card)',
+                'blupal' => '🔷 Blupal (instant card-to-card)',
         ],
         'keyboard' => [
                 'acceptRules' => '✅ I accept the rules',
@@ -4168,6 +4180,14 @@ We hope you had a good experience with the ease and speed of your service. If yo
                 'minAmountVariza' => 'Variza min amount',
                 'maxAmountVariza' => 'Variza max amount',
                 'setEducationVariza' => 'Variza tutorial',
+                'blupalGateway' => 'Blupal',
+                'blupalApiKey' => '🔑 Blupal API key',
+                'blupalCardNumber' => '💳 Blupal card number',
+                'blupalWebhookUrl' => '🔗 Blupal webhook URL',
+                'cashbackBlupal' => '🎁 Blupal cashback',
+                'minAmountBlupal' => '⬇️ Blupal minimum',
+                'maxAmountBlupal' => '⬆️ Blupal maximum',
+                'setEducationBlupal' => '📚 Blupal tutorial',
                 'zeroBalance' => '0️⃣ Reset balance to zero',
                 'panelSetting' => '🎛 Panel Settings',
                 'mirzaAgentPanel' => 'Agent / Reseller Panel',
@@ -4839,6 +4859,12 @@ Payment method : First Rial currency',
 - 🧾 Order ID : %s
 - 🔗 Variza payment slug : %s
 - 💳 Payment method : Variza',
+                'reportBlupal' => '💵 New payment
+- 👤 Username: @%s
+- 🆔 User ID: %s
+- 💸 Amount: %s Toman
+- 🔗 Blupal invoice: %s
+- 💳 Payment method: Blupal',
                 'invoiceTitle' => 'Payment invoice',
                 'invoiceTransactionNo' => 'Transaction number:',
                 'invoiceAmount' => 'Paid amount:',
