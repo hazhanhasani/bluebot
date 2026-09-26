@@ -89,6 +89,7 @@ jobs:
           test -f src/Support/Logger.php
           test -f src/Support/Diagnostics.php
           test -f src/Payment/PaymentState.php
+          test -f panel/diagnostics.php
           grep -Fq "delivery_reviewed" src/Payment/PaymentState.php
           grep -Fq "NOT IN ('paid', 'delivery_error', 'delivery_reviewed')" src/Payment/PaymentState.php
           grep -Fq "review_delivery" panel/payment.php
@@ -96,6 +97,8 @@ jobs:
           grep -Fq "CURLPROTO_HTTP | CURLPROTO_HTTPS" request.php
           grep -Fq "BLUEBOT_VERIFY_PANEL_TLS" request.php
           grep -Fq "bluebotBuildDebugReport" admin.php
+          grep -Fq "bluebotCollectDiagnostics" panel/diagnostics.php
+          grep -Fq "Admin reviewed payment delivery error" panel/payment.php
           echo "BlueBot safety contracts OK."
 
       - name: Validate installer syntax
