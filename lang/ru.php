@@ -4521,6 +4521,8 @@ ID пользователя : %s
                 'settingsTabSystem' => 'Система',
                 'settingsThemeBlack' => 'Чёрный',
                 'settingsThemeBlackDesc' => 'Бесцветный · минимализм',
+                'settingsThemeBlueBot' => 'BlueBot',
+                'settingsThemeBlueBotDesc' => 'Официальная синяя тема BlueBot',
                 'settingsThemeBlueSea' => 'Синее море',
                 'settingsThemeBlueSeaDesc' => 'По умолчанию · бирюзовый',
                 'settingsThemeCreamPaper' => 'Кремовая бумага',
