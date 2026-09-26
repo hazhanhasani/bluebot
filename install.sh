@@ -2514,6 +2514,9 @@ function update_bot() {
     STORAGE_BACKUP="/root/bluebot_storage_backup"
     rm -rf "$STORAGE_BACKUP"
     [ -d "$BOT_DIR/storage" ] && cp -a "$BOT_DIR/storage" "$STORAGE_BACKUP"
+    API_TOKEN_BACKUP="/root/bluebot_api_token_backup"
+    rm -f "$API_TOKEN_BACKUP"
+    [ -s "$BOT_DIR/api/hash.txt" ] && cp -a "$BOT_DIR/api/hash.txt" "$API_TOKEN_BACKUP"
     run_step "Backing up vpnbots" "backup_vpnbots '$BOT_DIR'" \
         || { show_step_error
              echo -e "\e[91mError: Failed to backup vpnbots.\033[0m"
@@ -2553,6 +2556,11 @@ function update_bot() {
         sudo mkdir -p "$BOT_DIR/storage"
         sudo cp -a "$STORAGE_BACKUP/." "$BOT_DIR/storage/"
         sudo rm -rf "$STORAGE_BACKUP"
+    fi
+    if [ -f "$API_TOKEN_BACKUP" ]; then
+        sudo mkdir -p "$BOT_DIR/api"
+        sudo mv "$API_TOKEN_BACKUP" "$BOT_DIR/api/hash.txt"
+        sudo chmod 640 "$BOT_DIR/api/hash.txt" 2>/dev/null || true
     fi
     run_step "Restoring vpnbots" "restore_vpnbots '$BOT_DIR'" \
         || { show_step_error
