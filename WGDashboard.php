@@ -12,7 +12,8 @@ function get_userwg($username, $namepanel)
         CURLOPT_RETURNTRANSFER => true,
         CURLOPT_ENCODING => '',
         CURLOPT_MAXREDIRS => 10,
-        CURLOPT_TIMEOUT => 0,
+        CURLOPT_TIMEOUT_MS => ($GLOBALS['request_exec_timeout'] ?? null) ?: 10000,
+        CURLOPT_CONNECTTIMEOUT_MS => min((int) (($GLOBALS['request_exec_timeout'] ?? null) ?: 10000), 5000),
         CURLOPT_FOLLOWLOCATION => true,
         CURLOPT_HTTP_VERSION => CURL_HTTP_VERSION_1_1,
         CURLOPT_CUSTOMREQUEST => 'GET',
@@ -21,9 +22,21 @@ function get_userwg($username, $namepanel)
             'wg-dashboard-apikey: ' . $marzban_list_get['password_panel']
         ),
     ));
-    $response = json_decode(curl_exec($curl), true);
-    if (!$response['status'])
-        return $response;
+    $rawResponse = curl_exec($curl);
+    $curlError = $rawResponse === false ? curl_error($curl) : '';
+    curl_close($curl);
+
+    if ($rawResponse === false) {
+        bluebotLog('warning', 'WGDashboard request failed', [
+            'panel' => (string) $namepanel,
+            'error' => $curlError,
+        ]);
+        return ['status' => false, 'error' => $curlError];
+    }
+
+    $response = json_decode($rawResponse, true);
+    if (!is_array($response) || empty($response['status']))
+        return is_array($response) ? $response : ['status' => false, 'error' => 'invalid response'];
     $configurationPeers = $response['data']['configurationPeers'];
     $configurationRestrictedPeers = $response['data']['configurationRestrictedPeers'];
     $output = [];
