@@ -3010,10 +3010,10 @@ EOF
     a2enmod rewrite
     systemctl restart apache2
     echo -e "\033[33mUpdating Webhook and Tables...\033[0m"
-    curl -F "url=https://${DOMAIN_NAME}/index.php" \
-         "https://api.telegram.org/bot${OLD_API_KEY}/setWebhook"
-    sleep 2
-    curl -k "https://${DOMAIN_NAME}/table.php" > /dev/null 2>&1
+    run_step "Updating database tables" "cd '$NEW_BOT_DIR' && php table.php" \
+        || { show_step_error; echo -e "\033[31mError: database migration failed.\033[0m"; exit 1; }
+    run_step "Refreshing protected Telegram webhook" "cd '$NEW_BOT_DIR' && php scripts/repair-webhook.php" \
+        || { show_step_error; echo -e "\033[31mError: protected Telegram webhook refresh failed.\033[0m"; exit 1; }
     ensure_cron || echo -e "\033[33mWarning: cron is not installed or not running.\033[0m"
     sed -i 's/\r$//' /root/install.sh
     chmod +x /root/install.sh
