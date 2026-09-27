@@ -4,6 +4,12 @@
 // Telegram webhooks use POST, so serving GET/HEAD here does not interfere with bot updates.
 $bluePanelRequestMethod = strtoupper((string) ($_SERVER['REQUEST_METHOD'] ?? ''));
 if (in_array($bluePanelRequestMethod, ['GET', 'HEAD'], true)) {
+    $bluePanelPublicHost = strtolower(trim((string) ($_SERVER['HTTP_HOST'] ?? '')));
+    $bluePanelPublicHost = preg_replace('/:\d+$/', '', $bluePanelPublicHost) ?: '';
+    if (!preg_match('/^(?:[a-z0-9-]+\.)+[a-z]{2,63}$/', $bluePanelPublicHost)) {
+        $bluePanelPublicHost = 'bot.blluepanel.ir';
+    }
+
     http_response_code(200);
     header('Content-Type: text/html; charset=UTF-8');
     header('Cache-Control: public, max-age=300');
@@ -15,7 +21,7 @@ if (in_array($bluePanelRequestMethod, ['GET', 'HEAD'], true)) {
         exit;
     }
 
-    echo <<<'HTML'
+    $bluePanelLandingHtml = <<<'HTML'
 <!doctype html>
 <html lang="fa" dir="rtl">
 <head>
@@ -40,7 +46,7 @@ if (in_array($bluePanelRequestMethod, ['GET', 'HEAD'], true)) {
 <body>
 <main>
     <h1 class="brand">BlueVPN | بلو پنل</h1>
-    <div class="domain">bot.bluepanel.ir</div>
+    <div class="domain">{{HOST}}</div>
     <div class="badge">سامانه فعال و قابل بررسی است</div>
 
     <p>
@@ -56,7 +62,7 @@ if (in_array($bluePanelRequestMethod, ['GET', 'HEAD'], true)) {
 
     <p>
         نشانی رسمی سامانه:
-        <span class="domain">https://bot.bluepanel.ir/</span>
+        <span class="domain">https://{{HOST}}/</span>
     </p>
 
     <div class="foot">
@@ -66,6 +72,11 @@ if (in_array($bluePanelRequestMethod, ['GET', 'HEAD'], true)) {
 </body>
 </html>
 HTML;
+    echo str_replace(
+        '{{HOST}}',
+        htmlspecialchars($bluePanelPublicHost, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'),
+        $bluePanelLandingHtml
+    );
     exit;
 }
 
