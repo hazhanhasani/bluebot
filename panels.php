@@ -289,10 +289,12 @@ class ManagePanel
                     'msg' => $data_Output['status']
                 );
             } else {
-                $data_Output = json_decode($data_Output['body'], true);
-                if (!$data_Output['success']) {
+                $data_Output = json_decode((string) ($data_Output['body'] ?? ''), true);
+                if (!is_array($data_Output) || empty($data_Output['success'])) {
                     $Output['status'] = 'Unsuccessful';
-                    $Output['msg'] = $data_Output['msg'];
+                    $Output['msg'] = is_array($data_Output)
+                        ? (string) ($data_Output['msg'] ?? 'Invalid panel response')
+                        : 'Invalid panel response';
                 } else {
                     $Output['status'] = 'successful';
                     $Output['username'] = $usernameC;
@@ -467,25 +469,54 @@ class ManagePanel
                     : 'S-UI create failed';
             } else {
                 $setting_app = get_settig($Get_Data_Panel['name_panel']);
-                $url = explode(":", $Get_Data_Panel['url_panel']);
-                $url_sub = $url[0] . ":" . $url[1] . ":" . $setting_app['subPort'] . $setting_app['subPath'] . $usernameC;
+                $parsedPanelUrl = parse_url((string) ($Get_Data_Panel['url_panel'] ?? ''));
+                if (!is_array($setting_app)
+                    || !is_array($parsedPanelUrl)
+                    || empty($parsedPanelUrl['scheme'])
+                    || empty($parsedPanelUrl['host'])
+                    || !isset($setting_app['subPort'], $setting_app['subPath'])) {
+                    return [
+                        'status' => 'Unsuccessful',
+                        'msg' => 'Invalid S-UI subscription settings',
+                    ];
+                }
+
+                $subPort = (int) $setting_app['subPort'];
+                if ($subPort < 1 || $subPort > 65535) {
+                    return [
+                        'status' => 'Unsuccessful',
+                        'msg' => 'Invalid S-UI subscription port',
+                    ];
+                }
+
+                $host = (string) $parsedPanelUrl['host'];
+                if (str_contains($host, ':') && $host[0] !== '[') {
+                    $host = '[' . $host . ']';
+                }
+
+                $subPath = '/' . ltrim((string) $setting_app['subPath'], '/');
+                $url_sub = strtolower((string) $parsedPanelUrl['scheme'])
+                    . '://' . $host . ':' . $subPort . $subPath . rawurlencode($usernameC);
+
                 $Output['status'] = 'successful';
                 $Output['username'] = $usernameC;
                 $Output['subscription_url'] = $url_sub;
-                $Output['configs'] = [outputlink($url_sub)];
+                $Output['configs'] = array_values(array_filter([outputlink($url_sub)], 'is_string'));
             }
         } elseif ($Get_Data_Panel['type'] == "ibsng") {
             $password = bin2hex(random_bytes(6));
-            $name_group = $Get_Data_Panel['proxies'];
-            if ($Get_Data_Product['inbounds'] != null) {
-                $name_group = $Get_Data_Panel['inbounds'];
+            $name_group = $Get_Data_Panel['proxies'] ?? '';
+            if (!empty($Get_Data_Product['inbounds'])) {
+                $name_group = $Get_Data_Product['inbounds'];
             } elseif ($code_product == "usertest") {
                 $name_group = "usertest";
             }
             $data_Output = addUserIBsng($Get_Data_Panel['name_panel'], $usernameC, $password, $name_group);
-            if (empty($data_Output['status'])) {
+            if (!is_array($data_Output) || empty($data_Output['status'])) {
                 $Output['status'] = 'Unsuccessful';
-                $Output['msg'] = $data_Output['msg'];
+                $Output['msg'] = is_array($data_Output)
+                    ? (string) ($data_Output['msg'] ?? 'IBSng create failed')
+                    : 'IBSng create failed';
             } else {
                 $Output['status'] = 'successful';
                 $Output['username'] = $usernameC;
@@ -494,16 +525,18 @@ class ManagePanel
             }
         } elseif ($Get_Data_Panel['type'] == "mikrotik") {
             $password = bin2hex(random_bytes(6));
-            $name_group = $Get_Data_Panel['proxies'];
-            if ($Get_Data_Product['inbounds'] != null) {
+            $name_group = $Get_Data_Panel['proxies'] ?? '';
+            if (!empty($Get_Data_Product['inbounds'])) {
                 $name_group = $Get_Data_Product['inbounds'];
             } elseif ($code_product == "usertest") {
                 $name_group = "usertest";
             }
             $data_Output = addUser_mikrotik($Get_Data_Panel['name_panel'], $usernameC, $password, $name_group);
-            if (isset($data_Output['error'])) {
+            if (!is_array($data_Output) || isset($data_Output['error'])) {
                 $Output['status'] = 'Unsuccessful';
-                $Output['msg'] = $data_Output['msg'];
+                $Output['msg'] = is_array($data_Output)
+                    ? (string) ($data_Output['msg'] ?? $data_Output['error'] ?? 'MikroTik create failed')
+                    : 'MikroTik create failed';
             } else {
                 $Output['status'] = 'successful';
                 $Output['username'] = $usernameC;
