@@ -14,6 +14,11 @@ $functions = $read('function.php');
 $usersPage = $read('panel/users.php');
 $usersJs = $read('panel/js/users.js');
 $apiUsers = $read('api/users.php');
+$panels = $read('panels.php');
+$apiPanels = $read('api/panels.php');
+$apiProduct = $read('api/product.php');
+$miniApp = $read('api/miniapp.php');
+$wgDashboard = $read('src/Panel/Adapters/WGDashboard.php');
 $notifications = $read('cronbot/NotificationsService.php');
 $bulkMessages = $read('cronbot/sendmessage.php');
 $uptimeNode = $read('cronbot/uptime_node.php');
@@ -82,6 +87,18 @@ $mustContain = [
     [$varizaWebhook, "Payment_Method'] ?? '') !== 'variza'", 'Variza webhook must be bound to Variza orders.'],
     [$admin, "bluebotAudit('admin.user_transfer'", 'Admin account transfers must be audited.'],
     [$admin, "['sms_otp_challenges', 'user_id']", 'Admin account transfer must move OTP ownership.'],
+    [$functions, 'function selectValue(', 'Runtime must expose a safe scalar select helper.'],
+    [$functions, "Invalid renewal delivery state for order", 'DirectPayment must validate renewal state before delivery.'],
+    [$functions, "Invalid extra-volume delivery state for order", 'DirectPayment must validate extra-volume state before delivery.'],
+    [$functions, "Invalid extra-time delivery state for order", 'DirectPayment must validate extra-time state before delivery.'],
+    [$panels, "'msg' => 'Product Not Found'", 'Panel creation must reject missing products before adapter calls.'],
+    [$panels, "'msg' => 'No available manual configuration'", 'Manual-sale delivery must reject an empty inventory.'],
+    [$panels, '$name_group = $Get_Data_Product[\'inbounds\'];', 'IBSng must honor product-specific group/inbound selection.'],
+    [$panels, "'msg' => 'Invalid S-UI subscription settings'", 'S-UI subscription URL construction must validate panel settings.'],
+    [$apiPanels, '$decodedUserData', 'Panel API must validate decoded adapter responses.'],
+    [$apiProduct, '$decodedUserData', 'Product API must validate decoded adapter responses.'],
+    [$miniApp, 'selectValue("user", "Balance"', 'Mini App must read balance through the safe scalar helper.'],
+    [$wgDashboard, 'function wgDashboardInvoicePublicKey', 'WGDashboard must validate stored peer public keys.'],
 ];
 
 foreach ($mustContain as [$source, $needle, $message]) {
