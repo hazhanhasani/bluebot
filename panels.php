@@ -33,12 +33,12 @@ class ManagePanel
         // input from_id use $Data_Config
         // input type config use $Data_Config
         $Get_Data_Panel = select("marzban_panel", "*", "name_panel", $name_panel, "select");
-        if ($Get_Data_Panel == false) {
+        if (!is_array($Get_Data_Panel)) {
             $Output['status'] = 'Unsuccessful';
             $Output['msg'] = 'Panel Not Found';
             return $Output;
         }
-        if ($Get_Data_Panel['subvip'] == "onsubvip") {
+        if (($Get_Data_Panel['subvip'] ?? '') == "onsubvip") {
             $invoice = select("invoice", "*", "username", $usernameC, "select");
         } else {
             $invoice = false;
@@ -50,6 +50,12 @@ class ManagePanel
             $stmt->bindParam(':code_product', $code_product);
             $stmt->execute();
             $Get_Data_Product = $stmt->fetch(PDO::FETCH_ASSOC);
+            if (!is_array($Get_Data_Product)) {
+                return [
+                    'status' => 'Unsuccessful',
+                    'msg' => 'Product Not Found',
+                ];
+            }
         } else {
             if ($code_product == "usertest") {
                 $Get_Data_Product['name_product'] = "usertest";
@@ -58,9 +64,14 @@ class ManagePanel
             }
             $Get_Data_Product['data_limit_reset'] = "no_reset";
         }
-        $expire = $Data_Config['expire'];
-        $data_limit = $Data_Config['data_limit'];
-        $note = "{$Data_Config['from_id']} | {$Data_Config['username']} | {$Data_Config['type']}";
+        $expire = is_numeric($Data_Config['expire'] ?? null) ? (int) $Data_Config['expire'] : 0;
+        $data_limit = is_numeric($Data_Config['data_limit'] ?? null) ? max(0, (float) $Data_Config['data_limit']) : 0;
+        $note = sprintf(
+            '%s | %s | %s',
+            (string) ($Data_Config['from_id'] ?? ''),
+            (string) ($Data_Config['username'] ?? ''),
+            (string) ($Data_Config['type'] ?? '')
+        );
         if ($Get_Data_Panel['type'] == "marzban") {
             //create user
             $ConnectToPanel = adduser($Get_Data_Panel['name_panel'], $data_limit, $usernameC, $expire, $note, $Get_Data_Product['data_limit_reset'], $Get_Data_Product['name_product']);
@@ -77,8 +88,14 @@ class ManagePanel
                     'msg' => $ConnectToPanel['error']
                 );
             }
-            $data_Output = json_decode($ConnectToPanel['body'], true);
-            if (!empty($data_Output['detail']) && $data_Output['detail']) {
+            $data_Output = json_decode((string) ($ConnectToPanel['body'] ?? ''), true);
+            if (!is_array($data_Output)) {
+                return [
+                    'status' => 'Unsuccessful',
+                    'msg' => 'Invalid panel response',
+                ];
+            }
+            if (!empty($data_Output['detail'])) {
                 $Output['status'] = 'Unsuccessful';
                 if ($data_Output['detail']) {
                     $Output['msg'] = $data_Output['detail'];
@@ -86,7 +103,16 @@ class ManagePanel
                     $Output['msg'] = '';
                 }
             } else {
-                $data_Output['subscription_url'] = absoluteSubscriptionUrl($data_Output['subscription_url'], $Get_Data_Panel['url_panel']);
+                if (empty($data_Output['username']) || empty($data_Output['subscription_url'])) {
+                    return [
+                        'status' => 'Unsuccessful',
+                        'msg' => 'Incomplete panel response',
+                    ];
+                }
+                $data_Output['subscription_url'] = absoluteSubscriptionUrl(
+                    (string) $data_Output['subscription_url'],
+                    (string) ($Get_Data_Panel['url_panel'] ?? '')
+                );
                 if ($Get_Data_Panel['version_panel'] == "1") {
                     $out_put_link = outputlink($data_Output['subscription_url']."/links");
 
@@ -104,7 +130,9 @@ class ManagePanel
                 $Output['status'] = 'successful';
                 $Output['username'] = $data_Output['username'];
                 $Output['subscription_url'] = $data_Output['subscription_url'];
-                $Output['configs'] = $data_Output['links'];
+                $Output['configs'] = is_array($data_Output['links'] ?? null)
+                    ? $data_Output['links']
+                    : [];
             }
         } elseif ($Get_Data_Panel['type'] == "marzneshin") {
             //create user
@@ -122,8 +150,14 @@ class ManagePanel
                     'msg' => $ConnectToPanel['error']
                 );
             }
-            $data_Output = json_decode($ConnectToPanel['body'], true);
-            if (isset($data_Output['detail']) && $data_Output['detail']) {
+            $data_Output = json_decode((string) ($ConnectToPanel['body'] ?? ''), true);
+            if (!is_array($data_Output)) {
+                return [
+                    'status' => 'Unsuccessful',
+                    'msg' => 'Invalid panel response',
+                ];
+            }
+            if (!empty($data_Output['detail'])) {
                 $Output['status'] = 'Unsuccessful';
                 if ($data_Output['detail']) {
                     $Output['msg'] = $data_Output['detail'];
@@ -131,13 +165,30 @@ class ManagePanel
                     $Output['msg'] = '';
                 }
             } else {
-                $data_Output['subscription_url'] = absoluteSubscriptionUrl($data_Output['subscription_url'], $Get_Data_Panel['url_panel']);
+                if (empty($data_Output['username']) || empty($data_Output['subscription_url'])) {
+                    return [
+                        'status' => 'Unsuccessful',
+                        'msg' => 'Incomplete panel response',
+                    ];
+                }
+
+                $data_Output['subscription_url'] = absoluteSubscriptionUrl(
+                    (string) $data_Output['subscription_url'],
+                    (string) ($Get_Data_Panel['url_panel'] ?? '')
+                );
                 $data_Output['links'] = outputlink($data_Output['subscription_url']);
                 if (isBase64($data_Output['links'])) {
                     $data_Output['links'] = base64_decode($data_Output['links']);
                 }
-                $links_user = explode("\n", trim($data_Output['links']));
-                $date = new DateTime($data_Output['expire']);
+                $links_user = explode("\n", trim((string) ($data_Output['links'] ?? '')));
+                try {
+                    $date = new DateTime((string) ($data_Output['expire'] ?? ''));
+                } catch (Throwable $dateError) {
+                    return [
+                        'status' => 'Unsuccessful',
+                        'msg' => 'Invalid service expiration returned by panel',
+                    ];
+                }
                 if ($invoice != false) {
                     $data_Output['subscription_url'] = "https://$domainhosts/sub/" . $invoice['id_invoice'];
                 }
