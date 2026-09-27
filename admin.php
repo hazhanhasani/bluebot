@@ -60,7 +60,7 @@ $backmenu_register([
 ], $CartManage);
 $backmenu_register(["getidExceptio", "getidExceptioremove"], $Exception_auto_cart_keyboard);
 $backmenu_register(["apiternado", "getcashiranpay2", "getfeeiranpay2", "getmaaxiranpay2", "getmainiranpay2", "helpiranpay2"], $trnado);
-$backmenu_register(["merchant_zarinpal", "getcashzarinpal", "getmaaxzarinpal", "getmainaqzarinpal", "helpzarinpal"], $keyboardzarinpal);
+$backmenu_register(["merchant_zarinpal", "zarinpal_callback_domain", "getcashzarinpal", "getmaaxzarinpal", "getmainaqzarinpal", "helpzarinpal"], $keyboardzarinpal);
 $backmenu_register(["merchant_id_aqayepardakht", "getcashahaypar", "getmaaxaqayepardakht", "getmainaqayepardakht", "helpaqayepardakht"], $aqayepardakht);
 $backmenu_register(["apinowpayment", "getcashplisio", "gethelpplisio", "getmainplisio", "getmaxplisio"], $NowPaymentsManage);
 $backmenu_register(["marchent_tronseller", "getcashnowpayment", "gethelpnowpayment", "getmainaqnowpayment", "maxbalancenowpayment"], $nowpayment_setting_keyboard);
@@ -2870,7 +2870,35 @@ elseif ($datain == "systemsms") {
     step('merchant_zarinpal', $from_id);
 } elseif ($user['step'] == "merchant_zarinpal") {
     sendmessage($from_id, $textbotlang['Admin']['SettingnowPayment']['saveApi'], $keyboardzarinpal, 'HTML');
-    update("PaySetting", "ValuePay", $text, "NamePay", "merchant_zarinpal");
+    update("PaySetting", "ValuePay", trim($text), "NamePay", "merchant_zarinpal");
+    step('home', $from_id);
+} elseif ($text == $textbotlang['keyboard']['zarinPalCallbackDomain'] && $adminrulecheck['rule'] == "administrator") {
+    $configuredDomain = trim((string) getPaySettingValue('zarinpal_callback_domain', '0'));
+    $effectiveCallback = zarinpalCallbackUrl() ?? 'نامعتبر';
+    $message = sprintf(
+        $textbotlang['Admin']['gateway']['askZarinpalCallbackDomain'],
+        $configuredDomain === '0' ? $domainhosts : $configuredDomain,
+        $effectiveCallback
+    );
+    sendmessage($from_id, $message, $backadmin, 'HTML');
+    step('zarinpal_callback_domain', $from_id);
+} elseif ($user['step'] == "zarinpal_callback_domain") {
+    $normalizedDomain = normalizeZarinpalCallbackDomain($text);
+    if ($normalizedDomain === null) {
+        sendmessage($from_id, $textbotlang['Admin']['gateway']['invalidZarinpalCallbackDomain'], $keyboardzarinpal, 'HTML');
+        step('home', $from_id);
+        return;
+    }
+
+    update("PaySetting", "ValuePay", $normalizedDomain, "NamePay", "zarinpal_callback_domain");
+    $savedDomain = $normalizedDomain === '0' ? $domainhosts : $normalizedDomain;
+    $savedCallback = 'https://' . $savedDomain . '/payment/zarinpal.php';
+    sendmessage(
+        $from_id,
+        sprintf($textbotlang['Admin']['gateway']['savedZarinpalCallbackDomain'], $savedDomain, $savedCallback),
+        $keyboardzarinpal,
+        'HTML'
+    );
     step('home', $from_id);
 } elseif ($text == $textbotlang['keyboard']['varizaApiToken'] && $adminrulecheck['rule'] == "administrator") {
     $PaySetting = getPaySettingValue('variza_api_token');
