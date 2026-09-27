@@ -31,11 +31,11 @@ function vpnbotReadUserData($userId): array
     return $path !== null ? readJsonFileIfExists($path, ['Balance' => 0]) : ['Balance' => 0];
 }
 
-function vpnbotCreditWallet($userId, $amount): ?int
+function vpnbotAdjustWallet($userId, $delta): ?int
 {
     $path = vpnbotUserDataPath($userId);
-    $amount = is_numeric($amount) ? (int) $amount : 0;
-    if ($path === null || $amount < 0) {
+    $delta = is_numeric($delta) ? (int) $delta : 0;
+    if ($path === null) {
         return null;
     }
 
@@ -58,7 +58,7 @@ function vpnbotCreditWallet($userId, $amount): ?int
     $raw = stream_get_contents($handle);
     $data = bluebotJsonArray(is_string($raw) ? $raw : '', ['Balance' => 0]);
     $current = is_numeric($data['Balance'] ?? null) ? (int) $data['Balance'] : 0;
-    $newBalance = $current + $amount;
+    $newBalance = $current + $delta;
     $data['Balance'] = $newBalance;
 
     $encoded = json_encode($data, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
@@ -74,6 +74,12 @@ function vpnbotCreditWallet($userId, $amount): ?int
     fclose($handle);
 
     return $written ? $newBalance : null;
+}
+
+function vpnbotCreditWallet($userId, $amount): ?int
+{
+    $amount = is_numeric($amount) ? (int) $amount : 0;
+    return $amount >= 0 ? vpnbotAdjustWallet($userId, $amount) : null;
 }
 
 function DirectPaymentbot($order_id, $image = 'images.jpg')
