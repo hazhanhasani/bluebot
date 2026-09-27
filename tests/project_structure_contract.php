@@ -105,6 +105,9 @@ if ($functions === false || !str_contains($functions, "storage/qr/background.jpg
 if ($functions === false || !str_contains($functions, "assets/images/qr-background.jpg")) {
     $failures[] = 'QR default background asset is not resolved from assets/images.';
 }
+if ($functions === false || !str_contains($functions, "/src/Support/JalaliDate.php")) {
+    $failures[] = 'Shared runtime does not load the organized JalaliDate helper.';
+}
 
 $admin = @file_get_contents($root . '/admin.php');
 if ($admin !== false && (
