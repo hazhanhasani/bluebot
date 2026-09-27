@@ -361,13 +361,14 @@ if (in_array($bluePanelRequestMethod, ['GET', 'HEAD'], true)) {
         <div class="footer-links">
             <a href="#services">خدمات</a>
             <a href="#trust">اعتماد و پرداخت</a>
+            <a href="/privacy.html">حریم خصوصی</a>
+            <a href="/terms.html">شرایط استفاده</a>
             <a href="https://{{HOST}}/" class="ltr">https://{{HOST}}/</a>
         </div>
     </footer>
 </div>
 </body>
 </html>
-HTML;
 HTML;
     echo str_replace(
         '{{HOST}}',
