@@ -38,6 +38,11 @@ foreach ([
     'bluebotQueueUpdate',
     '/var/lib/bluebot',
     'bluebot_update_run',
+    "strtolower((string) (\$parts['host'] ?? '')) !== 'api.github.com'",
+    'CURLOPT_PROTOCOLS => CURLPROTO_HTTPS',
+    'CURLOPT_REDIR_PROTOCOLS => CURLPROTO_HTTPS',
+    'CURLOPT_SSL_VERIFYPEER => true',
+    'CURLOPT_SSL_VERIFYHOST => 2',
 ] as $needle) {
     if ($manager === false || !str_contains($manager, $needle)) {
         $failures[] = "UpdateManager missing contract: {$needle}";
