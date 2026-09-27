@@ -601,7 +601,7 @@ class ManagePanel
                     'msg' => $ConnectToPanel['error']
                 );
             }
-            $data_Output = json_decode($ConnectToPanel['body'], true);
+            $data_Output = bluebotJsonArray($ConnectToPanel['body'] ?? '');
             if (!empty($ConnectToPanel['status']) && $ConnectToPanel['status'] >= 400) {
                 $Output['status'] = 'Unsuccessful';
                 $Output['msg'] = $data_Output['detail'] ?? 'Unsuccessful';
@@ -724,7 +724,7 @@ class ManagePanel
                     'msg' => $UsernameData['status']
                 );
             } else {
-                $UsernameData = json_decode($UsernameData['body'], true);
+                $UsernameData = bluebotJsonArray($UsernameData['body'] ?? '');
                 if (isset($UsernameData['detail']) && $UsernameData['detail']) {
                     $Output = array(
                         'status' => 'Unsuccessful',
@@ -799,7 +799,7 @@ class ManagePanel
                     'msg' => json_encode($user_data)
                 );
             }
-            $user_data = json_decode($user_data['body'], true);
+            $user_data = bluebotJsonArray($user_data['body'] ?? '');
 
             if (!is_array($user_data)) {
                 return array(
@@ -828,7 +828,7 @@ class ManagePanel
                     'msg' => $used_data_3xui['status']
                 );
             }
-            $used_data_3xui = json_decode($used_data_3xui['body'], true);
+            $used_data_3xui = bluebotJsonArray($used_data_3xui['body'] ?? '');
             if (!$used_data_3xui['success']) {
                 return array(
                     'status' => 'Unsuccessful',
@@ -1194,7 +1194,7 @@ class ManagePanel
                     'msg' => $UsernameData['status']
                 );
             } else {
-                $UsernameData = json_decode($UsernameData['body'], true);
+                $UsernameData = bluebotJsonArray($UsernameData['body'] ?? '');
                 if (!$UsernameData['status']) {
                     return array(
                         'status' => 'Unsuccessful',
@@ -1228,13 +1228,13 @@ class ManagePanel
                     'msg' => $UsernameData['error']
                 );
             } elseif (!empty($UsernameData['status']) && $UsernameData['status'] >= 400) {
-                $body = json_decode($UsernameData['body'], true);
+                $body = bluebotJsonArray($UsernameData['body'] ?? '');
                 $Output = array(
                     'status' => 'Unsuccessful',
                     'msg' => $body['detail'] ?? ('error code : ' . $UsernameData['status'])
                 );
             } else {
-                $UsernameData = json_decode($UsernameData['body'], true);
+                $UsernameData = bluebotJsonArray($UsernameData['body'] ?? '');
                 if (!is_array($UsernameData) || !isset($UsernameData['username'])) {
                     $Output = array(
                         'status' => 'Unsuccessful',
@@ -1501,7 +1501,7 @@ class ManagePanel
                     'msg' => $revoke_sub['error']
                 );
             } elseif (!empty($revoke_sub['status']) && $revoke_sub['status'] >= 400) {
-                $body = json_decode($revoke_sub['body'], true);
+                $body = bluebotJsonArray($revoke_sub['body'] ?? '');
                 $Output = array(
                     'status' => 'Unsuccessful',
                     'msg' => $body['detail'] ?? ('error code : ' . $revoke_sub['status'])
@@ -1539,7 +1539,7 @@ class ManagePanel
                     'msg' => $UsernameData['error']
                 );
             }
-            $UsernameData = json_decode($UsernameData['body'], true);
+            $UsernameData = bluebotJsonArray($UsernameData['body'] ?? '');
             if ($UsernameData['detail'] != "User successfully deleted") {
                 $Output = array(
                     'status' => 'Unsuccessful',
@@ -1590,7 +1590,7 @@ class ManagePanel
                     'msg' => $UsernameData['error']
                 );
             }
-            $UsernameData = json_decode($UsernameData['body'], true);
+            $UsernameData = bluebotJsonArray($UsernameData['body'] ?? '');
             if (!$UsernameData['success']) {
                 $Output = array(
                     'status' => 'Unsuccessful',
@@ -1718,7 +1718,7 @@ class ManagePanel
                     'msg' => $UsernameData['status']
                 );
             } else {
-                $UsernameData = json_decode($UsernameData['body'], true);
+                $UsernameData = bluebotJsonArray($UsernameData['body'] ?? '');
                 if (!$UsernameData['status']) {
                     return array(
                         'status' => 'Unsuccessful',
@@ -1738,7 +1738,7 @@ class ManagePanel
                     'msg' => $UsernameData['error']
                 );
             } elseif (!empty($UsernameData['status']) && $UsernameData['status'] >= 400) {
-                $body = json_decode($UsernameData['body'], true);
+                $body = bluebotJsonArray($UsernameData['body'] ?? '');
                 $Output = array(
                     'status' => 'Unsuccessful',
                     'msg' => $body['detail'] ?? ('error code : ' . $UsernameData['status'])
@@ -1763,7 +1763,7 @@ class ManagePanel
         if ($Get_Data_Panel['type'] == "marzban") {
             if ($Get_Data_Panel['version_panel'] == "1") {
                 $result = getuser($username, $name_panel);
-                $result = json_decode($result['body'], true);
+                $result = bluebotJsonArray($result['body'] ?? '');
                 $config['proxy_settings'] = $result['proxy_settings'];
             }
             $modify = Modifyuser($name_panel, $username, $config);
@@ -1778,7 +1778,7 @@ class ManagePanel
                     'msg' => 'error code : ' . $modify['status']
                 );
             }
-            $modifycheck = json_decode($modify['body'], true);
+            $modifycheck = bluebotJsonArray($modify['body'] ?? '');
             if (!empty($modifycheck['detail'])) {
                 return array(
                     'status' => false,
@@ -1803,7 +1803,7 @@ class ManagePanel
                     'msg' => 'error code : ' . $modify['status']
                 );
             }
-            $modifycheck = json_decode($modify['body'], true);
+            $modifycheck = bluebotJsonArray($modify['body'] ?? '');
             if (!empty($modifycheck['detail'])) {
                 return array(
                     'status' => false,
@@ -1853,7 +1853,7 @@ class ManagePanel
                     'msg' => 'error code : ' . $modify['status']
                 );
             }
-            $modify = json_decode($modify['body'], true);
+            $modify = bluebotJsonArray($modify['body'] ?? '');
             if (!$modify['success']) {
                 return array(
                     'status' => false,
@@ -1914,7 +1914,7 @@ class ManagePanel
                     'msg' => 'error code : ' . $modify['status']
                 );
             }
-            $modify = json_decode($modify['body'], true);
+            $modify = bluebotJsonArray($modify['body'] ?? '');
             if (!$modify['success']) {
                 return array(
                     'status' => false,
@@ -1938,7 +1938,7 @@ class ManagePanel
                     'msg' => 'error code : ' . $modify['status']
                 );
             }
-            $modify = json_decode($modify['body'], true);
+            $modify = bluebotJsonArray($modify['body'] ?? '');
             return array(
                 'status' => true,
                 'data' => $modify
@@ -1970,7 +1970,7 @@ class ManagePanel
                     'msg' => 'error code : ' . $modify['status']
                 );
             }
-            $modify = json_decode($modify['body'], true);
+            $modify = bluebotJsonArray($modify['body'] ?? '');
             return array(
                 'status' => true,
                 'data' => $modify
@@ -1983,13 +1983,13 @@ class ManagePanel
                     'msg' => $modify['error']
                 );
             } elseif (!empty($modify['status']) && $modify['status'] >= 400) {
-                $modifycheck = json_decode($modify['body'], true);
+                $modifycheck = bluebotJsonArray($modify['body'] ?? '');
                 return array(
                     'status' => false,
                     'msg' => $modifycheck['detail'] ?? ('error code : ' . $modify['status'])
                 );
             }
-            $modifycheck = json_decode($modify['body'], true);
+            $modifycheck = bluebotJsonArray($modify['body'] ?? '');
             return array(
                 'status' => true,
                 'data' => $modifycheck
@@ -2170,7 +2170,7 @@ class ManagePanel
                     'msg' => 'error  : ' . $reset['error']
                 );
             }
-            $reset = json_decode($reset['body'], true);
+            $reset = bluebotJsonArray($reset['body'] ?? '');
             if (!empty($reset['detail'])) {
                 return array(
                     'status' => false,
@@ -2194,7 +2194,7 @@ class ManagePanel
                     'msg' => 'error  : ' . $reset['error']
                 );
             }
-            $reset = json_decode($reset['body'], true);
+            $reset = bluebotJsonArray($reset['body'] ?? '');
             if (!empty($reset['detail'])) {
                 return array(
                     'status' => false,
@@ -2230,7 +2230,7 @@ class ManagePanel
                     'msg' => 'error  : ' . $reset['error']
                 );
             }
-            $reset = json_decode($reset['body'], true);
+            $reset = bluebotJsonArray($reset['body'] ?? '');
             if (!$reset['success']) {
                 return array(
                     'status' => false,
@@ -2254,7 +2254,7 @@ class ManagePanel
                     'msg' => 'error  : ' . $reset['error']
                 );
             }
-            $reset = json_decode($reset['body'], true);
+            $reset = bluebotJsonArray($reset['body'] ?? '');
             if (!$reset['success']) {
                 return array(
                     'status' => false,
@@ -2280,7 +2280,7 @@ class ManagePanel
                     'msg' => 'error  : ' . $reset['error']
                 );
             }
-            $reset = json_decode($reset['body'], true);
+            $reset = bluebotJsonArray($reset['body'] ?? '');
             return array(
                 'status' => true,
                 'data' => $reset
@@ -2302,7 +2302,7 @@ class ManagePanel
         } elseif ($panel['type'] == "rebecca") {
             $reset = ResetUserDataUsage_rebecca($username, $panel['name_panel']);
             if (!empty($reset['status']) && $reset['status'] >= 400) {
-                $body = json_decode($reset['body'], true);
+                $body = bluebotJsonArray($reset['body'] ?? '');
                 return array(
                     'status' => false,
                     'msg' => $body['detail'] ?? ('error code : ' . $reset['status'])
@@ -2520,7 +2520,7 @@ class ManagePanel
                     'msg' => $extend['error']
                 );
             }
-            $extend = json_decode($extend['body'], true);
+            $extend = bluebotJsonArray($extend['body'] ?? '');
             if (!$extend['status']) {
                 return array(
                     'status' => false,
@@ -2657,7 +2657,7 @@ class ManagePanel
                     'msg' => $volume_add['error']
                 );
             }
-            $volume_add = json_decode($volume_add['body'], true);
+            $volume_add = bluebotJsonArray($volume_add['body'] ?? '');
             if (!$volume_add['status']) {
                 return array(
                     'status' => false,
@@ -2799,7 +2799,7 @@ class ManagePanel
                     'msg' => $time_add['error']
                 );
             }
-            $time_add = json_decode($time_add['body'], true);
+            $time_add = bluebotJsonArray($time_add['body'] ?? '');
             if (!$time_add['status']) {
                 return array(
                     'status' => false,
