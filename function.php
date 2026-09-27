@@ -1239,23 +1239,63 @@ function DirectPayment($order_id, $image = null)
 {
     $image = $image ?: bluebotQrBackgroundPath();
     global $pdo, $ManagePanel, $textbotlang, $keyboardextendfnished, $keyboard, $Confirm_pay, $from_id, $message_id;
-    $buyreport = select("topicid", "idreport", "report", "buyreport", "select")['idreport'];
+
+    $order_id = trim((string) $order_id);
+    if ($order_id === '') {
+        throw new InvalidArgumentException('Payment order id is empty');
+    }
+
+    if (!is_array($textbotlang)) {
+        $textbotlang = languagechange();
+    }
+
+    $buyreport = selectValue("topicid", "idreport", "report", "buyreport", null);
     $admin_ids = select("admin", "id_admin", null, null, "FETCH_COLUMN");
-    $otherservice = select("topicid", "idreport", "report", "otherservice", "select")['idreport'];
-    $otherreport = select("topicid", "idreport", "report", "otherreport", "select")['idreport'];
-    $errorreport = select("topicid", "idreport", "report", "errorreport", "select")['idreport'];
-    $porsantreport = select("topicid", "idreport", "report", "porsantreport", "select")['idreport'];
+    $admin_ids = is_array($admin_ids) ? $admin_ids : [];
+    $otherservice = selectValue("topicid", "idreport", "report", "otherservice", null);
+    $otherreport = selectValue("topicid", "idreport", "report", "otherreport", null);
+    $errorreport = selectValue("topicid", "idreport", "report", "errorreport", null);
+    $porsantreport = selectValue("topicid", "idreport", "report", "porsantreport", null);
+
     $setting = select("setting", "*");
+    $setting = is_array($setting) ? $setting : [];
+    $setting += [
+        'Channel_Report' => '',
+        'numbercount' => 0,
+        'scorestatus' => 0,
+    ];
+
     $Payment_report = select("Payment_report", "*", "id_order", $order_id, "select");
-    $format_price_cart = number_format($Payment_report['price']);
+    if (!is_array($Payment_report) || empty($Payment_report['id_user'])) {
+        throw new RuntimeException('Payment report not found for order ' . $order_id);
+    }
+
     $Balance_id = select("user", "*", "id", $Payment_report['id_user'], "select");
-    $steppay = explode("|", $Payment_report['id_invoice']);
+    if (!is_array($Balance_id) || empty($Balance_id['id'])) {
+        throw new RuntimeException('Payment buyer not found for order ' . $order_id);
+    }
+
+    $format_price_cart = number_format((float) ($Payment_report['price'] ?? 0));
+    $steppay = explode("|", (string) ($Payment_report['id_invoice'] ?? ''));
+    if (empty($steppay[0])) {
+        throw new RuntimeException('Payment delivery state is missing for order ' . $order_id);
+    }
+
     $stmtReset = $pdo->prepare("UPDATE user SET Processing_value = '0', Processing_value_one = '0', Processing_value_tow = '0', Processing_value_four = '0' WHERE id = ?");
     $stmtReset->execute([$Balance_id['id']]);
     clearSelectCache('user');
     if ($steppay[0] == "getconfigafterpay") {
-        $get_invoice = select("invoice", "*", "username", $steppay[1], "select");
-        if ($get_invoice['Status'] == "active") {
+        $invoiceUsername = trim((string) ($steppay[1] ?? ''));
+        if ($invoiceUsername === '') {
+            throw new RuntimeException('Payment invoice username is missing for order ' . $order_id);
+        }
+
+        $get_invoice = select("invoice", "*", "username", $invoiceUsername, "select");
+        if (!is_array($get_invoice)) {
+            throw new RuntimeException('Payment invoice not found for order ' . $order_id);
+        }
+
+        if (($get_invoice['Status'] ?? '') == "active") {
             return;
         }
         $stmt = $pdo->prepare(
@@ -1271,7 +1311,15 @@ function DirectPayment($order_id, $image = null)
         $stmt->bindValue(':exact_location', $get_invoice['Service_location'], PDO::PARAM_STR);
         $stmt->execute();
         $info_product = $stmt->fetch(PDO::FETCH_ASSOC);
-        if ($get_invoice['name_product'] == $textbotlang['users']['customSellVolume']['btnVolume'] || $get_invoice['name_product'] == $textbotlang['users']['customSellVolume']['btnService']) {
+        $isCustomProduct = ($get_invoice['name_product'] ?? '') == ($textbotlang['users']['customSellVolume']['btnVolume'] ?? '')
+            || ($get_invoice['name_product'] ?? '') == ($textbotlang['users']['customSellVolume']['btnService'] ?? '');
+
+        if (!$isCustomProduct && !is_array($info_product)) {
+            throw new RuntimeException('Payment product not found for order ' . $order_id);
+        }
+
+        if ($isCustomProduct) {
+            $info_product = is_array($info_product) ? $info_product : [];
             $info_product['data_limit_reset'] = "no_reset";
             $info_product['Volume_constraint'] = $get_invoice['Volume'];
             $info_product['name_product'] = $textbotlang['users']['customSellVolume']['title'];
@@ -1281,6 +1329,10 @@ function DirectPayment($order_id, $image = null)
         }
         $username_ac = $get_invoice['username'];
         $marzban_list_get = select("marzban_panel", "*", "name_panel", $get_invoice['Service_location'], "select");
+        if (!is_array($marzban_list_get) || empty($marzban_list_get['name_panel'])) {
+            throw new RuntimeException('Payment panel not found for order ' . $order_id);
+        }
+
         $date = strtotime("+" . $get_invoice['Service_time'] . "days");
         if (intval($get_invoice['Service_time']) == 0) {
             $timestamp = 0;
@@ -1310,7 +1362,15 @@ function DirectPayment($order_id, $image = null)
             if ($invoiceClaimed) {
                 update("invoice", "Status", $invoiceStatusBefore, "id_invoice", $get_invoice['id_invoice']);
             }
-            $dataoutput['msg'] = json_encode($dataoutput['msg'] ?? $dataoutput ?? 'unknown error');
+
+            $rawCreateError = is_array($dataoutput)
+                ? ($dataoutput['msg'] ?? $dataoutput)
+                : $dataoutput;
+            $dataoutput = is_array($dataoutput) ? $dataoutput : [];
+            $dataoutput['msg'] = json_encode(
+                $rawCreateError ?? 'unknown error',
+                JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES
+            );
             $balance = $Balance_id['Balance'] + $Payment_report['price'];
             update("user", "Balance", $balance, "id", $Balance_id['id']);
             sendmessage($Balance_id['id'], $textbotlang['users']['sell']['errorConfig'], $keyboard, 'HTML');
@@ -1335,12 +1395,14 @@ function DirectPayment($order_id, $image = null)
         ]);
         $output_config_link = "";
         $config = "";
-        if ($marzban_list_get['config'] == "onconfig" && is_array($dataoutput['configs'])) {
+        if (($marzban_list_get['config'] ?? '') == "onconfig" && is_array($dataoutput['configs'] ?? null)) {
             foreach ($dataoutput['configs'] as $link) {
                 $config .= "\n" . $link;
             }
         }
-        $output_config_link = $marzban_list_get['sublink'] == "onsublink" ? $dataoutput['subscription_url'] : "";
+        $output_config_link = ($marzban_list_get['sublink'] ?? '') == "onsublink"
+            ? (string) ($dataoutput['subscription_url'] ?? '')
+            : "";
         $textbotlang['textbot']['afterPay'] = $marzban_list_get['type'] == "Manualsale" ? $textbotlang['textbot']['manual'] : $textbotlang['textbot']['afterPay'];
         $textbotlang['textbot']['afterPay'] = $marzban_list_get['type'] == "WGDashboard" ? $textbotlang['textbot']['wgDashboard'] : $textbotlang['textbot']['afterPay'];
         $textbotlang['textbot']['afterPay'] = $marzban_list_get['type'] == "ibsng" || $marzban_list_get['type'] == "mikrotik" ? $textbotlang['textbot']['afterPayIbsng'] : $textbotlang['textbot']['afterPay'];
@@ -1448,8 +1510,10 @@ function DirectPayment($order_id, $image = null)
         if ($Balance_prims <= 0)
             $Balance_prims = 0;
         update("user", "Balance", $Balance_prims, "id", $Balance_id['id']);
-        $balanceformatsell = select("user", "Balance", "id", $get_invoice['id_user'], "select")['Balance'];
-        $balanceformatsell = number_format($balanceformatsell, 0);
+        $balanceformatsell = number_format(
+            (float) selectValue("user", "Balance", "id", $get_invoice['id_user'], 0),
+            0
+        );
         $balancebefore = number_format($Balance_id['Balance'], 0);
         $timejalali = jdate('Y/m/d H:i:s');
         $textonebuy = "";
@@ -1506,7 +1570,10 @@ function DirectPayment($order_id, $image = null)
             }
         }
     } elseif ($steppay[0] == "getextenduser") {
-        $balanceformatsell = number_format(select("user", "Balance", "id", $Balance_id['id'], "select")['Balance'], 0);
+        $balanceformatsell = number_format(
+            (float) selectValue("user", "Balance", "id", $Balance_id['id'], 0),
+            0
+        );
         $partsdic = explode("%", $steppay[1]);
         $usernamepanel = $partsdic[0];
         $sql = "SELECT * FROM service_other WHERE username = :username  AND value  LIKE CONCAT('%', :value, '%') AND id_user = :id_user ";
@@ -1594,10 +1661,14 @@ function DirectPayment($order_id, $image = null)
                 ]
             ]
         ]);
-        if ($Balance_id['agent'] == "f") {
-            $valurcashbackextend = select("shopSetting", "*", "Namevalue", "chashbackextend", "select")['value'];
+        if (($Balance_id['agent'] ?? 'f') == "f") {
+            $valurcashbackextend = getShopSettingValue('chashbackextend', 0);
         } else {
-            $valurcashbackextend = json_decode(select("shopSetting", "*", "Namevalue", "chashbackextend_agent", "select")['value'], true)[$Balance_id['agent']];
+            $valurcashbackextend = getShopSettingAgentValue(
+                'chashbackextend_agent',
+                (string) ($Balance_id['agent'] ?? ''),
+                0
+            );
         }
         if (intval($valurcashbackextend) != 0) {
             $result = ($prodcut['price_product'] * $valurcashbackextend) / 100;
@@ -2088,7 +2159,7 @@ function bluebotSetMainWebhook($secret)
 
 function ensureWebhookSecret()
 {
-    $stored = (string) (select("setting", "*")['webhook_secret'] ?? '');
+    $stored = (string) selectValue("setting", "webhook_secret", null, null, '');
     if ($stored !== '') {
         return ['secret' => $stored, 'created' => false];
     }
@@ -2096,7 +2167,14 @@ function ensureWebhookSecret()
     $secret = bin2hex(random_bytes(24));
     update("setting", "webhook_secret", $secret, null, null);
 
-    $stored = (string) (select("setting", "*", null, null, "select", ['cache' => false])['webhook_secret'] ?? '');
+    $stored = (string) selectValue(
+        "setting",
+        "webhook_secret",
+        null,
+        null,
+        '',
+        ['cache' => false]
+    );
     if ($stored !== '') {
         $secret = $stored;
     }
@@ -2817,11 +2895,21 @@ function sanitize_recursive(array $data): array
 
 function check_active_btn($keyboard, $text_var)
 {
-    $trace_keyboard = json_decode($keyboard, true)['keyboard'];
+    $decoded = json_decode((string) $keyboard, true);
+    $trace_keyboard = is_array($decoded['keyboard'] ?? null)
+        ? $decoded['keyboard']
+        : [];
+
     $status = false;
     foreach ($trace_keyboard as $key => $callback_set) {
+        if (!is_array($callback_set)) {
+            continue;
+        }
         foreach ($callback_set as $keyboard_key => $keyboard) {
-            if ($keyboard['text'] == $text_var) {
+            if (!is_array($keyboard)) {
+                continue;
+            }
+            if (($keyboard['text'] ?? null) == $text_var) {
                 $status = true;
                 break;
             }
