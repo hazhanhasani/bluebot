@@ -12,7 +12,7 @@ BlueBot discovers accessible sender lines automatically, walks all pattern pages
 
 ## Pattern texts to create in FarazSMS
 
-Create the following patterns in FarazSMS. Variable names are case-sensitive and must match exactly. Preserve the shown line breaks as real new lines; do not type the two characters `\\n`. When creating each pattern in IranPayamak, select the registered system `bot.bluepanel.ir`. The system/domain belongs to the provider metadata and does not need to be repeated inside the pattern text.
+Create the following patterns in FarazSMS. Variable names are case-sensitive and must match exactly. Preserve the shown line breaks as real new lines; do not type the two characters `\\n`. When creating each pattern in IranPayamak, select the exact registered system host used by the deployment. For this deployment the registered system is `bot.blluepanel.ir`. The public root URL `https://bot.blluepanel.ir/` must return a normal HTTPS page without login so the provider reviewer can verify it. The system/domain belongs to provider metadata and does not need to be repeated inside the pattern text.
 
 | Event | Suggested category | Exact pattern text | Variables |
 | --- | --- | --- | --- |
