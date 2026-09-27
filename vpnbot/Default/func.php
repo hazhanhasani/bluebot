@@ -179,11 +179,12 @@ function channel_check($id_channel){
                 'chat_id' => $id_channel,
                 'user_id' => $from_id
                 ]);
-            if($response['ok']){
-        if(!in_array($response['result']['status'], ['member', 'creator', 'administrator'])){
-                $channel_link[] = $id_channel;
+            if (is_array($response) && !empty($response['ok'])) {
+                $status = (string) ($response['result']['status'] ?? '');
+                if (!in_array($status, ['member', 'creator', 'administrator'], true)) {
+                    $channel_link[] = $id_channel;
+                }
             }
-        }
         
         if(count($channel_link) == 0){
             return [];
