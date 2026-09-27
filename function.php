@@ -970,62 +970,94 @@ function cubepayCardDetailsText($payment)
 function formatBytes($bytes, $precision = 2): string
 {
     global $textbotlang;
-    $base = log($bytes, 1024);
-    $power = $bytes > 0 ? floor($base) : 0;
+
+    $precision = max(0, min(6, (int) $precision));
+    $bytes = is_numeric($bytes) ? max(0.0, (float) $bytes) : 0.0;
+
+    $units = is_array($textbotlang['common']['units'] ?? null)
+        ? $textbotlang['common']['units']
+        : [];
+
     $suffixes = [
-        $textbotlang['common']['units']['byte'],
-        $textbotlang['common']['units']['kilobyte'],
-        $textbotlang['common']['units']['megabyte'],
-        $textbotlang['common']['units']['gigabyteAlt'],
-        $textbotlang['common']['units']['terabyte'],
+        (string) ($units['byte'] ?? 'B'),
+        (string) ($units['kilobyte'] ?? 'KB'),
+        (string) ($units['megabyte'] ?? 'MB'),
+        (string) ($units['gigabyteAlt'] ?? 'GB'),
+        (string) ($units['terabyte'] ?? 'TB'),
     ];
-    return round(pow(1024, $base - $power), $precision) . ' ' . $suffixes[$power];
+
+    if ($bytes <= 0) {
+        return '0 ' . $suffixes[0];
+    }
+
+    $power = (int) floor(log($bytes, 1024));
+    $power = max(0, min($power, count($suffixes) - 1));
+    $value = $bytes / (1024 ** $power);
+
+    return round($value, $precision) . ' ' . $suffixes[$power];
 }
 function generateUsername($from_id, $Metode, $username, $randomString, $text, $namecustome, $usernamecustom)
 {
     $setting = select("setting", "*", null, null, "select");
+    $setting = is_array($setting) ? $setting : [];
+
     $user = select("user", "*", "id", $from_id, "select");
-    if ($user == false) {
-        $user = array('number_username' => '');
-    }
+    $user = is_array($user) ? $user : ['number_username' => ''];
+
     $randomString = trim((string) $randomString);
-    if ($randomString === '')
+    if ($randomString === '') {
         $randomString = bin2hex(random_bytes(4));
-    $fallback = $from_id . "_" . $randomString;
+    }
+
+    $fromId = trim((string) $from_id);
+    $sequence = trim((string) ($user['number_username'] ?? ''));
+    $globalSequence = trim((string) ($setting['numbercount'] ?? ''));
+    $fallback = ($fromId !== '' ? $fromId : 'user') . "_" . $randomString;
+
     switch (usernameMethodKey($Metode)) {
         case 'usernameSequential':
-            if ($username == "NOT_USERNAME" && preg_match('/^\w{3,32}$/', (string) $namecustome))
+            if ($username == "NOT_USERNAME" && preg_match('/^\w{3,32}$/', (string) $namecustome)) {
                 $username = $namecustome;
-            $generated = $username . "_" . $user['number_username'];
+            }
+            $generated = (string) $username . "_" . $sequence;
             break;
+
         case 'customUsername':
-            $generated = $text;
+            $generated = (string) $text;
             break;
+
         case 'customUsernameRandom':
-            $generated = $text . "_" . rand(1000000, 9999999);
+            $generated = (string) $text . "_" . random_int(1000000, 9999999);
             break;
+
         case 'customTextRandom':
-            $generated = $namecustome . "_" . $randomString;
+            $generated = (string) $namecustome . "_" . $randomString;
             break;
+
         case 'customTextSequential':
-            $generated = $namecustome . "_" . $setting['numbercount'];
+            $generated = (string) $namecustome . "_" . $globalSequence;
             break;
+
         case 'numericIdSequential':
-            $generated = $from_id . "_" . $user['number_username'];
+            $generated = $fromId . "_" . $sequence;
             break;
+
         case 'agentCustomTextSequential':
-            if ($usernamecustom == "none")
-                $generated = $namecustome . "_" . $setting['numbercount'];
-            else
-                $generated = $usernamecustom . "_" . $user['number_username'];
+            $generated = $usernamecustom == "none"
+                ? (string) $namecustome . "_" . $globalSequence
+                : (string) $usernamecustom . "_" . $sequence;
             break;
+
         case 'numericIdRandom':
         default:
             $generated = $fallback;
     }
+
     $generated = trim((string) $generated, " _");
-    if (strlen($generated) < 3)
+    if (strlen($generated) < 3) {
         $generated = $fallback;
+    }
+
     return $generated;
 }
 function outputlink($text)
