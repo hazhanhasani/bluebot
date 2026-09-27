@@ -1058,8 +1058,13 @@ function outputlink($text)
         curl_setopt($ch, CURLOPT_REDIR_PROTOCOLS, CURLPROTO_HTTP | CURLPROTO_HTTPS);
     }
     if ($scheme === 'https') {
-        curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, 2);
-        curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, true);
+        // Follow the same compatibility policy as panel API requests. Production
+        // installs can enable strict verification with BLUEBOT_VERIFY_PANEL_TLS=1.
+        $verifyTls = function_exists('bluebotVerifyPanelTls')
+            ? bluebotVerifyPanelTls()
+            : getenv('BLUEBOT_VERIFY_PANEL_TLS') === '1';
+        curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, $verifyTls ? 2 : 0);
+        curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, $verifyTls);
     }
 
     $userAgent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36';
