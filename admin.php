@@ -165,7 +165,7 @@ if ($text === "/debug") {
     }
 } elseif ($text == $textbotlang['keyboard']['updateCenter'] && $adminrulecheck['rule'] == "administrator") {
     $updateSettings = bluebotUpdateSettings();
-    $updateTarget = bluebotUpdateLatest(bluebotUpdateChannel($updateSettings));
+    $updateTarget = bluebotUpdateLatest(bluebotUpdateChannel($updateSettings), true);
     $updateAvailable = $updateTarget !== null && bluebotUpdateAvailable($updateTarget, $updateSettings);
     sendmessage(
         $from_id,
@@ -177,7 +177,7 @@ if ($text === "/debug") {
 } elseif (preg_match('/^bluebot_update_channel_(release|beta|auto)$/', $datain, $updateChannelMatch) && $adminrulecheck['rule'] == "administrator") {
     $selectedChannel = bluebotUpdateSetChannel($updateChannelMatch[1]);
     $updateSettings = bluebotUpdateSettings();
-    $updateTarget = bluebotUpdateLatest($selectedChannel);
+    $updateTarget = bluebotUpdateLatest($selectedChannel, true);
     $updateAvailable = $updateTarget !== null && bluebotUpdateAvailable($updateTarget, $updateSettings);
     Editmessagetext(
         $from_id,
@@ -189,7 +189,7 @@ if ($text === "/debug") {
     return;
 } elseif ($datain == "bluebot_update_status" && $adminrulecheck['rule'] == "administrator") {
     $updateSettings = bluebotUpdateSettings();
-    $updateTarget = bluebotUpdateLatest(bluebotUpdateChannel($updateSettings));
+    $updateTarget = bluebotUpdateLatest(bluebotUpdateChannel($updateSettings), true);
     $updateAvailable = $updateTarget !== null && bluebotUpdateAvailable($updateTarget, $updateSettings);
     Editmessagetext(
         $from_id,
