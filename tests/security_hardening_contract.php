@@ -29,6 +29,7 @@ $checks = [
     [$functions, "'url' => \"https://\$host/index.php\"", 'Main webhook URL must not expose the secret in the query string.'],
     [$functions, 'function webhookHeaderSecretMatches', 'Header-only Telegram webhook verification helper is missing.'],
     [$index, '$telegramHeaderSecretAllowed', 'Main webhook migration must distinguish header authentication.'],
+    [$table, "PHP_SAPI !== 'cli'", 'Database/schema bootstrap must not be web-accessible.'],
     [$table, 'bluebotSetMainWebhook($webhookSecret)', 'Database bootstrap must configure the protected webhook helper.'],
     [$functions, 'function resolveInvitationOwnerId', 'Referral payload resolver is missing.'],
     [$functions, 'function isValidInvitationCode($setting, $fromId, $verifyStatus, ?string $inviterId = null): bool', 'Referral verification must require a resolved inviter.'],
