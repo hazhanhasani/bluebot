@@ -8,7 +8,7 @@ require_once __DIR__ . '/../panels.php';
 require_once __DIR__ . '/../function.php';
 require_once __DIR__ . '/../keyboard.php';
 require __DIR__ . '/../vendor/autoload.php';
-require_once __DIR__ . '/../jdf.php';
+require_once __DIR__ . '/../src/Support/JalaliDate.php';
 $ManagePanel = new ManagePanel();
 $setting = select("setting", "*");
 if (!is_array($setting) || ($setting['Bot_Status'] ?? '') === "botstatusoff") {
