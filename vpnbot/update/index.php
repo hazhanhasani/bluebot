@@ -421,7 +421,7 @@ if ($user['step'] == "createusertest" || preg_match('/locationtest_(.*)/', $data
     $username_ac = generateUsername($from_id, $marzban_list_get['MethodUsername'], $user['username'], $randomString, $text, $marzban_list_get['namecustom'], $user['namecustom']);
     $username_ac = strtolower($username_ac);
     $DataUserOut = $ManagePanel->DataUser($marzban_list_get['name_panel'], $username_ac);
-    $random_number = rand(1000000, 9999999);
+    $random_number = random_int(1000000, 9999999);
     if (isset($DataUserOut['username']) || in_array($username_ac, $usernameinvoice)) {
         $username_ac = $random_number . "_" . $username_ac;
     }
@@ -892,7 +892,7 @@ if ($text == $text_bot_var['btn_keyboard']['buy'] && $setting['active_step_note'
     $username_ac = strtolower($username_ac);
     savedata("save", "username", $username_ac);
     $DataUserOut = $ManagePanel->DataUser($marzban_list_get['name_panel'], $username_ac);
-    $random_number = rand(1000000, 9999999);
+    $random_number = random_int(1000000, 9999999);
     if (isset($DataUserOut['username']) || in_array($username_ac, $usernameinvoice)) {
         $username_ac = $random_number . "_" . $username_ac;
     }
@@ -1015,13 +1015,13 @@ if ($text == $text_bot_var['btn_keyboard']['buy'] && $setting['active_step_note'
     }
     $username_ac = strtolower($userdate['username']);
     $DataUserOut = $ManagePanel->DataUser($marzban_list_get['name_panel'], $username_ac);
-    $random_number = rand(1000000, 9999999);
+    $random_number = random_int(1000000, 9999999);
     if (isset($DataUserOut['username']) || in_array($username_ac, $usernameinvoice)) {
         $username_ac = $random_number . "_" . $username_ac;
     }
     $date = time();
     $randomString = bin2hex(random_bytes(4));
-    $random_number = rand(1000000, 9999999);
+    $random_number = random_int(1000000, 9999999);
     if (in_array($randomString, $id_invoice)) {
         $randomString = $random_number . $randomString;
     }
