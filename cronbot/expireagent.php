@@ -8,7 +8,8 @@ require_once __DIR__ . '/../function.php';
 $textbotlang = languagechange();
 
 $setting = select("setting", "*");
-$otherreport = select("topicid","idreport","report","otherreport","select")['idreport'];
+$topicRow = select("topicid", "idreport", "report", "otherreport", "select");
+$otherreport = is_array($topicRow) ? ($topicRow['idreport'] ?? null) : null;
 // buy service 
 $stmt = $pdo->prepare("SELECT id, username FROM user WHERE expire IS NOT NULL AND CAST(expire AS UNSIGNED) < :now");
 $stmt->execute([':now' => time()]);
