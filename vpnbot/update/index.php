@@ -1197,7 +1197,7 @@ if ($text == $text_bot_var['btn_keyboard']['buy'] && $setting['active_step_note'
         $output_config_link = $dataoutput['subscription_url'];
     }
     if ($marzban_list_get['config'] == "onconfig") {
-        if (isset($dataoutput['configs']) and count($dataoutput['configs']) != 0) {
+        if (is_array($dataoutput['configs'] ?? null) && $dataoutput['configs'] !== []) {
             foreach ($dataoutput['configs'] as $configs) {
                 $config .= "\n" . $configs;
                 $configqr .= $configs;
@@ -2087,7 +2087,7 @@ $output
     if ($marzban_list_get['config'] == "onconfig") {
         if (!isset($DataUserOut['configs']))
             return;
-        if (isset($DataUserOut['configs']) and count($DataUserOut['configs']) != 0) {
+        if (is_array($DataUserOut['configs'] ?? null) && $DataUserOut['configs'] !== []) {
             foreach ($DataUserOut['configs'] as $configs) {
                 $config .= "\n" . $configs;
             }
