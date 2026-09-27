@@ -609,6 +609,16 @@ function productNameLocationConflict(string $name, string $location, ?int $exclu
     return (bool) $stmt->fetchColumn();
 }
 
+function bluebotJsonArray($value, array $default = []): array
+{
+    if (is_array($value)) {
+        return $value;
+    }
+
+    $decoded = json_decode((string) $value, true);
+    return is_array($decoded) ? $decoded : $default;
+}
+
 function selectValue($table, $field, $whereField = null, $whereValue = null, $default = null, $options = [])
 {
     $row = select($table, $field, $whereField, $whereValue, 'select', $options);
