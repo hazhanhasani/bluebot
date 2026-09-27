@@ -1,5 +1,5 @@
 <?php
-require_once 'config.php';
+require_once __DIR__ . '/config.php';
 function isTelegramChatIdEmpty($chat_id): bool
 {
     if ($chat_id === null || $chat_id === false) {
@@ -114,7 +114,7 @@ function customEmojiBlocked($token = null, $block = false)
     global $APIKEY;
 
     static $state = [];
-    $key = md5((string) ($token === null ? $APIKEY : $token));
+    $key = hash('sha256', (string) ($token === null ? $APIKEY : $token));
     $cacheDir = __DIR__ . '/storage/cache';
     $cacheFile = null;
     if (is_dir($cacheDir) || @mkdir($cacheDir, 0775, true) || is_dir($cacheDir)) {
