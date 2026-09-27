@@ -6,11 +6,13 @@ require_once __DIR__ . '/../config.php';
 require_once __DIR__ . '/../botapi.php';
 require_once __DIR__ . '/../function.php';
 $textbotlang = languagechange();
-$setting = select("setting","*",null,null,"select");
+$setting = select("setting", "*", null, null, "select");
+$setting = is_array($setting) ? $setting : [];
 
 //________________[ time 12 report]________________
 $midnight_time = date("H:i");
-$reportnight = select("topicid","idreport","report","reportnight","select")['idreport'];
+$reportTopic = select("topicid", "idreport", "report", "reportnight", "select");
+$reportnight = is_array($reportTopic) ? ($reportTopic['idreport'] ?? null) : null;
 // if(true){
 if ($midnight_time == "23:45") {
 $datefirst = date("Y-m-d") . " 00:00:00";
@@ -104,8 +106,12 @@ foreach ($listagentuser as $agent) {
 
 // Fetch panel reports
 $panels = select("marzban_panel", "*", null, null, "fetchAll");
+$panels = is_array($panels) ? $panels : [];
 $textpanel = $textbotlang['Admin']['report']['dailyPanelsTitle'];
 foreach ($panels as $panel) {
+    if (!is_array($panel) || empty($panel['name_panel'])) {
+        continue;
+    }
     $sqlPanel = "SELECT COUNT(*) AS orders, SUM(price_product) AS total_price, SUM(Volume) AS total_volume 
                  FROM invoice 
                  WHERE (FROM_UNIXTIME(time_sell) BETWEEN :startDate AND :endDate) 
@@ -127,7 +133,7 @@ foreach ($panels as $panel) {
 $textreport = sprintf($textbotlang['Admin']['report']['dailyBot'], $countextendday, $sumcountextend, $dayListSell, $suminvoiceday, $dayListSelltest, $sumvolume, $usernew);
 
 // Send reports to Telegram
-if (!empty($setting['Channel_Report'])) {
+if (!empty($setting['Channel_Report']) && !isTelegramChatIdEmpty($setting['Channel_Report'])) {
     $report_data = [
         ['text' => $textagent],
         ['text' => $textreport],
