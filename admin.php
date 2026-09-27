@@ -6085,7 +6085,10 @@ if ($datain == "settimecornremove" && $adminrulecheck['rule'] == "administrator"
     if ($text == "f") {
         update("shopSetting", "value", $userdata['price_cashback'], "Namevalue", "chashbackextend");
     } else {
-        $shop_cashbackagent = json_decode(getShopSettingValue('chashbackextend_agent'), true);
+        $shop_cashbackagent = json_decode((string) getShopSettingValue('chashbackextend_agent', '{}'), true);
+        if (!is_array($shop_cashbackagent)) {
+            $shop_cashbackagent = [];
+        }
         $shop_cashbackagent[$text] = $userdata['price_cashback'];
         update("shopSetting", "value", json_encode($shop_cashbackagent), "Namevalue", "chashbackextend_agent");
     }
@@ -6102,7 +6105,10 @@ if ($datain == "settimecornremove" && $adminrulecheck['rule'] == "administrator"
         update("PaySetting", "ValuePay", $gatewayIsOn ? $gateway['on'] : $gateway['off'], "NamePay", $gateway['setting']);
     }
     $gatewayStatusText = $textbotlang['Admin']['Status'][$gatewayIsOn ? 'statuson' : 'statusoff'];
-    $gatewayRows = json_decode($gateway['keyboard'], true)['inline_keyboard'];
+    $gatewayKeyboard = json_decode((string) ($gateway['keyboard'] ?? ''), true);
+    $gatewayRows = is_array($gatewayKeyboard['inline_keyboard'] ?? null)
+        ? $gatewayKeyboard['inline_keyboard']
+        : [];
     array_unshift($gatewayRows, [['text' => $gatewayStatusText, 'callback_data' => "paygwtoggle-$gatewayKey"]]);
     Editmessagetext($from_id, $message_id, sprintf($textbotlang['Admin']['gateway']['detail'], $gateway['label'], $gatewayStatusText), json_encode(['inline_keyboard' => $gatewayRows]));
 } elseif ($text == $textbotlang['keyboard']['cashbackCartToCart']) {
@@ -7006,8 +7012,11 @@ if ($datain == "settimecornremove" && $adminrulecheck['rule'] == "administrator"
     sendmessage($from_id, $textsetservice, $backadmin, 'HTML');
     step('getservceid', $from_id);
 } elseif ($user['step'] == "getservceid") {
-    $userdata = json_decode(getuserm($text, $user['Processing_value'])['body'], true);
-    if (isset($userdata['detail']) and $userdata['detail'] == "User not found") {
+    $panelResponse = getuserm($text, $user['Processing_value']);
+    $userdata = is_array($panelResponse)
+        ? json_decode((string) ($panelResponse['body'] ?? ''), true)
+        : null;
+    if (!is_array($userdata) || (isset($userdata['detail']) && $userdata['detail'] == "User not found")) {
         sendmessage($from_id, $textbotlang['Admin']['managepanel']['userNotInPanel'], null, 'HTML');
         return;
     }
@@ -7639,8 +7648,8 @@ if ($datain == "settimecornremove" && $adminrulecheck['rule'] == "administrator"
             sendmessage($from_id, sprintf($textbotlang['Admin']['managepanel']['ErrorCode'], $data['status']), null, 'HTML');
             return;
         }
-        $data = json_decode($data['body'], true);
-        if (!$data['success']) {
+        $data = json_decode((string) ($data['body'] ?? ''), true);
+        if (!is_array($data) || empty($data['success'])) {
             sendmessage($from_id, $textbotlang['Admin']['managepanel']['UserNotExist'], $optionX_ui_single, 'HTML');
             sendmessage($from_id, $textbotlang['Admin']['managepanel']['PanelOutput'] . json_encode($data), null, 'HTML');
             return;
@@ -7648,7 +7657,10 @@ if ($datain == "settimecornremove" && $adminrulecheck['rule'] == "administrator"
         sendmessage($from_id, $textbotlang['Admin']['managepanel']['protocolSaved'], $optionX_ui_single, 'HTML');
         update("marzban_panel", "inbounds", json_encode($data['obj']['inboundIds']), "name_panel", $user['Processing_value']);
     } elseif ($panel['type'] == "rebecca") {
-        $userdata = json_decode(getuser_rebecca($text, $user['Processing_value'])['body'], true);
+        $rebeccaResponse = getuser_rebecca($text, $user['Processing_value']);
+        $userdata = is_array($rebeccaResponse)
+            ? json_decode((string) ($rebeccaResponse['body'] ?? ''), true)
+            : null;
         if (!is_array($userdata) || !isset($userdata['service_id'])) {
             sendmessage($from_id, $textbotlang['users']['status']['userNotFound'], null, 'html');
             return;
@@ -7808,8 +7820,18 @@ elseif ($text == $textbotlang['keyboard']['hidePanelForUser'] && $adminrulecheck
         editFlowMessage($textbotlang['common']['invalidInput'], $lotteryFlowKeyboard);
         return;
     }
-    $prizes = json_decode($setting['Lottery_prize'], true);
-    $prizes[json_decode($user['Processing_value'], true)['prize']] = $text;
+    $prizes = json_decode((string) ($setting['Lottery_prize'] ?? ''), true);
+    $prizes = is_array($prizes) ? $prizes : [];
+
+    $flowState = json_decode((string) ($user['Processing_value'] ?? ''), true);
+    $prizeKey = is_array($flowState) ? (string) ($flowState['prize'] ?? '') : '';
+    if (!in_array($prizeKey, ['one', 'tow', 'theree'], true)) {
+        editFlowMessage($textbotlang['common']['invalidInput'], $lotteryFlowKeyboard);
+        step("home", $from_id);
+        return;
+    }
+
+    $prizes[$prizeKey] = $text;
     update("setting", "Lottery_prize", json_encode($prizes), null, null);
     step("home", $from_id);
     [$lotteryText, $lotteryKeyboard] = lotterySettingsMenu();
@@ -7967,8 +7989,11 @@ elseif ($text == $textbotlang['keyboard']['hidePanelForUser'] && $adminrulecheck
         $stmt->execute();
         $datainbound = json_encode($DataUserOut['inbounds']);
     } elseif ($marzban_list_get['type'] == "marzneshin") {
-        $userdata = json_decode(getuserm($text, $marzban_list_get['name_panel'])['body'], true);
-        if (isset($userdata['detail']) and $userdata['detail'] == "User not found") {
+        $panelResponse = getuserm($text, $marzban_list_get['name_panel']);
+        $userdata = is_array($panelResponse)
+            ? json_decode((string) ($panelResponse['body'] ?? ''), true)
+            : null;
+        if (!is_array($userdata) || (isset($userdata['detail']) && $userdata['detail'] == "User not found")) {
             sendmessage($from_id, $textbotlang['Admin']['managepanel']['userNotInPanel'], null, 'HTML');
             return;
         }
@@ -9942,7 +9967,10 @@ if ($datain == "settimecornday" && $adminrulecheck['rule'] == "administrator") {
         sendmessage($from_id, sprintf($textbotlang['Admin']['managepanel']['errorCode'], $list_panel['status']), null, 'HTML');
         return;
     }
-    $list_panel = json_decode($list_panel['body'], true)['obj'] ?? [];
+    $decodedPanelList = json_decode((string) ($list_panel['body'] ?? ''), true);
+    $list_panel = is_array($decodedPanelList['obj'] ?? null)
+        ? $decodedPanelList['obj']
+        : [];
     $list_panel_keyboard = ['inline_keyboard' => []];
     foreach ($list_panel as $result) {
         $list_panel_keyboard['inline_keyboard'][] = [
