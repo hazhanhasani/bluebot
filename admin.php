@@ -205,17 +205,19 @@ if ($text === "/debug") {
         Editmessagetext(
             $from_id,
             $message_id,
-            "🚀 <b>بروزرسانی در صف قرار گرفت</b>\n\nWorker امن BlueBot حداکثر تا یک دقیقه دیگر عملیات را شروع می‌کند و نتیجه را همین‌جا در تلگرام اعلام می‌کند.",
+            "🚀 <b>بروزرسانی در صف قرار گرفت</b>\n\nWorker امن بلو پنل حداکثر تا یک دقیقه دیگر عملیات را شروع می‌کند و نتیجه را همین‌جا در تلگرام اعلام می‌کند.",
             json_encode(['inline_keyboard' => [[['text' => '🔍 وضعیت', 'callback_data' => 'bluebot_update_status']]]], JSON_UNESCAPED_UNICODE),
             'HTML'
         );
     } else {
         $queueMessage = (string) ($queuedUpdate['message'] ?? 'unknown error');
         $friendlyQueueMessage = $queueMessage === 'already up to date'
-            ? '✅ BlueBot در حال حاضر بروز است.'
+            ? '✅ بلو پنل در حال حاضر بروز است.'
             : ($queueMessage === 'update worker is not installed or queue directory is not writable'
-                ? '⚠️ Worker بروزرسانی هنوز روی سرور فعال نشده است. پس از نصب این نسخه، بروزرسانی‌های بعدی کاملاً از داخل ربات انجام می‌شوند.'
-                : '❌ امکان ثبت بروزرسانی وجود نداشت: ' . htmlspecialchars($queueMessage, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'));
+                ? '⚠️ Worker بروزرسانی روی سرور فعال نیست یا مسیر صف قابل‌نوشتن نیست.'
+                : ($queueMessage === 'unable to resolve update source'
+                    ? '⚠️ ارتباط با منبع انتشار برقرار نشد. چند لحظه دیگر «بررسی نسخه» را بزنید.'
+                    : '❌ ثبت بروزرسانی انجام نشد: ' . htmlspecialchars($queueMessage, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8')));
         Editmessagetext(
             $from_id,
             $message_id,
