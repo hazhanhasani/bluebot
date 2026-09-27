@@ -178,21 +178,23 @@ $KeyboardBalance = json_encode([
     ]
 ]);
 
-function KeyboardProduct($location, $query, $pricediscount, $datakeyboard, $statuscustom = false, $backuser = "backuser", $valuetow = null, $customvolume = "customsellvolume")
+function KeyboardProduct($location, $query, $pricediscount, $datakeyboard, $statuscustom = false, $backuser = "backuser", $valuetow = null, $customvolume = "customsellvolume", $queryParams = [])
 {
     global $pdo, $textbotlang;
     $product = ['inline_keyboard' => []];
     $statusshowprice = (string) getShopSettingValue('statusshowprice', 'off');
-    $stmt = $pdo->prepare($query);
-    $stmt->execute();
+
+    $stmt = $pdo->prepare((string) $query);
+    $stmt->execute(is_array($queryParams) ? $queryParams : []);
     $valuetow = $valuetow != null ? "-$valuetow" : "";
     while ($result = $stmt->fetch(PDO::FETCH_ASSOC)) {
         $productlist = readJsonFileIfExists('product.json');
         $productlist_name = readJsonFileIfExists('product_name.json');
         if (isset($productlist[$result['code_product']])) $result['price_product'] = $productlist[$result['code_product']];
         $result['name_product'] = empty($productlist_name[$result['code_product']]) ? $result['name_product'] : $productlist_name[$result['code_product']];
-        $hide_panel = json_decode($result['hide_panel'], true);
-        if (in_array($location, $hide_panel)) continue;
+        $hide_panel = json_decode((string) ($result['hide_panel'] ?? '[]'), true);
+        $hide_panel = is_array($hide_panel) ? $hide_panel : [];
+        if (in_array($location, $hide_panel, true)) continue;
         if (intval($pricediscount) != 0) {
             $resultper = ($result['price_product'] * $pricediscount) / 100;
             $result['price_product'] = $result['price_product'] - $resultper;
