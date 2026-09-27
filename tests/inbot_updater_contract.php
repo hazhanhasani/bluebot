@@ -48,6 +48,9 @@ $jobs = @file_get_contents($root . '/cronbot/jobs.php');
 if ($jobs === false || !str_contains($jobs, "'UpdateNotifier'")) {
     $failures[] = 'UpdateNotifier is not scheduled.';
 }
+if ($jobs === false || !str_contains($jobs, "['job' => 'UpdateNotifier', 'schedule' => '* * * * *'")) {
+    $failures[] = 'UpdateNotifier must check for updates every minute.';
+}
 
 $installer = @file_get_contents($root . '/install.sh');
 if ($installer !== false && str_contains($installer, "curl -s 'https://\$URL_PATH/table.php'")) {
