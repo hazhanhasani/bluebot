@@ -27,10 +27,10 @@ $iranpay1 = $read('payment/iranpay1.php');
 $zarinpal = $read('payment/zarinpal.php');
 
 $mustContain = [
-    [$functions, "$allowed = ['fa', 'en', 'ru', 'zh'];", 'languagechange() must only select bundled locales.'],
-    [$functions, "if (!is_file($file))", 'languagechange() must fall back when a locale file is missing.'],
-    [$functions, "CURLOPT_TIMEOUT => 15", 'Plisio requests must have a finite timeout.'],
-    [$functions, "'callback' => \"https://\" . $domainhosts . \"/payment/aqayepardakht.php\"", 'AqayePardakht callback must be HTTPS.'],
+    [$functions, "\$allowed = ['fa', 'en', 'ru', 'zh'];", 'languagechange() must only select bundled locales.'],
+    [$functions, 'if (!is_file($file))', 'languagechange() must fall back when a locale file is missing.'],
+    [$functions, 'CURLOPT_TIMEOUT => 15', 'Plisio requests must have a finite timeout.'],
+    [$functions, '\'callback\' => "https://" . $domainhosts . "/payment/aqayepardakht.php"', 'AqayePardakht callback must be HTTPS.'],
     [$usersPage, 'id="searchInput"', 'Users search input must be wired to users.js.'],
     [$usersPage, 'id="filterStatus"', 'Users status filter must be wired to users.js.'],
     [$usersPage, 'id="filterRole"', 'Users role filter must be wired to users.js.'],
@@ -49,7 +49,7 @@ $mustContain = [
     [$bulkMessages, 'if (!is_array($userid))', 'Bulk-message queue must reject invalid JSON.'],
     [$uptimeNode, 'if (!is_array($statusCron)', 'Node uptime cron must validate cron settings.'],
     [$uptimeNode, 'if (!is_array($decoded))', 'Node uptime cron must validate panel responses.'],
-    [$uptimePanel, "$scheme === 'http' ? 80 : 443", 'Panel uptime cron must use the correct default port.'],
+    [$uptimePanel, "\$scheme === 'http' ? 80 : 443", 'Panel uptime cron must use the correct default port.'],
     [$dailyStatus, '$setting = is_array($setting) ? $setting : [];', 'Daily report cron must tolerate missing settings.'],
     [$cronCard, 'markPaymentDeliveryError', 'Auto-confirmed payments must preserve delivery failures.'],
     [$cronPlisio, 'markPaymentDeliveryError', 'Plisio cron must preserve delivery failures.'],
