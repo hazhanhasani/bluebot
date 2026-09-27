@@ -403,8 +403,8 @@ if ($user['step'] == "createusertest" || preg_match('/locationtest_(.*)/', $data
     if ($locationproduct == 1) {
         $panel = select("marzban_panel", "*", "TestAccount", "ONTestAccount", "select");
         if ($panel['hide_user'] != null) {
-            $list_user = json_decode($panel['hide_user'], true);
-            if (in_array($from_id, $list_user)) {
+            $list_user = bluebotJsonArray($panel['hide_user'] ?? '[]');
+            if (in_array((string) $from_id, array_map('strval', $list_user), true)) {
                 sendmessage($from_id, "❌ سرویس تست درحال حاضر غیرفعال می باشد.", null, 'HTML');
                 return;
             }
@@ -547,47 +547,41 @@ if ($user['step'] == "createusertest" || preg_match('/locationtest_(.*)/', $data
     $textcreatuser = str_replace('{day}', $marzban_list_get['time_usertest'], $textcreatuser);
     $textcreatuser = str_replace('{volume}', $marzban_list_get['val_usertest'], $textcreatuser);
     $textcreatuser = str_replace('{config}', "<code>{$config}{$output_config_link}</code>", $textcreatuser);
-    if ($marzban_list_get['type'] == "ibsng" || $marzban_list_get['type'] == "ibsng") {
+    if (($marzban_list_get['type'] ?? '') === "ibsng") {
         $textcreatuser = str_replace('{password}', $dataoutput['subscription_url'], $textcreatuser);
         update("invoice", "user_info", $dataoutput['subscription_url'], "id_invoice", $randomString);
     }
     if ($marzban_list_get['sublink'] == "onsublink") {
-        if ($marzban_list_get['type'] == "WGDashboard") {
-            $urlimage = "{$marzban_list_get['inboundid']}_{$dataoutput['username']}.conf";
-            file_put_contents($urlimage, $output_config_link);
-            telegram('senddocument', [
-                'chat_id' => $from_id,
-                'document' => new CURLFile($urlimage),
-                'caption' => $textcreatuser,
-                'parse_mode' => "HTML",
-            ]);
-            unlink($urlimage);
+        if (($marzban_list_get['type'] ?? '') === "WGDashboard") {
+            $sent = vpnbotSendTempDocument(
+                $from_id,
+                $output_config_link,
+                (string) ($marzban_list_get['inboundid'] ?? 'wireguard') . '_' . (string) ($dataoutput['username'] ?? 'config') . '.conf',
+                $textcreatuser
+            );
         } else {
-            $urlimage = "$from_id$randomString.png";
-            $qrCode = createqrcode($output_config_link);
-            file_put_contents($urlimage, $qrCode->getString());
-            addBackgroundImage($urlimage, $qrCode, $Pathfiles . 'images.jpg');
-            telegram('sendphoto', [
-                'chat_id' => $from_id,
-                'photo' => new CURLFile($urlimage),
-                'caption' => $textcreatuser,
-                'parse_mode' => "HTML",
-            ]);
-            unlink($urlimage);
+            $sent = vpnbotSendQrPhoto(
+                $from_id,
+                $output_config_link,
+                $from_id . $randomString . '.png',
+                $textcreatuser,
+                $Pathfiles . 'images.jpg'
+            );
+        }
+        if (!$sent) {
+            sendmessage($from_id, $textcreatuser, $usertestinfo, 'HTML');
         }
     } elseif ($marzban_list_get['config'] == "onconfig") {
-        if (count($dataoutput['configs']) == 1) {
-            $urlimage = "$from_id$randomString.png";
-            $qrCode = createqrcode($config);
-            file_put_contents($urlimage, $qrCode->getString());
-            addBackgroundImage($urlimage, $qrCode, $Pathfiles . 'images.jpg');
-            telegram('sendphoto', [
-                'chat_id' => $from_id,
-                'photo' => new CURLFile($urlimage),
-                'caption' => $textcreatuser,
-                'parse_mode' => "HTML",
-            ]);
-            unlink($urlimage);
+        if (count(is_array($dataoutput['configs'] ?? null) ? $dataoutput['configs'] : []) === 1) {
+            if (!vpnbotSendQrPhoto(
+                $from_id,
+                $config,
+                $from_id . $randomString . '.png',
+                $textcreatuser,
+                $Pathfiles . 'images.jpg'
+            )) {
+                sendmessage($from_id, $textcreatuser, $usertestinfo, 'HTML');
+            }
         } else {
             sendmessage($from_id, $textcreatuser, $usertestinfo, 'HTML');
         }
@@ -650,8 +644,8 @@ if ($text == $text_bot_var['btn_keyboard']['buy'] && $setting['active_step_note'
         $stmt->execute($queryParams);
         $productnotexits = $stmt->rowCount();
         if ($locationproduct['hide_user'] != null) {
-            $list_user = json_decode($locationproduct['hide_user'], true);
-            if (in_array($from_id, $list_user)) {
+            $list_user = bluebotJsonArray($locationproduct['hide_user'] ?? '[]');
+            if (in_array((string) $from_id, array_map('strval', $list_user), true)) {
                 sendmessage($from_id, $textbotlang['users']['sell']['nullPanel'], null, 'HTML');
                 return;
             }
@@ -719,7 +713,7 @@ if ($text == $text_bot_var['btn_keyboard']['buy'] && $setting['active_step_note'
     }
     sendmessage($from_id, "📌 موقعیت سرویس خود را انتخاب کنید", $list_marzban_panel_user, 'HTML');
 } elseif ($datain == "customvolumebuy") {
-    $userdate = json_decode($user['Processing_value'], true);
+    $userdate = bluebotJsonArray($user['Processing_value'] ?? '{}');
     $marzban_list_get = select("marzban_panel", "*", "name_panel", $userdate['name_panel'], "select");
     $eextraprice = $setting['pricevolume'];
     $mainvolume = json_decode($marzban_list_get['mainvolume'], true);
@@ -732,7 +726,7 @@ if ($text == $text_bot_var['btn_keyboard']['buy'] && $setting['active_step_note'
     sendmessage($from_id, $textcustom, $backuser, 'html');
     step('gettimecustomvol', $from_id);
 } elseif (preg_match('/^location_(.*)/', $datain, $dataget)) {
-    $userdate = json_decode($user['Processing_value'], true);
+    $userdate = bluebotJsonArray($user['Processing_value'] ?? '{}');
     $locationproduct = select("marzban_panel", "*", "code_panel", $dataget[1], "select");
     if (isset($userdate['note'])) {
         savedata("save", "name_panel", $locationproduct['name_panel']);
@@ -748,9 +742,13 @@ if ($text == $text_bot_var['btn_keyboard']['buy'] && $setting['active_step_note'
             return;
         }
     }
-    $query = "SELECT * FROM product WHERE (Location = '{$locationproduct['name_panel']}' OR Location = '/all')AND agent= '{$userbot['agent']}'";
+    $query = "SELECT * FROM product WHERE (Location = :location OR Location = '/all') AND agent = :agent";
+    $queryParams = [
+        ':location' => (string) $locationproduct['name_panel'],
+        ':agent' => (string) $userbot['agent'],
+    ];
     $stmt = $pdo->prepare($query);
-    $stmt->execute();
+    $stmt->execute($queryParams);
     $productnotexits = $stmt->rowCount();
     if ($productnotexits != 0 and $setting['show_product'] == false) {
         if ($settingmain['statuscategorygenral'] == "offcategorys") {
@@ -799,7 +797,7 @@ if ($text == $text_bot_var['btn_keyboard']['buy'] && $setting['active_step_note'
 } elseif (preg_match('/^categorynames_(.*)/', $datain, $dataget)) {
     $categorynames = $dataget[1];
     $categorynames = selectValue("category", "remark", "id", $categorynames, '');
-    $userdate = json_decode($user['Processing_value'], true);
+    $userdate = bluebotJsonArray($user['Processing_value'] ?? '{}');
     $locationproduct = select("marzban_panel", "*", "name_panel", $userdate['name_panel'], "select");
     $query = "SELECT * FROM product WHERE (Location = :location OR Location = '/all') AND category = :category AND agent = :agent";
     $queryParams = [
@@ -821,7 +819,7 @@ if ($text == $text_bot_var['btn_keyboard']['buy'] && $setting['active_step_note'
     $prodcut = KeyboardProduct($locationproduct['name_panel'], $query, 0, $keyboarddata, $statuscustom, "backuser", null, "customvolumebuy", $queryParams);
     Editmessagetext($from_id, $message_id, "🛍️ لطفاً سرویسی که می‌خواهید خریداری کنید را انتخاب کنید!", $prodcut, 'HTML');
 } elseif ($user['step'] == "gettimecustomvol") {
-    $userdate = json_decode($user['Processing_value'], true);
+    $userdate = bluebotJsonArray($user['Processing_value'] ?? '{}');
     $marzban_list_get = select("marzban_panel", "*", "name_panel", $userdate['name_panel'], "select");
     $mainvolume = json_decode($marzban_list_get['mainvolume'], true);
     $mainvolume = $mainvolume[$userbot['agent']];
@@ -852,7 +850,7 @@ if ($text == $text_bot_var['btn_keyboard']['buy'] && $setting['active_step_note'
         step('getvolumecustomuser', $from_id);
     }
 } elseif ($user['step'] == "getvolumecustomusername" || preg_match('/selectproductbuyy_(.*)/', $datain, $dataget)) {
-    $userdate = json_decode($user['Processing_value'], true);
+    $userdate = bluebotJsonArray($user['Processing_value'] ?? '{}');
     $marzban_list_get = select("marzban_panel", "*", "name_panel", $userdate['name_panel'], "select");
     if ($user['step'] == "getvolumecustomusername") {
         if (!ctype_digit($text)) {
@@ -883,7 +881,7 @@ if ($text == $text_bot_var['btn_keyboard']['buy'] && $setting['active_step_note'
     }
     sendmessage($from_id, $textbotlang['users']['selectusername'], $backuser, 'html');
 } elseif ($user['step'] == "endstepusers" || $user['step'] == "endstepuserscustom" || $user['step'] == "getvolumecustomuser" || preg_match('/selectproductbuy_(.*)/', $datain, $dataget)) {
-    $userdate = json_decode($user['Processing_value'], true);
+    $userdate = bluebotJsonArray($user['Processing_value'] ?? '{}');
     if ($user['step'] == "getvolumecustomuser") {
         if (!ctype_digit($text)) {
             sendmessage($from_id, "زمان نامعتبر است", $backuser, 'HTML');
@@ -933,7 +931,7 @@ if ($text == $text_bot_var['btn_keyboard']['buy'] && $setting['active_step_note'
             return;
         }
         savedata("save", "code_product", $code_product);
-        $productlist = json_decode(file_get_contents('product.json'), true);
+        $productlist = readJsonFileIfExists('product.json');
         if (isset($productlist[$product['code_product']])) {
             $product['price_product'] = $productlist[$product['code_product']];
         }
@@ -996,7 +994,7 @@ if ($text == $text_bot_var['btn_keyboard']['buy'] && $setting['active_step_note'
     }
     step('payment', $from_id);
 } elseif ($user['step'] == "payment" && $datain == "confirmandgetservice") {
-    $userdate = json_decode($user['Processing_value'], true);
+    $userdate = bluebotJsonArray($user['Processing_value'] ?? '{}');
     Editmessagetext($from_id, $message_id, $text_inline, json_encode(['inline_keyboard' => []]));
     if (!isset($userdate['name_panel'])) {
         sendmessage($from_id, "❌ خطایی رخ داده است مراحل خرید را از اول انجام دهید", $keyboard, 'html');
@@ -1023,7 +1021,7 @@ if ($text == $text_bot_var['btn_keyboard']['buy'] && $setting['active_step_note'
             return;
         }
         $priceBot = $product['price_product'];
-        $productlist = json_decode(file_get_contents('product.json'), true);
+        $productlist = readJsonFileIfExists('product.json');
         if (isset($productlist[$product['code_product']])) {
             $product['price_product'] = $productlist[$product['code_product']];
         }
@@ -1241,37 +1239,35 @@ if ($text == $text_bot_var['btn_keyboard']['buy'] && $setting['active_step_note'
         $textcreatuser = str_replace('{password}', $dataoutput['subscription_url'], $textcreatuser);
         update("invoice", "user_info", $dataoutput['subscription_url'], "id_invoice", $randomString);
     }
-    if ($marzban_list_get['type'] == "Manualsale" | $marzban_list_get['type'] == "ibsng") {
+    if (in_array(($marzban_list_get['type'] ?? ''), ["Manualsale", "ibsng"], true)) {
         sendmessage($from_id, $textcreatuser, null, 'HTML');
     } else {
-        if (count($dataoutput['configs']) != 1 and $marzban_list_get['config'] == "onconfig") {
+        if (count(is_array($dataoutput['configs'] ?? null) ? $dataoutput['configs'] : []) !== 1
+            && ($marzban_list_get['config'] ?? '') === "onconfig") {
             sendmessage($from_id, $textcreatuser, null, 'HTML');
         } else {
             if ($marzban_list_get['sublink'] == "offsublink") {
                 $output_config_link = $configqr;
             }
-            if ($marzban_list_get['type'] == "WGDashboard") {
-                $urlimage = "{$marzban_list_get['inboundid']}_{$dataoutput['username']}.conf";
-                file_put_contents($urlimage, $output_config_link);
-                telegram('senddocument', [
-                    'chat_id' => $from_id,
-                    'document' => new CURLFile($urlimage),
-                    'caption' => $textcreatuser,
-                    'parse_mode' => "HTML",
-                ]);
-                unlink($urlimage);
+            if (($marzban_list_get['type'] ?? '') === "WGDashboard") {
+                $sent = vpnbotSendTempDocument(
+                    $from_id,
+                    $output_config_link,
+                    (string) ($marzban_list_get['inboundid'] ?? 'wireguard') . '_' . (string) ($dataoutput['username'] ?? 'config') . '.conf',
+                    $textcreatuser
+                );
             } else {
-                $urlimage = "$from_id$randomString.png";
-                $qrCode = createqrcode($output_config_link);
-                file_put_contents($urlimage, $qrCode->getString());
-                addBackgroundImage($urlimage, $qrCode, $Pathfiles . 'images.jpg');
-                telegram('sendphoto', [
-                    'chat_id' => $from_id,
-                    'photo' => new CURLFile($urlimage),
-                    'caption' => $textcreatuser,
-                    'parse_mode' => "HTML",
-                ]);
-                unlink($urlimage);
+                $sent = vpnbotSendQrPhoto(
+                    $from_id,
+                    $output_config_link,
+                    $from_id . $randomString . '.png',
+                    $textcreatuser,
+                    $Pathfiles . 'images.jpg'
+                );
+            }
+
+            if (!$sent) {
+                sendmessage($from_id, $textcreatuser, null, 'HTML');
             }
         }
     }
@@ -1282,7 +1278,7 @@ if ($text == $text_bot_var['btn_keyboard']['buy'] && $setting['active_step_note'
     }
     if (intval($datafactor['price_product']) != 0) {
         $Balance_prim = $user['Balance'] - $datafactor['price_product'];
-        $userbalance = json_decode(file_get_contents("data/$from_id/$from_id.json"), true);
+        $userbalance = vpnbotReadUserData($from_id);
         $userbalance['Balance'] = $Balance_prim;
         file_put_contents("data/$from_id/$from_id.json", json_encode($userbalance));
     }
@@ -1366,7 +1362,7 @@ $textonebuy
     step("getresidcart", $from_id);
     savedata("clear", "id_order", $randomString);
 } elseif ($user['step'] == "getresidcart") {
-    $userdate = json_decode($user['Processing_value'], true);
+    $userdate = bluebotJsonArray($user['Processing_value'] ?? '{}');
     $PaymentReport = select("Payment_report", '*', "id_order", $userdate['id_order'], "select");
     $Confirm_pay = json_encode([
         'inline_keyboard' => [
@@ -1696,7 +1692,7 @@ $output
         step('gettimecustomvolextend', $from_id);
     }
 } elseif ($datain == "customvolumeextend") {
-    $userdate = json_decode($user['Processing_value'], true);
+    $userdate = bluebotJsonArray($user['Processing_value'] ?? '{}');
     $marzban_list_get = select("marzban_panel", "*", "name_panel", $userdate['name_panel'], "select");
     $custompricevalue = $setting['pricevolume'];
     $mainvolume = json_decode($marzban_list_get['mainvolume'], true);
@@ -1710,7 +1706,7 @@ $output
     step('gettimecustomvolextend', $from_id);
 } elseif ($user['step'] == "gettimecustomvolextend") {
     savedata("save", "volume", $text);
-    $userdate = json_decode($user['Processing_value'], true);
+    $userdate = bluebotJsonArray($user['Processing_value'] ?? '{}');
     $stmt = $pdo->prepare("SELECT * FROM invoice WHERE id_invoice = ? AND id_user = ? AND bottype = ?");
     $stmt->execute([$userdate['id_invoice'], $from_id, $ApiToken]);
     $nameloc = $stmt->fetch(PDO::FETCH_ASSOC);
@@ -1745,7 +1741,7 @@ $output
             return;
         }
     }
-    $userdate = json_decode($user['Processing_value'], true);
+    $userdate = bluebotJsonArray($user['Processing_value'] ?? '{}');
     $stmt = $pdo->prepare("SELECT * FROM invoice WHERE id_invoice = ? AND id_user = ? AND bottype = ?");
     $stmt->execute([$userdate['id_invoice'], $from_id, $ApiToken]);
     $nameloc = $stmt->fetch(PDO::FETCH_ASSOC);
@@ -1780,7 +1776,7 @@ $output
         $product = $dataget[1];
         savedata("save", "code_product", $product);
         $product = select("product", "*", "code_product", $product);
-        $productlist = json_decode(file_get_contents('product.json'), true);
+        $productlist = readJsonFileIfExists('product.json');
         if (isset($productlist[$product['code_product']])) {
             $product['price_product'] = $productlist[$product['code_product']];
         }
@@ -1818,7 +1814,7 @@ $output
 } elseif (preg_match('/^confirmserivce-(.*)/', $datain, $dataget)) {
     Editmessagetext($from_id, $message_id, $text_inline, json_encode(['inline_keyboard' => []]));
     $id_invoice = $dataget[1];
-    $userdate = json_decode($user['Processing_value'], true);
+    $userdate = bluebotJsonArray($user['Processing_value'] ?? '{}');
     $stmt = $pdo->prepare("SELECT * FROM invoice WHERE id_invoice = ? AND id_user = ? AND bottype = ?");
     $stmt->execute([$id_invoice, $from_id, $ApiToken]);
     $nameloc = $stmt->fetch(PDO::FETCH_ASSOC);
@@ -1833,7 +1829,7 @@ $output
     if (isset($userdate['code_product'])) {
         $product = $userdate['code_product'];
         $product = select("product", "*", "code_product", $product);
-        $productlist = json_decode(file_get_contents('product.json'), true);
+        $productlist = readJsonFileIfExists('product.json');
         $priceproductmain = $product['price_product'];
         if (isset($productlist[$product['code_product']])) {
             $product['price_product'] = $productlist[$product['code_product']];
@@ -1943,7 +1939,7 @@ $output
     update("invoice", "Status", "active", "id_invoice", $id_invoice);
     if (intval($datafactor['price_product']) != 0) {
         $Balance_prim = $user['Balance'] - $datafactor['price_product'];
-        $userbalance = json_decode(file_get_contents("data/$from_id/$from_id.json"), true);
+        $userbalance = vpnbotReadUserData($from_id);
         $userbalance['Balance'] = $Balance_prim;
         file_put_contents("data/$from_id/$from_id.json", json_encode($userbalance));
     }
