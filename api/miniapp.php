@@ -21,6 +21,18 @@ ini_set('error_log', 'error_log');
 $ManagePanel = new ManagePanel();
 $headers = getallheaders();
 $setting = select("setting", "*");
+$setting = is_array($setting) ? $setting : [];
+$setting += [
+    'Channel_Report' => '',
+    'statusnamecustom' => 'offnamecustom',
+    'statusnoteforf' => '0',
+    'statuscategorygenral' => 'offcategorys',
+    'statuscategory' => 'offcategory',
+    'affiliatespercentage' => 0,
+    'scorestatus' => 0,
+    'numbercount' => 0,
+];
+
 $method = $_SERVER['REQUEST_METHOD'];
 $data = null;
 if ($method == "GET") {
@@ -89,78 +101,132 @@ $porsantreport = topicId('porsantreport');
 $buyreport = topicId('buyreport');
 $action = $data['actions'] ?? '';
 
+function mini_panel_accessible($panel, array $user, bool $allowManualSale = false): bool
+{
+    if (!is_array($panel) || ($panel['status'] ?? '') !== 'active') {
+        return false;
+    }
+
+    $panelAgent = (string) ($panel['agent'] ?? 'all');
+    $userAgent = (string) ($user['agent'] ?? '');
+    if ($panelAgent !== 'all' && $panelAgent !== $userAgent) {
+        return false;
+    }
+
+    return $allowManualSale || ($panel['type'] ?? '') !== 'Manualsale';
+}
+
+function mini_adapter_timestamp($value): ?int
+{
+    if ($value === null || $value === '') {
+        return null;
+    }
+
+    if (is_numeric($value)) {
+        $timestamp = (int) $value;
+        return $timestamp > 0 ? $timestamp : null;
+    }
+
+    try {
+        $date = new DateTime((string) $value, new DateTimeZone('UTC'));
+        return $date->getTimestamp();
+    } catch (Throwable $e) {
+        bluebotLog('warning', 'Mini App received invalid adapter datetime', [
+            'value' => mb_substr((string) $value, 0, 120),
+        ]);
+        return null;
+    }
+}
+
 function mini_invoices(array $data, string $method): void
 {
     global $pdo, $textbotlang, $ManagePanel;
 
     if ($method !== "GET") {
-        echo json_encode([
-            'status' => false,
-            'msg' => "Method invalid; must be GET",
-        ]);
-        return;
+        sendJsonResponse(false, "Method invalid; must be GET", [], 405);
     }
-    $limit = $data['limit'];
-    if ($limit > 10)
-        $limit = 10;
-    $page = $data['page'];
-    $user_id = $data['user_id'];
-    $username = $data['q'];
+
+    $limit = max(1, min(10, (int) ($data['limit'] ?? 10)));
+    $page = max(1, (int) ($data['page'] ?? 1));
+    $userId = (string) ($data['user_id'] ?? '');
+    $searchText = trim((string) ($data['q'] ?? ''));
+    $search = $searchText !== '' ? '%' . $searchText . '%' : null;
     $offset = ($page - 1) * $limit;
-    if ($username != null) {
-        $querywhere = " AND username LIKE :username";
-    } else {
-        $querywhere = "";
-    }
-    $countStmt = $pdo->prepare("SELECT COUNT(*) as total FROM invoice WHERE id_user = :user_id AND (status = 'active' OR status = 'end_of_time'  OR status = 'end_of_volume' OR status = 'sendedwarn' OR Status = 'send_on_hold') $querywhere");
-    $countStmt->bindValue(':user_id', $user_id);
-    if ($username != null) {
-        $username = "%$username%";
-        $countStmt->bindValue(':username', $username, PDO::PARAM_STR);
+    $searchSql = $search !== null ? " AND username LIKE :username" : "";
+
+    $countStmt = $pdo->prepare(
+        "SELECT COUNT(*)
+         FROM invoice
+         WHERE id_user = :user_id
+           AND status IN ('active', 'end_of_time', 'end_of_volume', 'sendedwarn', 'send_on_hold')"
+        . $searchSql
+    );
+    $countStmt->bindValue(':user_id', $userId, PDO::PARAM_STR);
+    if ($search !== null) {
+        $countStmt->bindValue(':username', $search, PDO::PARAM_STR);
     }
     $countStmt->execute();
-    $totalItems = $countStmt->fetchColumn();
-    $totalPages = ceil($totalItems / $limit);
-    $stmt = $pdo->prepare("SELECT username,note,Service_location FROM invoice WHERE id_user = :user_id AND (status = 'active' OR status = 'end_of_time'  OR status = 'end_of_volume' OR status = 'sendedwarn' OR Status = 'send_on_hold') $querywhere  ORDER BY time_sell DESC LIMIT :limit OFFSET :offset ");
-    $stmt->bindValue(':user_id', $user_id, PDO::PARAM_INT);
+
+    $totalItems = (int) $countStmt->fetchColumn();
+    $totalPages = $totalItems > 0 ? (int) ceil($totalItems / $limit) : 0;
+
+    $stmt = $pdo->prepare(
+        "SELECT username, note, Service_location
+         FROM invoice
+         WHERE id_user = :user_id
+           AND status IN ('active', 'end_of_time', 'end_of_volume', 'sendedwarn', 'send_on_hold')"
+        . $searchSql .
+        " ORDER BY time_sell DESC
+          LIMIT :limit OFFSET :offset"
+    );
+    $stmt->bindValue(':user_id', $userId, PDO::PARAM_STR);
     $stmt->bindValue(':limit', $limit, PDO::PARAM_INT);
     $stmt->bindValue(':offset', $offset, PDO::PARAM_INT);
-    if ($username != null) {
-        $username = "%$username%";
-        $stmt->bindValue(':username', $username, PDO::PARAM_STR);
+    if ($search !== null) {
+        $stmt->bindValue(':username', $search, PDO::PARAM_STR);
     }
     $stmt->execute();
+
     $invoices = $stmt->fetchAll(PDO::FETCH_ASSOC);
-    $datauser = [];
-    if (is_array($invoices)) {
-        foreach ($invoices as $invoice) {
-            $DataUserOut = $ManagePanel->DataUser($invoice['Service_location'], $invoice['username']);
-            if ($DataUserOut['status'] == "Unsuccessful") {
-                $expire = $textbotlang['common']['labels']['unknown'];
-            } else {
-                $expire = $DataUserOut['expire'] ? jdate('Y/m/d', $DataUserOut['expire']) : $textbotlang['common']['labels']['unlimited'];
-            }
-            $datauser[] = [
-                'username' => $invoice['username'],
-                'status' => $DataUserOut['status'],
-                'expire' => $expire,
-                'note' => $invoice['note']
-            ];
-        }
+    $items = [];
+
+    foreach (is_array($invoices) ? $invoices : [] as $invoice) {
+        $adapterData = $ManagePanel->DataUser(
+            (string) ($invoice['Service_location'] ?? ''),
+            (string) ($invoice['username'] ?? '')
+        );
+        $adapterData = is_array($adapterData) ? $adapterData : [];
+
+        $status = (string) ($adapterData['status'] ?? 'Unsuccessful');
+        $expireValue = $adapterData['expire'] ?? null;
+        $expire = $status === 'Unsuccessful'
+            ? ($textbotlang['common']['labels']['unknown'] ?? 'Unknown')
+            : (
+                is_numeric($expireValue) && (int) $expireValue > 0
+                    ? jdate('Y/m/d', (int) $expireValue)
+                    : ($textbotlang['common']['labels']['unlimited'] ?? 'Unlimited')
+            );
+
+        $items[] = [
+            'username' => (string) ($invoice['username'] ?? ''),
+            'status' => $status,
+            'expire' => $expire,
+            'note' => (string) ($invoice['note'] ?? ''),
+        ];
     }
+
     echo json_encode([
         'status' => true,
         'msg' => "Successful",
-        'obj' => $datauser,
+        'obj' => $items,
         'meta' => [
             'currentPage' => $page,
             'totalPages' => $totalPages,
             'totalItems' => $totalItems,
-            'limit' => $limit
-        ]
-    ]);
+            'limit' => $limit,
+        ],
+    ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
 }
-
 function mini_service(array $data, string $method): void
 {
     global $pdo, $textbotlang, $ManagePanel;
@@ -232,27 +298,21 @@ function mini_service(array $data, string $method): void
                 'value' => $DataUserOut['password'] ?? ''
             ];
         }
-        if (isset($DataUserOut['sub_updated_at']) && $DataUserOut['sub_updated_at'] !== null) {
-            $sub_updated = $DataUserOut['sub_updated_at'];
-            $dateTime = new DateTime($sub_updated, new DateTimeZone('UTC'));
-            $dateTime->setTimezone(new DateTimeZone('Asia/Tehran'));
-            $lastupdate = jdate('Y/m/d H:i:s', $dateTime->getTimestamp());
-        } else {
-            $lastupdate = null;
-        }
-        if (($DataUserOut['online_at'] ?? null) == "online") {
+        $updatedTimestamp = mini_adapter_timestamp($DataUserOut['sub_updated_at'] ?? null);
+        $lastupdate = $updatedTimestamp !== null
+            ? jdate('Y/m/d H:i:s', $updatedTimestamp)
+            : null;
+
+        $onlineValue = $DataUserOut['online_at'] ?? null;
+        if ($onlineValue === "online") {
             $lastonline = $textbotlang['common']['connection']['online'];
-        } elseif (($DataUserOut['online_at'] ?? null) == "offline") {
+        } elseif ($onlineValue === "offline") {
             $lastonline = $textbotlang['common']['connection']['offline'];
         } else {
-            if (isset($DataUserOut['online_at']) && $DataUserOut['online_at'] !== null) {
-                $dateString = $DataUserOut['online_at'];
-                $date = new DateTime($dateString, new DateTimeZone('UTC'));
-                $date->setTimezone(new DateTimeZone('Asia/Tehran'));
-                $lastonline = jdate('Y/m/d H:i:s', $date->getTimestamp());
-            } else {
-                $lastonline = $textbotlang['common']['connection']['notConnected'];
-            }
+            $onlineTimestamp = mini_adapter_timestamp($onlineValue);
+            $lastonline = $onlineTimestamp !== null
+                ? jdate('Y/m/d H:i:s', $onlineTimestamp)
+                : $textbotlang['common']['connection']['notConnected'];
         }
         $expireTimestamp = isset($DataUserOut['expire']) && is_numeric($DataUserOut['expire']) ? (int) $DataUserOut['expire'] : 0;
         $expirationDate = $expireTimestamp ? jdate('Y/m/d', $expireTimestamp) : $textbotlang['common']['labels']['unlimited'];
@@ -261,7 +321,7 @@ function mini_service(array $data, string $method): void
             'status' => true,
             'msg' => "Successful",
             'obj' => array(
-                'status' => $DataUserOut['status'],
+                'status' => (string) ($DataUserOut['status'] ?? 'unknown'),
                 'username' => $usernameOutput,
                 'product_name' => $invoice['name_product'],
                 'total_traffic_gb' => round($data_limit, 2),
@@ -319,12 +379,17 @@ function mini_user_info(array $data, string $method): void
             ':from_id' => $user_info['id']
         ]);
         $countpayment = (int) $stmt->fetchColumn();
-        $groupuser = [
+        $roles = [
             'f' => $textbotlang['common']['roles']['normal'],
             'n' => $textbotlang['common']['roles']['agent'],
             'n2' => $textbotlang['common']['roles']['advancedAgent'],
-        ][$user_info['agent']];
-        $userjoin = jdate('Y/m/d', $user_info['register']);
+        ];
+        $groupuser = $roles[(string) ($user_info['agent'] ?? '')]
+            ?? $textbotlang['common']['roles']['normal'];
+        $registeredAt = is_numeric($user_info['register'] ?? null)
+            ? (int) $user_info['register']
+            : 0;
+        $userjoin = $registeredAt > 0 ? jdate('Y/m/d', $registeredAt) : null;
         echo json_encode([
             'status' => true,
             'msg' => "Successful",
@@ -366,12 +431,12 @@ function mini_countries(array $data, string $method): void
         $stmt->bindParam(':agent', $user_info['agent']);
         $stmt->execute();
         $panel_list = [];
-        $setting = select("setting", "*", null, null, "select");
-        ;
+        $runtimeSetting = select("setting", "*", null, null, "select");
+        $runtimeSetting = is_array($runtimeSetting) ? $runtimeSetting : $setting;
         $is_note = false;
-        if ($setting['statusnamecustom'] == 'onnamecustom')
+        if (($runtimeSetting['statusnamecustom'] ?? '') === 'onnamecustom')
             $is_note = true;
-        if ($setting['statusnoteforf'] == "0" && $user_info['agent'] == "f")
+        if (($runtimeSetting['statusnoteforf'] ?? '0') === "0" && ($user_info['agent'] ?? '') === "f")
             $is_note = false;
         while ($result = $stmt->fetch(PDO::FETCH_ASSOC)) {
             if (in_array(usernameMethodKey($result['MethodUsername']), ['customUsername', 'customUsernameRandom'], true)) {
@@ -385,9 +450,11 @@ function mini_countries(array $data, string $method): void
             } else {
                 $is_custom = false;
             }
-            $hidden_users = json_decode($result['hide_user'] ?? '', true);
-            if (is_array($hidden_users) && in_array($user_info['id'], $hidden_users))
+            $hidden_users = json_decode((string) ($result['hide_user'] ?? '[]'), true);
+            $hidden_users = is_array($hidden_users) ? array_map('strval', $hidden_users) : [];
+            if (in_array((string) $user_info['id'], $hidden_users, true)) {
                 continue;
+            }
             $panel_list[] = [
                 'id' => $result['code_panel'],
                 'name' => $result['name_panel'],
@@ -423,8 +490,9 @@ function mini_categories(array $data, string $method): void
     }
     $user_info = select("user", "*", "token", $tokencheck, "select");
     if ($user_info) {
-        $setting = select("setting", "*", null, null, "select");
-        if ($setting['statuscategorygenral'] == "offcategorys") {
+        $runtimeSetting = select("setting", "*", null, null, "select");
+        $runtimeSetting = is_array($runtimeSetting) ? $runtimeSetting : $setting;
+        if (($runtimeSetting['statuscategorygenral'] ?? 'offcategorys') === "offcategorys") {
             echo json_encode(array(
                 'status' => true,
                 'msg' => "Successful",
@@ -436,11 +504,12 @@ function mini_categories(array $data, string $method): void
         $stmt->execute();
         $category_list = [];
         $panel = select("marzban_panel", "*", "code_panel", $data['id_panel'], "select");
-        if (empty($panel)) {
-            echo json_encode(array(
+        if (!mini_panel_accessible($panel, $user_info)) {
+            http_response_code(403);
+            echo json_encode([
                 'status' => false,
-                'msg' => "panel not fonud!(invalid id_panel)"
-            ));
+                'msg' => "panel not found or unavailable",
+            ]);
             return;
         }
         while ($result = $stmt->fetch(PDO::FETCH_ASSOC)) {
@@ -483,8 +552,9 @@ function mini_time_ranges(array $data, string $method): void
     }
     $user_info = select("user", "*", "token", $tokencheck, "select");
     if ($user_info) {
-        $setting = select("setting", "*", null, null, "select");
-        if ($setting['statuscategory'] == "offcategory") {
+        $runtimeSetting = select("setting", "*", null, null, "select");
+        $runtimeSetting = is_array($runtimeSetting) ? $runtimeSetting : $setting;
+        if (($runtimeSetting['statuscategory'] ?? 'offcategory') === "offcategory") {
             echo json_encode(array(
                 'status' => true,
                 'msg' => "Successful",
@@ -494,11 +564,12 @@ function mini_time_ranges(array $data, string $method): void
         }
         $category_time_list = [];
         $panel = select("marzban_panel", "*", "code_panel", $data['id_panel'], "select");
-        if (empty($panel)) {
-            echo json_encode(array(
+        if (!mini_panel_accessible($panel, $user_info)) {
+            http_response_code(403);
+            echo json_encode([
                 'status' => false,
-                'msg' => "panel not fonud!(invalid id_panel)"
-            ));
+                'msg' => "panel not found or unavailable",
+            ]);
             return;
         }
         $stmt = $pdo->prepare("SELECT (Service_time) FROM product WHERE (Location = :name_panel OR Location = '/all') AND  agent = :agent");
@@ -633,11 +704,12 @@ function mini_services(array $data, string $method): void
     $user_info = select("user", "*", "token", $tokencheck, "select");
     if ($user_info) {
         $panel = select("marzban_panel", "*", "code_panel", $data['id_panel'], "select");
-        if (empty($panel)) {
-            echo json_encode(array(
+        if (!mini_panel_accessible($panel, $user_info)) {
+            http_response_code(403);
+            echo json_encode([
                 'status' => false,
-                'msg' => "panel not fonud!(invalid id_panel)"
-            ));
+                'msg' => "panel not found or unavailable",
+            ]);
             return;
         }
         $category_remark = null;
@@ -727,11 +799,12 @@ function mini_custom_price(array $data, string $method): void
     $user_info = select("user", "*", "token", $tokencheck, "select");
     if ($user_info) {
         $panel = select("marzban_panel", "*", "code_panel", $data['id_panel'], "select");
-        if (empty($panel)) {
-            echo json_encode(array(
+        if (!mini_panel_accessible($panel, $user_info)) {
+            http_response_code(403);
+            echo json_encode([
                 'status' => false,
-                'msg' => "panel not fonud!(invalid id_panel)"
-            ));
+                'msg' => "panel not found or unavailable",
+            ]);
             return;
         }
         $agentKey = $user_info['agent'];
@@ -786,24 +859,16 @@ function mini_purchase(array $data, string $method): void
         ));
         return;
     }
-    $panel = select("marzban_panel", "*", "code_panel", $data['country_id'] ?? '', "select");
-    if (empty($panel)) {
-        http_response_code(500);
-        echo json_encode(array(
-            'status' => false,
-            'msg' => $textbotlang['users']['sell']['panelMissing']
-        ));
-        return;
-    }
-    if ($panel['status'] == "disable") {
-        http_response_code(500);
-        echo json_encode(array(
-            'status' => false,
-            'msg' => $textbotlang['users']['sell']['panelInactive']
-        ));
-        return;
-    }
     $user_info = $usercheck;
+    $panel = select("marzban_panel", "*", "code_panel", $data['country_id'] ?? '', "select");
+    if (!mini_panel_accessible($panel, $user_info)) {
+        http_response_code(403);
+        echo json_encode([
+            'status' => false,
+            'msg' => $textbotlang['users']['sell']['panelInactive'],
+        ]);
+        return;
+    }
     if (empty($data['custom_service'])) {
         $product = select("product", "*", "code_product", $data['service_id'] ?? '', "select");
         if (!empty($product)) {
@@ -815,7 +880,7 @@ function mini_purchase(array $data, string $method): void
             }
             $blocked = !$allowedLocation
                 || ($product['agent'] ?? null) !== $user_info['agent']
-                || in_array($panel['name_panel'], $hide_panel);
+                || in_array((string) $panel['name_panel'], array_map('strval', $hide_panel), true);
             if (!$blocked && ($product['one_buy_status'] ?? null) == "1") {
                 $stmtOneBuy = $pdo->prepare("SELECT COUNT(*) FROM invoice WHERE Status != 'Unpaid' AND id_user = :uid");
                 $stmtOneBuy->execute([':uid' => $user_info['id']]);
@@ -962,7 +1027,8 @@ function mini_purchase(array $data, string $method): void
         $username_ac = generateUsername($user_info['id'], $panel['MethodUsername'], $user_info['username'], $randomString, $data['custom_username'] ?? null, $panel['namecustom'], $user_info['namecustom']);
         $username_ac = strtolower($username_ac);
         $DataUserOut = $ManagePanel->DataUser($panel['name_panel'], $username_ac);
-        if (isset($DataUserOut['username']) || rowExists("invoice", "username", $username_ac)) {
+        $existingPanelUser = is_array($DataUserOut) && !empty($DataUserOut['username']);
+        if ($existingPanelUser || rowExists("invoice", "username", $username_ac)) {
             $refundOnFailure();
             http_response_code(500);
             echo json_encode(array(
@@ -980,7 +1046,17 @@ function mini_purchase(array $data, string $method): void
         $date = time();
         $custom_note = isset($data['custom_note']) && strlen(strval($data['custom_note'])) > 1 ? $data['custom_note'] : null;
         $stmt->execute([$user_info['id'], $randomString, $username_ac, $date, $panel['name_panel'], $product['name_product'], $price_product, $product['Volume_constraint'], $product['Service_time'], $Status, $custom_note, $user_info['affiliates'], $notifctions]);
-        $datetimestep = strtotime("+" . $product['Service_time'] . "days");
+        if ($stmt->rowCount() !== 1) {
+            $refundOnFailure();
+            http_response_code(409);
+            echo json_encode([
+                'status' => false,
+                'msg' => $textbotlang['users']['sell']['subscriptionError'],
+            ]);
+            return;
+        }
+
+        $datetimestep = strtotime("+" . (int) $product['Service_time'] . "days");
         if ($product['Service_time'] == 0) {
             $datetimestep = 0;
         } else {
@@ -1005,7 +1081,7 @@ function mini_purchase(array $data, string $method): void
 
             $errorDetail = json_encode(is_array($dataoutput) ? ($dataoutput['msg'] ?? null) : null);
             $texterros = sprintf($textbotlang['Admin']['reportgroup']['errorSubscriptionCreateAdmin'], $errorDetail, $user_info['id'], $user_info['username'], $panel['name_panel']);
-            sendReport($texterros, $setting['Channel_Report'], $errorreport);
+            sendReport($texterros, (string) ($setting['Channel_Report'] ?? ''), $errorreport);
             return;
         }
     } catch (Throwable $e) {
@@ -1052,24 +1128,35 @@ function mini_purchase(array $data, string $method): void
         }
     }
     $affiliatescommission = select("affiliates", "*", null, null, "select");
-    $marzbanporsant_one_buy = select("affiliates", "*", null, null, "select");
+    $affiliatescommission = is_array($affiliatescommission) ? $affiliatescommission : [];
+    $marzbanporsant_one_buy = $affiliatescommission;
     $stmt = $pdo->prepare("SELECT COUNT(*) FROM invoice WHERE name_product != :name_product AND id_user = :id_user");
     $stmt->bindParam(':id_user', $user_info['id']);
     $stmt->bindParam(':name_product', $textbotlang['common']['labels']['testServiceName']);
     $stmt->execute();
     $countinvoice = (int) $stmt->fetchColumn();
-    if ($affiliatescommission['status_commission'] == "oncommission" && ($user_info['affiliates'] != null && intval($user_info['affiliates']) != 0)) {
-        if ($marzbanporsant_one_buy['porsant_one_buy'] == "on_buy_porsant") {
+    if (($affiliatescommission['status_commission'] ?? '') === "oncommission"
+        && !empty($user_info['affiliates'])
+        && is_numeric($user_info['affiliates'])) {
+        if (($marzbanporsant_one_buy['porsant_one_buy'] ?? '') === "on_buy_porsant") {
             if ($countinvoice == 1) {
                 $result = ($product['price_product'] * $setting['affiliatespercentage']) / 100;
                 $user_Balance = select("user", "*", "id", $user_info['affiliates'], "select");
-                $Balance_prim = $user_Balance['Balance'] + $result;
-                if (intval($setting['scorestatus']) == 1) {
+                if (!is_array($user_Balance)) {
+                    $user_Balance = null;
+                }
+                if ($user_Balance === null) {
+                    $result = 0;
+                }
+                $Balance_prim = (float) ($user_Balance['Balance'] ?? 0) + $result;
+                if ($user_Balance !== null && intval($setting['scorestatus'] ?? 0) === 1) {
                     sendmessage($user_info['affiliates'], $textbotlang['users']['affiliates']['pointsEarned2'], null, 'html');
                     $scorenew = $user_Balance['score'] + 2;
                     update("user", "score", $scorenew, "id", $user_info['affiliates']);
                 }
-                update("user", "Balance", $Balance_prim, "id", $user_info['affiliates']);
+                if ($user_Balance !== null && $result > 0) {
+                    update("user", "Balance", $Balance_prim, "id", $user_info['affiliates']);
+                }
                 $result = number_format($result);
                 $dateacc = date('Y/m/d H:i:s');
                 $textadd = sprintf($textbotlang['users']['affiliates']['commissionPaidMiniapp'], $result);
@@ -1082,18 +1169,28 @@ function mini_purchase(array $data, string $method): void
                         'parse_mode' => "HTML"
                     ]);
                 }
-                sendmessage($user_info['affiliates'], $textadd, null, 'HTML');
+                if ($user_Balance !== null && $result > 0) {
+                    sendmessage($user_info['affiliates'], $textadd, null, 'HTML');
+                }
             } else {
 
                 $result = ($product['price_product'] * $setting['affiliatespercentage']) / 100;
                 $user_Balance = select("user", "*", "id", $user_info['affiliates'], "select");
-                $Balance_prim = $user_Balance['Balance'] + $result;
-                if (intval($setting['scorestatus']) == 1) {
+                if (!is_array($user_Balance)) {
+                    $user_Balance = null;
+                }
+                if ($user_Balance === null) {
+                    $result = 0;
+                }
+                $Balance_prim = (float) ($user_Balance['Balance'] ?? 0) + $result;
+                if ($user_Balance !== null && intval($setting['scorestatus'] ?? 0) === 1) {
                     sendmessage($user_info['affiliates'], $textbotlang['users']['affiliates']['pointsEarned2b'], null, 'html');
                     $scorenew = $user_Balance['score'] + 2;
                     update("user", "score", $scorenew, "id", $user_info['affiliates']);
                 }
-                update("user", "Balance", $Balance_prim, "id", $user_info['affiliates']);
+                if ($user_Balance !== null && $result > 0) {
+                    update("user", "Balance", $Balance_prim, "id", $user_info['affiliates']);
+                }
                 $result = number_format($result);
                 $dateacc = date('Y/m/d H:i:s');
                 $textadd = sprintf($textbotlang['users']['affiliates']['commissionPaidMiniapp2'], $result);
@@ -1106,7 +1203,9 @@ function mini_purchase(array $data, string $method): void
                         'parse_mode' => "HTML"
                     ]);
                 }
-                sendmessage($user_info['affiliates'], $textadd, null, 'HTML');
+                if ($user_Balance !== null && $result > 0) {
+                    sendmessage($user_info['affiliates'], $textadd, null, 'HTML');
+                }
             }
         }
     }
