@@ -1139,28 +1139,44 @@ class ManagePanel
                 );
             }
         } elseif ($Get_Data_Panel['type'] == "mikrotik") {
-            $UsernameData = GetUsermikrotik($Get_Data_Panel['name_panel'], $username)[0];
-            if (isset($UsernameData['error'])) {
+            $mikrotikUsers = GetUsermikrotik($Get_Data_Panel['name_panel'], $username);
+            $UsernameData = is_array($mikrotikUsers)
+                && isset($mikrotikUsers[0])
+                && is_array($mikrotikUsers[0])
+                ? $mikrotikUsers[0]
+                : ['error' => true, 'msg' => 'user not found'];
+
+            if (!empty($UsernameData['error']) || empty($UsernameData['.id'])) {
                 $Output = array(
                     'status' => 'Unsuccessful',
-                    'msg' => $UsernameData['msg']
+                    'msg' => (string) ($UsernameData['msg'] ?? 'user not found')
                 );
             } else {
                 $invocie = select("invoice", "*", "username", $username, "select");
+                if (!is_array($invocie)) {
+                    return [
+                        'status' => 'Unsuccessful',
+                        'msg' => 'invoice not found',
+                    ];
+                }
+
                 $traffic_get = GetUsermikrotik_volume($Get_Data_Panel['name_panel'], $UsernameData['.id']);
-                $used_traffic = $traffic_get['total-upload'] + $traffic_get['total-download'];
-                $data_limit = $invocie['Volume'] * pow(1024, 3);
-                $expire = $invocie['time_sell'] + ($invocie['Service_time'] * 86400);
+                $traffic_get = is_array($traffic_get) ? $traffic_get : [];
+                $used_traffic = (float) ($traffic_get['total-upload'] ?? 0)
+                    + (float) ($traffic_get['total-download'] ?? 0);
+                $data_limit = ((float) ($invocie['Volume'] ?? 0)) * pow(1024, 3);
+                $expire = (int) ($invocie['time_sell'] ?? 0)
+                    + ((int) ($invocie['Service_time'] ?? 0) * 86400);
                 $UsernameData['enable'] = "active";
                 $Output = array(
                     'status' => $UsernameData['enable'],
-                    'username' => $invocie['username'],
+                    'username' => (string) ($invocie['username'] ?? $username),
                     'data_limit' => $data_limit,
                     'expire' => $expire,
                     'online_at' => null,
                     'used_traffic' => $used_traffic,
                     'links' => [],
-                    'subscription_url' => $UsernameData['password'],
+                    'subscription_url' => (string) ($UsernameData['password'] ?? ''),
                     'sub_updated_at' => null,
                     'sub_last_user_agent' => null,
                 );
@@ -1661,18 +1677,33 @@ class ManagePanel
                 );
             }
         } elseif ($Get_Data_Panel['type'] == "mikrotik") {
-            $UsernameData = GetUsermikrotik($Get_Data_Panel['name_panel'], $username)[0];
-            if (isset($UsernameData['error'])) {
+            $mikrotikUsers = GetUsermikrotik($Get_Data_Panel['name_panel'], $username);
+            $UsernameData = is_array($mikrotikUsers)
+                && isset($mikrotikUsers[0])
+                && is_array($mikrotikUsers[0])
+                ? $mikrotikUsers[0]
+                : ['error' => true, 'msg' => 'user not found'];
+
+            if (!empty($UsernameData['error']) || empty($UsernameData['.id'])) {
                 $Output = array(
                     'status' => 'Unsuccessful',
-                    'msg' => $UsernameData['msg']
+                    'msg' => (string) ($UsernameData['msg'] ?? 'user not found')
                 );
             } else {
-                deleteUser_mikrotik($Get_Data_Panel['name_panel'], $UsernameData['.id']);
-                $Output = array(
-                    'status' => 'successful',
-                    'username' => $username,
-                );
+                $deleted = deleteUser_mikrotik($Get_Data_Panel['name_panel'], $UsernameData['.id']);
+                if ($deleted === false || (is_array($deleted) && !empty($deleted['error']))) {
+                    $Output = [
+                        'status' => 'Unsuccessful',
+                        'msg' => is_array($deleted)
+                            ? (string) ($deleted['msg'] ?? $deleted['error'] ?? 'delete failed')
+                            : 'delete failed',
+                    ];
+                } else {
+                    $Output = array(
+                        'status' => 'successful',
+                        'username' => $username,
+                    );
+                }
             }
         } elseif ($Get_Data_Panel['type'] == "mirza_agent") {
             $UsernameData = remove_service_mirza($Get_Data_Panel, $username);
@@ -1834,30 +1865,45 @@ class ManagePanel
                 'data' => $modify
             );
         } elseif ($Get_Data_Panel['type'] == "alireza_single") {
-            $clients = get_clinetsalireza($username, $name_panel)[0];
-            $configs = array(
-                'id' => intval($Get_Data_Panel['inboundid']),
+            $clientRows = get_clinetsalireza($username, $name_panel);
+            $clients = is_array($clientRows)
+                && isset($clientRows[0])
+                && is_array($clientRows[0])
+                ? $clientRows[0]
+                : null;
+
+            if (!is_array($clients) || empty($clients['id'])) {
+                return [
+                    'status' => false,
+                    'msg' => 'client not found',
+                ];
+            }
+
+            $baseSettings = [
+                'clients' => [[
+                    "id" => (string) $clients['id'],
+                    "flow" => (string) ($clients['flow'] ?? ''),
+                    "email" => (string) ($clients['email'] ?? $username),
+                    "totalGB" => (int) ($clients['totalGB'] ?? 0),
+                    "expiryTime" => (int) ($clients['expiryTime'] ?? 0),
+                    "enable" => true,
+                    "subId" => (string) ($clients['subId'] ?? ''),
+                ]],
+                'decryption' => 'none',
+                'fallbacks' => [],
+            ];
+            $incomingSettings = bluebotJsonArray($config['settings'] ?? '{}');
+
+            $configs = [
+                'id' => (int) ($Get_Data_Panel['inboundid'] ?? 0),
                 'settings' => json_encode(
-                    array(
-                        'clients' => array(
-                            array(
-                                "id" => $clients['id'],
-                                "flow" => $clients['flow'],
-                                "email" => $clients['email'],
-                                "totalGB" => $clients['totalGB'],
-                                "expiryTime" => $clients['expiryTime'],
-                                "enable" => true,
-                                "subId" => $clients['subId'],
-                            )
-                        ),
-                        'decryption' => 'none',
-                        'fallbacks' => array(),
-                    )
+                    array_replace_recursive($baseSettings, $incomingSettings),
+                    JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES
                 ),
-            );
-            $configs['settings'] = json_encode(array_replace_recursive(json_decode($configs['settings'], true), json_decode($config['settings'], true)));
+            ];
+
             $modify = updateClientalireza($Get_Data_Panel['name_panel'], $username, $configs);
-            if (!empty($modify['error'])) {
+            if (!is_array($modify) || !empty($modify['error'])) {
                 return array(
                     'status' => false,
                     'msg' => $modify['error']
