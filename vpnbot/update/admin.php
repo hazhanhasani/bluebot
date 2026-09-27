@@ -713,34 +713,86 @@ if ($text == "📞 تنظیم نام کاربری پشتیبانی") {
     sendmessage($from_id, $textupdate, $Response, 'HTML');
 } elseif ($datain == "update") {
     if (!isShellExecAvailable()) {
-        sendmessage($from_id, "❌ آپدیت روی این سرور امکان‌پذیر نیست.\n\nتابع shell_exec غیرفعال است و فایل‌های نسخه جدید بدون آن کپی نمی‌شوند. برای آپدیت باید ربات روی سروری با دسترسی shell_exec اجرا شود.", null, 'HTML');
+        sendmessage(
+            $from_id,
+            "❌ آپدیت روی این سرور امکان‌پذیر نیست.\n\nتابع shell_exec غیرفعال است و فایل‌های نسخه جدید بدون آن کپی نمی‌شوند.",
+            null,
+            'HTML'
+        );
         return;
     }
 
     $source = dirname(__DIR__) . "/update";
-    $getversionnow = file_get_contents($source . '/version');
-
-    if ($getversionnow == $version) {
-        sendmessage($from_id, "کاربر عزیز نسخه جدیدی منتشر نشده است", null, 'HTML');
+    $versionFile = $source . '/version';
+    if (!is_dir($source) || !is_file($versionFile)) {
+        sendmessage($from_id, "❌ فایل‌های نسخه جدید پیدا نشد. دوباره تلاش کنید.", null, 'HTML');
         return;
     }
 
-    sendmessage($from_id, "✅ ربات شما با موفقیت از نسخه  $version به نسخه $getversionnow آپدیت گردید.", null, 'HTML');
+    $getversionnow = trim((string) file_get_contents($versionFile));
+    $currentVersion = trim((string) $version);
+
+    if ($getversionnow === '' || $getversionnow === $currentVersion) {
+        sendmessage($from_id, "✅ در حال حاضر آخرین نسخه نصب است.", null, 'HTML');
+        return;
+    }
 
     $old_text = null;
     $has_old_text = false;
 
     if (is_file('text.json')) {
-        $old_text = json_decode(file_get_contents('text.json'), true);
-        $has_old_text = true;
+        $decodedOldText = json_decode((string) file_get_contents('text.json'), true);
+        if (is_array($decodedOldText)) {
+            $old_text = $decodedOldText;
+            $has_old_text = true;
+        }
     }
 
     $destination = getcwd();
-    $command = "cp -r $source/* $destination 2>&1";
-    $output = shell_exec($command);
-    if ($has_old_text) {
-        $new_text = json_decode(file_get_contents('text.json'), true);
-        $merged = array_replace_recursive($new_text, $old_text);
-        file_put_contents('text.json', json_encode($merged, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT));
+    if (!is_string($destination) || $destination === '') {
+        sendmessage($from_id, "❌ مسیر نصب ربات قابل تشخیص نیست.", null, 'HTML');
+        return;
     }
+
+    $successMarker = '__BLUEBOT_UPDATE_COPY_OK__';
+    $command = sprintf(
+        'cp -a -- %s %s 2>&1 && printf %s',
+        escapeshellarg(rtrim($source, '/\\') . '/.'),
+        escapeshellarg(rtrim($destination, '/\\') . '/'),
+        escapeshellarg($successMarker)
+    );
+    $output = runShellCommand($command);
+
+    if (!is_string($output) || strpos($output, $successMarker) === false) {
+        error_log('VPNBot update copy failed: ' . trim((string) $output));
+        sendmessage(
+            $from_id,
+            "❌ بروزرسانی کامل نشد. فایل‌های نسخه جدید کپی نشدند؛ لطفاً دوباره تلاش کنید.",
+            null,
+            'HTML'
+        );
+        return;
+    }
+
+    if ($has_old_text && is_file('text.json')) {
+        $new_text = json_decode((string) file_get_contents('text.json'), true);
+        if (is_array($new_text)) {
+            $merged = array_replace_recursive($new_text, $old_text);
+            if (file_put_contents(
+                'text.json',
+                json_encode($merged, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT),
+                LOCK_EX
+            ) === false) {
+                error_log('VPNBot update completed but text.json merge failed.');
+            }
+        }
+    }
+
+    sendmessage(
+        $from_id,
+        "✅ ربات با موفقیت از نسخه <code>" . htmlspecialchars($currentVersion, ENT_QUOTES, 'UTF-8')
+            . "</code> به <code>" . htmlspecialchars($getversionnow, ENT_QUOTES, 'UTF-8') . "</code> بروزرسانی شد.",
+        null,
+        'HTML'
+    );
 }
