@@ -21,75 +21,75 @@ final class BluebotSms
                 'title' => 'تأیید شماره موبایل',
                 'category' => 'احراز هویت',
                 'body' => 'کد تأیید BlueBot: %code%\nاین کد را در اختیار دیگران قرار ندهید.',
-                'vars' => [$v('code', 'numeric', 6)],
+                'vars' => [$v('code', 'number', 6)],
                 'default' => 1,
             ],
             'service_activated' => [
                 'title' => 'فعال‌سازی سرویس',
                 'category' => 'سرویس',
                 'body' => 'سرویس %service% با نام کاربری %username% فعال شد. اعتبار تا %expire_date%',
-                'vars' => [$v('service', 'text', 40), $v('username', 'text', 40), $v('expire_date', 'text', 20)],
+                'vars' => [$v('service', 'string', 40), $v('username', 'string', 40), $v('expire_date', 'string', 20)],
                 'default' => 1,
             ],
             'service_renewed' => [
                 'title' => 'تمدید سرویس',
                 'category' => 'سرویس',
                 'body' => 'سرویس %username% تمدید شد. اعتبار جدید تا %expire_date%',
-                'vars' => [$v('username', 'text', 40), $v('expire_date', 'text', 20)],
+                'vars' => [$v('username', 'string', 40), $v('expire_date', 'string', 20)],
                 'default' => 1,
             ],
             'subscription_reminder' => [
                 'title' => 'یادآوری پایان سرویس',
                 'category' => 'سرویس',
                 'body' => 'تنها %days_left% روز از سرویس %username% باقی مانده است.',
-                'vars' => [$v('days_left', 'numeric', 3), $v('username', 'text', 40)],
+                'vars' => [$v('days_left', 'number', 3), $v('username', 'string', 40)],
                 'default' => 1,
             ],
             'subscription_expired' => [
                 'title' => 'پایان زمان سرویس',
                 'category' => 'سرویس',
                 'body' => 'زمان سرویس %username% به پایان رسید.',
-                'vars' => [$v('username', 'text', 40)],
+                'vars' => [$v('username', 'string', 40)],
                 'default' => 1,
             ],
             'low_remaining_volume' => [
                 'title' => 'هشدار کاهش حجم',
                 'category' => 'سرویس',
                 'body' => 'حجم باقی‌مانده سرویس %username% حدود %remaining_volume% گیگابایت است.',
-                'vars' => [$v('username', 'text', 40), $v('remaining_volume', 'text', 12)],
+                'vars' => [$v('username', 'string', 40), $v('remaining_volume', 'string', 12)],
                 'default' => 1,
             ],
             'volume_expired' => [
                 'title' => 'پایان حجم سرویس',
                 'category' => 'سرویس',
                 'body' => 'حجم سرویس %username% به پایان رسید.',
-                'vars' => [$v('username', 'text', 40)],
+                'vars' => [$v('username', 'string', 40)],
                 'default' => 1,
             ],
             'payment_success' => [
                 'title' => 'پرداخت موفق',
                 'category' => 'پرداخت',
                 'body' => 'پرداخت %amount% تومان با موفقیت انجام شد. شماره سفارش: %order_id%',
-                'vars' => [$v('amount', 'numeric', 12), $v('order_id', 'text', 40)],
+                'vars' => [$v('amount', 'number', 12), $v('order_id', 'string', 40)],
                 'default' => 1,
             ],
             'payment_failed' => [
                 'title' => 'پرداخت ناموفق',
                 'category' => 'پرداخت',
                 'body' => 'پرداخت سفارش %order_id% ناموفق بود.',
-                'vars' => [$v('order_id', 'text', 40)],
+                'vars' => [$v('order_id', 'string', 40)],
             ],
             'wallet_charged' => [
                 'title' => 'شارژ کیف پول',
                 'category' => 'کیف پول',
                 'body' => 'کیف پول شما %amount% تومان شارژ شد. موجودی: %balance% تومان',
-                'vars' => [$v('amount', 'numeric', 12), $v('balance', 'numeric', 12)],
+                'vars' => [$v('amount', 'number', 12), $v('balance', 'number', 12)],
             ],
             'admin_announcement' => [
                 'title' => 'اطلاعیه عمومی',
                 'category' => 'اطلاع‌رسانی',
                 'body' => 'اطلاعیه BlueBot: %message%',
-                'vars' => [$v('message', 'text', 120)],
+                'vars' => [$v('message', 'string', 120)],
                 'broadcast' => 1,
             ],
         ];
@@ -258,7 +258,7 @@ final class BluebotSms
                 throw new RuntimeException('پارامتر ' . $name . ' برای پیام «' . ($spec['title'] ?? '') . '» ارسال نشده است.');
             }
             $value = trim((string) $params[$name]);
-            if (($var['type'] ?? '') === 'numeric') {
+            if (self::normalizeVariableType((string) ($var['type'] ?? 'string')) === 'number') {
                 $value = strtr($value, '۰۱۲۳۴۵۶۷۸۹', '0123456789');
                 $value = preg_replace('/\D+/', '', $value) ?: '';
                 if ($value === '') {
@@ -676,7 +676,7 @@ final class BluebotSms
 
         $patterns = array_values($patterns);
         usort($patterns, static fn(array $a, array $b): int =>
-            strnatcasecmp($a['description'] ?: $a['text'] ?: $a['code'], $b['description'] ?: $b['text'] ?: $b['code'])
+            strnatcasecmp($a['description'] ?: $a['string'] ?: $a['code'], $b['description'] ?: $b['string'] ?: $b['code'])
         );
 
         $cache = [
@@ -784,7 +784,7 @@ final class BluebotSms
             return null;
         }
 
-        $text = trim(strip_tags((string) ($row['text'] ?? $row['pattern'] ?? $row['body'] ?? '')));
+        $text = trim(strip_tags((string) ($row['string'] ?? $row['pattern'] ?? $row['body'] ?? '')));
         $description = trim(strip_tags((string) ($row['description'] ?? $row['title'] ?? '')));
         $vars = [];
         $specs = [];
@@ -797,7 +797,7 @@ final class BluebotSms
 
             foreach ($raw as $itemKey => $item) {
                 $name = '';
-                $type = 'text';
+                $type = 'string';
                 $length = 160;
 
                 if (is_string($item)) {
@@ -805,8 +805,8 @@ final class BluebotSms
                 } elseif (is_array($item)) {
                     $name = (string) ($item['var'] ?? $item['name'] ?? $item['key'] ?? $item['attribute'] ?? (is_string($itemKey) ? $itemKey : ''));
                     $rawType = strtolower((string) ($item['type'] ?? $item['data_type'] ?? $item['variable_type'] ?? ''));
-                    if (in_array($rawType, ['int','integer','number','numeric'], true)) {
-                        $type = 'numeric';
+                    if (in_array($rawType, ['int','integer','number','number'], true)) {
+                        $type = 'number';
                     }
                     foreach (['length','max_length','maxLength','limit'] as $lengthKey) {
                         if (isset($item[$lengthKey]) && is_numeric($item[$lengthKey])) {
@@ -833,7 +833,7 @@ final class BluebotSms
                     $vars[] = $name;
                 }
                 if (!isset($specs[$name])) {
-                    $specs[$name] = ['name' => $name, 'type' => 'text', 'length' => 160];
+                    $specs[$name] = ['name' => $name, 'type' => 'string', 'length' => 160];
                 }
             }
         }
@@ -843,7 +843,7 @@ final class BluebotSms
 
         return [
             'code' => mb_substr($code, 0, 180),
-            'text' => mb_substr($text, 0, 600),
+            'string' => mb_substr($text, 0, 600),
             'description' => mb_substr($description, 0, 250),
             'variables' => $vars,
             'variable_specs' => array_values($specs),
@@ -892,7 +892,7 @@ final class BluebotSms
                 if (!self::patternCompatibleWithSpec($pattern, $spec)) {
                     continue;
                 }
-                $haystack = self::normalizeText(($pattern['description'] ?? '') . ' ' . ($pattern['text'] ?? ''));
+                $haystack = self::normalizeText(($pattern['description'] ?? '') . ' ' . ($pattern['string'] ?? ''));
                 $score = 70;
                 foreach (self::tokens(($spec['title'] ?? '') . ' ' . ($spec['body'] ?? '')) as $token) {
                     if ($token !== '' && str_contains($haystack, $token)) {
@@ -921,19 +921,19 @@ final class BluebotSms
     {
         $expected = [];
         foreach (($spec['vars'] ?? []) as $var) {
-            $expected[(string) ($var['name'] ?? '')] = (string) ($var['type'] ?? 'text');
+            $expected[(string) ($var['name'] ?? '')] = self::normalizeVariableType((string) ($var['type'] ?? 'string'));
         }
         unset($expected['']);
 
         $provided = [];
         foreach ((array) ($pattern['variable_specs'] ?? []) as $var) {
             if (is_array($var) && !empty($var['name'])) {
-                $provided[(string) $var['name']] = (string) ($var['type'] ?? 'text');
+                $provided[(string) $var['name']] = self::normalizeVariableType((string) ($var['type'] ?? 'string'));
             }
         }
         if ($provided === []) {
             foreach ((array) ($pattern['variables'] ?? []) as $name) {
-                $provided[(string) $name] = 'text';
+                $provided[(string) $name] = 'string';
             }
         }
 
@@ -948,7 +948,7 @@ final class BluebotSms
         }
 
         foreach ($expected as $name => $type) {
-            if ($type === 'numeric' && ($provided[$name] ?? 'text') !== 'numeric') {
+            if ($type === 'number' && self::normalizeVariableType((string) ($provided[$name] ?? 'string')) !== 'number') {
                 return false;
             }
         }
@@ -989,6 +989,17 @@ final class BluebotSms
         return $current !== '' && isset($byCode[$current]) && self::patternCompatibleWithSpec($byCode[$current], $spec)
             ? $current
             : '';
+    }
+
+    private static function normalizeVariableType(string $type): string
+    {
+        $type = strtolower(trim($type));
+
+        return in_array(
+            $type,
+            ['number', 'numeric', 'int', 'integer', 'float', 'double', 'decimal'],
+            true
+        ) ? 'number' : 'string';
     }
 
     private static function normalizeText(string $text): string
