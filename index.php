@@ -15,7 +15,7 @@ if (in_array($bluePanelRequestMethod, ['GET', 'HEAD'], true)) {
     header('Cache-Control: public, max-age=300');
     header('X-Content-Type-Options: nosniff');
     header('Referrer-Policy: origin-when-cross-origin');
-    header("Content-Security-Policy: default-src 'none'; style-src 'unsafe-inline'; img-src https://trustseal.enamad.ir; base-uri 'none'; form-action 'none'; frame-ancestors 'none'");
+    header("Content-Security-Policy: default-src 'none'; style-src 'unsafe-inline'; img-src 'self' data: https://trustseal.enamad.ir https://*.enamad.ir https://enamad.ir; base-uri 'none'; form-action 'none'; frame-ancestors 'none'");
 
     if ($bluePanelRequestMethod === 'HEAD') {
         exit;
@@ -26,65 +26,348 @@ if (in_array($bluePanelRequestMethod, ['GET', 'HEAD'], true)) {
 <html lang="fa" dir="rtl">
 <head>
     <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
     <meta name="robots" content="index,follow">
-    <title>بلو پنل | سامانه رسمی خدمات مشتریان</title>
-    <meta name="description" content="صفحه رسمی بلو پنل برای احراز هویت، اطلاع‌رسانی و خدمات مشتریان.">
+    <meta name="theme-color" content="#08192d">
+    <title>بلو پنل | سامانه رسمی خدمات دیجیتال</title>
+    <meta name="description" content="صفحه رسمی بلو پنل برای خدمات دیجیتال، احراز هویت، اطلاع‌رسانی و پرداخت امن کاربران.">
     <style>
-        :root{color-scheme:light dark;font-family:Tahoma,Arial,sans-serif}
+        :root{
+            color-scheme:dark;
+            --bg:#061425;
+            --bg-soft:#091b31;
+            --surface:#0d223c;
+            --surface-2:#102a49;
+            --surface-3:#0a1c32;
+            --line:rgba(148,190,235,.16);
+            --line-strong:rgba(148,190,235,.28);
+            --text:#f4f8fd;
+            --muted:#9cb2ca;
+            --muted-2:#718aa5;
+            --accent:#57a8ff;
+            --accent-soft:rgba(87,168,255,.13);
+            --success:#4ddaa5;
+            --success-soft:rgba(77,218,165,.12);
+            --warn:#ffc96b;
+            --shadow:0 28px 80px rgba(0,0,0,.28);
+            font-family:Tahoma,Arial,sans-serif
+        }
         *{box-sizing:border-box}
-        body{margin:0;min-height:100vh;display:grid;place-items:center;background:#07172a;color:#eef6ff;padding:24px}
-        main{width:min(720px,100%);background:#0d223b;border:1px solid #24496f;border-radius:24px;padding:32px;box-shadow:0 24px 80px rgba(0,0,0,.28)}
-        .brand{font-size:28px;font-weight:800;margin:0 0 8px}
-        .domain{direction:ltr;unicode-bidi:isolate;color:#8ec5ff;font-weight:700}
-        .badge{display:inline-block;margin:14px 0;padding:7px 12px;border-radius:999px;background:#123b35;color:#8cf3c8;font-weight:700}
-        p{line-height:2;margin:10px 0;color:#cedbeb}
-        ul{line-height:2.1;margin:14px 0;padding-right:22px;color:#dce8f5}
-        .trust{margin-top:24px;padding:18px;border:1px solid #24496f;border-radius:18px;background:#0a1d33;display:flex;align-items:center;justify-content:space-between;gap:18px;flex-wrap:wrap}
-        .trust strong{display:block;margin-bottom:6px}
-        .trust span{font-size:14px;color:#9fb4ca;line-height:1.9}
-        .trust a{display:inline-flex;background:#fff;border-radius:14px;padding:10px;line-height:0}
-        .trust img{width:96px;height:auto;display:block}
-        .foot{margin-top:22px;padding-top:18px;border-top:1px solid #24496f;font-size:14px;color:#91a9c2}
+        html{scroll-behavior:smooth}
+        body{
+            margin:0;
+            min-height:100vh;
+            color:var(--text);
+            background:
+                radial-gradient(circle at 85% -5%,rgba(56,128,210,.18),transparent 30%),
+                radial-gradient(circle at 5% 50%,rgba(35,91,148,.10),transparent 28%),
+                var(--bg);
+            padding:0
+        }
+        a{color:inherit}
+        .shell{width:min(1120px,calc(100% - 28px));margin:0 auto;padding:24px 0 42px}
+        .topbar{
+            display:flex;align-items:center;justify-content:space-between;gap:16px;
+            margin-bottom:18px;padding:10px 4px
+        }
+        .brand-lockup{display:flex;align-items:center;gap:12px}
+        .brand-mark{
+            width:46px;height:46px;border-radius:15px;display:grid;place-items:center;
+            font-size:20px;font-weight:900;background:linear-gradient(145deg,#2877cf,#163c73);
+            box-shadow:0 10px 28px rgba(28,94,165,.28);border:1px solid rgba(255,255,255,.08)
+        }
+        .brand-name{font-size:17px;font-weight:900}
+        .brand-domain{direction:ltr;unicode-bidi:isolate;color:var(--muted);font-size:12px;margin-top:4px}
+        .live{
+            display:inline-flex;align-items:center;gap:8px;padding:8px 12px;border-radius:999px;
+            color:#9bf0cf;background:var(--success-soft);border:1px solid rgba(77,218,165,.18);
+            font-size:12px;font-weight:800
+        }
+        .live::before{content:"";width:7px;height:7px;border-radius:50%;background:var(--success);box-shadow:0 0 0 5px rgba(77,218,165,.08)}
+        .hero{
+            position:relative;overflow:hidden;border:1px solid var(--line);border-radius:30px;
+            background:linear-gradient(145deg,rgba(16,42,73,.98),rgba(8,26,48,.98));
+            box-shadow:var(--shadow);padding:34px
+        }
+        .hero::after{
+            content:"";position:absolute;width:280px;height:280px;border-radius:50%;
+            left:-110px;top:-130px;background:rgba(65,142,225,.10);filter:blur(2px)
+        }
+        .hero-grid{position:relative;z-index:1;display:grid;grid-template-columns:minmax(0,1.3fr) minmax(280px,.7fr);gap:28px;align-items:stretch}
+        .eyebrow{color:#8fc4ff;font-size:12px;font-weight:900;letter-spacing:.02em;margin-bottom:10px}
+        h1{font-size:clamp(32px,5vw,54px);line-height:1.25;margin:0 0 14px;letter-spacing:-.035em}
+        .lead{font-size:15px;line-height:2.15;color:#cedbea;max-width:710px;margin:0}
+        .hero-actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:24px}
+        .btn{
+            display:inline-flex;align-items:center;justify-content:center;gap:8px;text-decoration:none;
+            min-height:42px;padding:0 16px;border-radius:13px;font-size:13px;font-weight:800;
+            border:1px solid var(--line-strong);background:#102a49;color:#eef7ff
+        }
+        .btn.primary{background:#236dba;border-color:#347fc9}
+        .btn:hover{filter:brightness(1.08)}
+        .hero-meta{
+            display:grid;gap:10px;align-content:center;background:rgba(4,18,34,.34);
+            border:1px solid var(--line);border-radius:22px;padding:18px
+        }
+        .meta-row{
+            display:flex;align-items:center;justify-content:space-between;gap:16px;
+            padding:13px 0;border-bottom:1px solid var(--line);font-size:13px
+        }
+        .meta-row:last-child{border-bottom:0}
+        .meta-key{color:var(--muted)}
+        .meta-value{font-weight:800;text-align:left}
+        .ltr{direction:ltr;unicode-bidi:isolate}
+        .section{margin-top:22px}
+        .section-head{display:flex;justify-content:space-between;gap:14px;align-items:end;margin:0 4px 12px}
+        .section-head h2{font-size:20px;margin:0}
+        .section-head p{font-size:12px;color:var(--muted);margin:0}
+        .service-grid,.trust-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}
+        .card{
+            border:1px solid var(--line);border-radius:22px;background:rgba(13,34,60,.88);
+            box-shadow:0 16px 50px rgba(0,0,0,.14);padding:20px
+        }
+        .service-icon,.gateway-icon{
+            width:44px;height:44px;border-radius:14px;display:grid;place-items:center;margin-bottom:16px;
+            background:var(--accent-soft);border:1px solid rgba(87,168,255,.14);color:#91c8ff;font-weight:900
+        }
+        .card h3{font-size:15px;margin:0 0 8px}
+        .card p{font-size:12px;line-height:2;color:var(--muted);margin:0}
+        .trust-card{min-height:240px;display:flex;flex-direction:column}
+        .trust-card .status{
+            display:inline-flex;width:max-content;margin-top:12px;padding:6px 9px;border-radius:999px;
+            color:#a8d4ff;background:var(--accent-soft);font-size:11px;font-weight:800
+        }
+        .trust-card .status.enamad{color:#a3efd1;background:var(--success-soft)}
+        .enamad-wrap{
+            margin-top:auto;padding-top:18px;display:flex;align-items:center;justify-content:space-between;
+            gap:14px;flex-wrap:wrap
+        }
+        .enamad-link{
+            display:flex;align-items:center;justify-content:center;min-width:132px;min-height:118px;
+            padding:8px;border-radius:16px;background:#fff;border:1px solid #dfe7ef;
+            text-decoration:none;overflow:hidden
+        }
+        .enamad-link img{
+            display:block!important;width:auto!important;height:auto!important;max-width:116px!important;
+            max-height:104px!important;min-width:70px;object-fit:contain;background:transparent!important;
+            border:0!important;padding:0!important;margin:0!important
+        }
+        .verify-link{font-size:11px;color:#8fc4ff;text-decoration:none;margin-top:8px;display:inline-flex}
+        .gateway-footer{margin-top:auto;padding-top:18px}
+        .gateway-note{
+            display:flex;align-items:center;gap:7px;padding:9px 11px;border-radius:12px;
+            background:rgba(255,255,255,.025);border:1px solid var(--line);color:var(--muted);font-size:11px
+        }
+        .legal{
+            display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:14px
+        }
+        .legal-card{display:flex;gap:14px;align-items:flex-start}
+        .legal-card svg{flex:0 0 auto;color:#84beff}
+        .footer{
+            margin-top:24px;padding:20px 6px 0;border-top:1px solid var(--line);
+            display:flex;align-items:center;justify-content:space-between;gap:14px;color:var(--muted-2);font-size:11px
+        }
+        .footer-links{display:flex;gap:14px;flex-wrap:wrap}
+        .footer-links a{text-decoration:none;color:var(--muted)}
+        @media(max-width:820px){
+            .hero{padding:24px}
+            .hero-grid{grid-template-columns:1fr}
+            .service-grid,.trust-grid{grid-template-columns:1fr}
+            .legal{grid-template-columns:1fr}
+        }
+        @media(max-width:520px){
+            .shell{width:min(100% - 20px,1120px);padding-top:12px}
+            .topbar{align-items:flex-start}
+            .live{font-size:10px;padding:7px 9px}
+            .hero{border-radius:24px;padding:20px}
+            .hero-actions{display:grid}
+            .btn{width:100%}
+            .meta-row{align-items:flex-start}
+            .section-head{display:block}
+            .section-head p{margin-top:6px}
+            .footer{display:block;text-align:center}
+            .footer-links{justify-content:center;margin-top:10px}
+        }
     </style>
 </head>
 <body>
-<main>
-    <h1 class="brand">بلو پنل</h1>
-    <div class="domain">{{HOST}}</div>
-    <div class="badge">سامانه فعال و قابل بررسی است</div>
-
-    <p>
-        این دامنه، سامانه رسمی «بلو پنل» برای ارائه خدمات دیجیتال، احراز هویت و اطلاع‌رسانی به کاربران است.
-    </p>
-
-    <ul>
-        <li>ارسال کد ورود و تأیید شماره موبایل</li>
-        <li>اطلاع‌رسانی وضعیت و تمدید خدمات</li>
-        <li>اعلان‌های پرداخت و کیف پول</li>
-    </ul>
-
-    <p>
-        نشانی رسمی سامانه:
-        <span class="domain">https://{{HOST}}/</span>
-    </p>
-
-    <section class="trust" aria-label="نماد اعتماد الکترونیکی">
-        <div>
-            <strong>نماد اعتماد الکترونیکی</strong>
-            <span>برای مشاهده و بررسی اعتبار نماد، روی نشان مقابل بزنید.</span>
+<div class="shell">
+    <header class="topbar">
+        <div class="brand-lockup">
+            <div class="brand-mark">ب</div>
+            <div>
+                <div class="brand-name">بلو پنل</div>
+                <div class="brand-domain">{{HOST}}</div>
+            </div>
         </div>
-        <a referrerpolicy="origin" target="_blank" rel="noopener noreferrer" href="https://trustseal.enamad.ir/?id=748781&Code=HuvEauyphrDRR17dhwoisDFNoMFMkDC0">
-            <img referrerpolicy="origin" src="https://trustseal.enamad.ir/logo.aspx?id=748781&Code=HuvEauyphrDRR17dhwoisDFNoMFMkDC0" alt="نماد اعتماد الکترونیکی بلو پنل" code="HuvEauyphrDRR17dhwoisDFNoMFMkDC0">
-        </a>
-    </section>
+        <div class="live">سامانه فعال</div>
+    </header>
 
-    <div class="foot">
-        صفحه عمومی بررسی سامانه — بدون نیاز به ورود یا احراز هویت
-    </div>
-</main>
+    <main>
+        <section class="hero">
+            <div class="hero-grid">
+                <div>
+                    <div class="eyebrow">سامانه رسمی خدمات مشتریان</div>
+                    <h1>خدمات دیجیتال، ساده و قابل اعتماد</h1>
+                    <p class="lead">
+                        بلو پنل زیرساخت یکپارچه ارائه خدمات دیجیتال، مدیریت حساب کاربران،
+                        احراز هویت، اطلاع‌رسانی و پرداخت آنلاین است. این صفحه به‌صورت عمومی
+                        و بدون نیاز به ورود برای بررسی هویت سامانه و سرویس‌های متصل در دسترس است.
+                    </p>
+                    <div class="hero-actions">
+                        <a class="btn primary" href="#trust">مجوزها و روش‌های پرداخت</a>
+                        <a class="btn" href="#services">معرفی خدمات</a>
+                    </div>
+                </div>
+
+                <div class="hero-meta">
+                    <div class="meta-row">
+                        <span class="meta-key">نام تجاری</span>
+                        <span class="meta-value">بلو پنل</span>
+                    </div>
+                    <div class="meta-row">
+                        <span class="meta-key">دامنه رسمی</span>
+                        <span class="meta-value ltr">{{HOST}}</span>
+                    </div>
+                    <div class="meta-row">
+                        <span class="meta-key">ارتباط امن</span>
+                        <span class="meta-value">HTTPS</span>
+                    </div>
+                    <div class="meta-row">
+                        <span class="meta-key">دسترسی عمومی</span>
+                        <span class="meta-value">بدون نیاز به ورود</span>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section class="section" id="services">
+            <div class="section-head">
+                <div>
+                    <h2>خدمات سامانه</h2>
+                    <p>کاربردهای اصلی بلو پنل برای کاربران</p>
+                </div>
+            </div>
+            <div class="service-grid">
+                <article class="card">
+                    <div class="service-icon">01</div>
+                    <h3>احراز هویت و حساب کاربری</h3>
+                    <p>تأیید شماره موبایل، ورود امن و مدیریت وضعیت حساب کاربر با فرآیندهای کنترل‌شده.</p>
+                </article>
+                <article class="card">
+                    <div class="service-icon">02</div>
+                    <h3>اطلاع‌رسانی خدمات</h3>
+                    <p>اعلان وضعیت خدمات، تمدید، یادآوری‌های ضروری و پیام‌های مرتبط با حساب کاربری.</p>
+                </article>
+                <article class="card">
+                    <div class="service-icon">03</div>
+                    <h3>پرداخت و کیف پول</h3>
+                    <p>ثبت سفارش، پرداخت آنلاین، ثبت نتیجه تراکنش و مدیریت اعتبار کیف پول کاربران.</p>
+                </article>
+            </div>
+        </section>
+
+        <section class="section" id="trust">
+            <div class="section-head">
+                <div>
+                    <h2>اعتماد، مجوزها و پرداخت</h2>
+                    <p>مسیرهای عمومی برای بررسی هویت و زیرساخت مالی سامانه</p>
+                </div>
+            </div>
+
+            <div class="trust-grid">
+                <article class="card trust-card">
+                    <div class="gateway-icon">✓</div>
+                    <h3>نماد اعتماد الکترونیکی</h3>
+                    <p>استعلام نماد اعتماد از مرجع رسمی مرکز توسعه تجارت الکترونیکی.</p>
+                    <span class="status enamad">استعلام از مرجع رسمی</span>
+
+                    <div class="enamad-wrap">
+                        <a referrerpolicy="origin" target="_blank"
+                           href="https://trustseal.enamad.ir/?id=748781&Code=HuvEauyphrDRR17dhwoisDFNoMFMkDC0"
+                           class="enamad-link" aria-label="استعلام نماد اعتماد الکترونیکی">
+                            <img referrerpolicy="origin"
+                                 src="https://trustseal.enamad.ir/logo.aspx?id=748781&Code=HuvEauyphrDRR17dhwoisDFNoMFMkDC0"
+                                 alt="نماد اعتماد الکترونیکی"
+                                 code="HuvEauyphrDRR17dhwoisDFNoMFMkDC0">
+                        </a>
+                        <div>
+                            <div style="font-size:12px;color:var(--muted);line-height:1.9">
+                                در صورت عدم نمایش تصویر، لینک استعلام همچنان فعال است.
+                            </div>
+                            <a class="verify-link" target="_blank" rel="noopener noreferrer"
+                               href="https://trustseal.enamad.ir/?id=748781&Code=HuvEauyphrDRR17dhwoisDFNoMFMkDC0">
+                                مشاهده صفحه استعلام ←
+                            </a>
+                        </div>
+                    </div>
+                </article>
+
+                <article class="card trust-card">
+                    <div class="gateway-icon">Z</div>
+                    <h3>زرین‌پال</h3>
+                    <p>بلو پنل از اتصال فنی زرین‌پال برای ایجاد درخواست پرداخت و پردازش نتیجه تراکنش پشتیبانی می‌کند.</p>
+                    <span class="status">پشتیبانی فنی در سامانه</span>
+                    <div class="gateway-footer">
+                        <div class="gateway-note">اتصال پرداخت با مسیر Callback مستقل و کنترل وضعیت سفارش</div>
+                    </div>
+                </article>
+
+                <article class="card trust-card">
+                    <div class="gateway-icon">آ</div>
+                    <h3>آقای‌پرداخت</h3>
+                    <p>اتصال فنی آقای‌پرداخت در بلو پنل برای پرداخت آنلاین و تأیید تراکنش از سمت درگاه پیاده‌سازی شده است.</p>
+                    <span class="status">پشتیبانی فنی در سامانه</span>
+                    <div class="gateway-footer">
+                        <div class="gateway-note">اعتبارسنجی تراکنش و ثبت نتیجه پرداخت در سامانه</div>
+                    </div>
+                </article>
+            </div>
+        </section>
+
+        <section class="section">
+            <div class="section-head">
+                <div>
+                    <h2>شفافیت و حریم خصوصی</h2>
+                    <p>اطلاعات عمومی موردنیاز برای بررسی سامانه</p>
+                </div>
+            </div>
+            <div class="legal">
+                <article class="card legal-card">
+                    <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true">
+                        <path d="M12 3 5 6v5c0 4.6 2.8 8.1 7 10 4.2-1.9 7-5.4 7-10V6l-7-3Z"/>
+                        <path d="m9.5 12 1.7 1.7 3.5-3.7"/>
+                    </svg>
+                    <div>
+                        <h3>حفاظت از اطلاعات</h3>
+                        <p>اطلاعات کاربران تنها در چارچوب ارائه خدمات، احراز هویت، پشتیبانی و پردازش تراکنش‌های مرتبط استفاده می‌شود.</p>
+                    </div>
+                </article>
+                <article class="card legal-card">
+                    <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true">
+                        <path d="M7 3h8l4 4v14H7z"/><path d="M15 3v5h5M10 13h6M10 17h6"/>
+                    </svg>
+                    <div>
+                        <h3>شرایط ارائه خدمات</h3>
+                        <p>ثبت سفارش و پرداخت به معنی پذیرش شرایط همان خدمت است. سوابق مالی و وضعیت سفارش برای پیگیری تراکنش نگهداری می‌شوند.</p>
+                    </div>
+                </article>
+            </div>
+        </section>
+    </main>
+
+    <footer class="footer">
+        <div>© بلو پنل — صفحه عمومی و قابل بررسی سامانه</div>
+        <div class="footer-links">
+            <a href="#services">خدمات</a>
+            <a href="#trust">اعتماد و پرداخت</a>
+            <a href="https://{{HOST}}/" class="ltr">https://{{HOST}}/</a>
+        </div>
+    </footer>
+</div>
 </body>
 </html>
+HTML;
 HTML;
     echo str_replace(
         '{{HOST}}',
