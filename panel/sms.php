@@ -444,7 +444,7 @@ include __DIR__ . '/inc/layout_head.php';
     <div class="card-head">
         <div>
             <div class="card-title">رویدادها و پترن‌های پیام</div>
-            <div class="card-subtitle">متن‌های پیشنهادی کوتاه، چندخطی و آماده ثبت در پترن هستند؛ هر رویداد را فعال کن و پترن سازگار را انتخاب کن.</div>
+            <div class="card-subtitle">متن‌ها آماده ثبت در پترن هستند. خط اول <code>BlueVPN | بلو پنل</code> برند اجباری فرستنده است و نباید حذف یا تغییر داده شود.</div>
         </div>
     </div>
     <form method="post">
@@ -464,7 +464,7 @@ include __DIR__ . '/inc/layout_head.php';
                         <td data-label="دسته"><?= htmlspecialchars((string) $template['category']) ?></td>
                         <td data-label="متن پترن" style="min-width:280px">
                             <code class="sms-pattern-copy" style="white-space:pre-wrap;display:block;line-height:1.9"><?= htmlspecialchars((string) ($catalog[$template['event_key']]['body'] ?? $template['body'] ?? '')) ?></code>
-                            <small style="display:block;margin-top:8px;color:var(--mute)">خط‌های بالا باید در پترن دقیقاً با همین شکست خط ثبت شوند.</small>
+                            <small style="display:block;margin-top:8px;color:var(--mute)">متن را دقیقاً با همین شکست خط ثبت کن؛ خط برند <strong>BlueVPN | بلو پنل</strong> برای تأیید پترن الزامی است.</small>
                         </td>
                         <td data-label="متغیرها"><?= $renderVariableSpecs((array) ($catalog[$template['event_key']]['vars'] ?? $vars)) ?></td>
                         <td data-label="پترن">
