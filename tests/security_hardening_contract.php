@@ -77,8 +77,8 @@ foreach ([
     }
 }
 
-if (!preg_match("/\\$dummyHash\s*=\s*'(?<hash>\\$2y\\$12\\$[^']+)'/", $panelLogin, $dummyMatch)
-    || strlen((string) ($dummyMatch['hash'] ?? '')) !== 60) {
+$dummyNeedle = '$dummyHash = \'$2y$12$Wq0LwnFpxb6NMZ4lEZYxmeiGT9QJBFzEZZJtgUg2.JHpVTrLeJ5Na\';';
+if (!str_contains($panelLogin, $dummyNeedle)) {
     $failures[] = 'Panel login dummy bcrypt hash must be a valid cost-12 bcrypt hash.';
 }
 
