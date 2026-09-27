@@ -121,7 +121,7 @@ if (in_array($bluePanelRequestMethod, ['GET', 'HEAD'], true)) {
         .section-head{display:flex;justify-content:space-between;gap:14px;align-items:end;margin:0 4px 12px}
         .section-head h2{font-size:20px;margin:0}
         .section-head p{font-size:12px;color:var(--muted);margin:0}
-        .service-grid,.trust-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}
+        .service-grid,.trust-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:14px}
         .card{
             border:1px solid var(--line);border-radius:22px;background:rgba(13,34,60,.88);
             box-shadow:0 16px 50px rgba(0,0,0,.14);padding:20px
@@ -169,11 +169,17 @@ if (in_array($bluePanelRequestMethod, ['GET', 'HEAD'], true)) {
         }
         .footer-links{display:flex;gap:14px;flex-wrap:wrap}
         .footer-links a{text-decoration:none;color:var(--muted)}
-        @media(max-width:820px){
+        @media(max-width:900px){
             .hero{padding:24px}
             .hero-grid{grid-template-columns:1fr}
-            .service-grid,.trust-grid{grid-template-columns:1fr}
+            .service-grid,.trust-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
             .legal{grid-template-columns:1fr}
+        }
+        @media(max-width:640px){
+            .service-grid,.trust-grid{grid-template-columns:1fr}
+            .trust-card{min-height:auto}
+            .enamad-wrap{align-items:flex-start}
+            .enamad-link{min-width:144px;min-height:128px}
         }
         @media(max-width:520px){
             .shell{width:min(100% - 20px,1120px);padding-top:12px}
@@ -286,10 +292,13 @@ if (in_array($bluePanelRequestMethod, ['GET', 'HEAD'], true)) {
                         <a referrerpolicy="origin" target="_blank"
                            href="https://trustseal.enamad.ir/?id=748781&Code=HuvEauyphrDRR17dhwoisDFNoMFMkDC0"
                            class="enamad-link" aria-label="استعلام نماد اعتماد الکترونیکی">
-                            <img referrerpolicy="origin"
-                                 src="https://trustseal.enamad.ir/logo.aspx?id=748781&Code=HuvEauyphrDRR17dhwoisDFNoMFMkDC0"
+                            <img
+                                 src="/enamad-logo.php"
                                  alt="نماد اعتماد الکترونیکی"
-                                 code="HuvEauyphrDRR17dhwoisDFNoMFMkDC0">
+                                 width="116"
+                                 height="104"
+                                 loading="eager"
+                                 decoding="async">
                         </a>
                         <div>
                             <div style="font-size:12px;color:var(--muted);line-height:1.9">
