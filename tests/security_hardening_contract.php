@@ -13,6 +13,7 @@ $read = static function (string $path) use ($root): string {
 $botapi = $read('botapi.php');
 $functions = $read('function.php');
 $index = $read('index.php');
+$table = $read('table.php');
 $panelConfig = $read('panel/inc/config.php');
 $panelLogin = $read('panel/login.php');
 $vpnDefaultBotapi = $read('vpnbot/Default/botapi.php');
@@ -28,6 +29,7 @@ $checks = [
     [$functions, "'url' => \"https://\$host/index.php\"", 'Main webhook URL must not expose the secret in the query string.'],
     [$functions, 'function webhookHeaderSecretMatches', 'Header-only Telegram webhook verification helper is missing.'],
     [$index, '$telegramHeaderSecretAllowed', 'Main webhook migration must distinguish header authentication.'],
+    [$table, 'bluebotSetMainWebhook($webhookSecret)', 'Database bootstrap must configure the protected webhook helper.'],
     [$functions, 'function resolveInvitationOwnerId', 'Referral payload resolver is missing.'],
     [$functions, 'function isValidInvitationCode($setting, $fromId, $verifyStatus, ?string $inviterId = null): bool', 'Referral verification must require a resolved inviter.'],
     [$index, '$affiliatesid = resolveInvitationOwnerId($affiliatesPayload);', 'Referral payload must be resolved before verification.'],
@@ -54,6 +56,9 @@ foreach ($checks as [$source, $needle, $message]) {
 
 if (str_contains($functions, '"https://$host/index.php?secret=$secret"')) {
     $failures[] = 'Webhook secret must never be embedded in the webhook URL.';
+}
+if (str_contains($table, '?secret=') || str_contains($table, "'secret' =>")) {
+    $failures[] = 'table.php must not embed the webhook secret in callback URLs or query parameters.';
 }
 
 $legacyReferralBypassNeedle = 'isValidInvitationCode($setting, $from_id, $user[\'verify\']);';
