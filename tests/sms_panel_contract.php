@@ -49,7 +49,6 @@ $checks = [
     [$sms, "function requestPhoneOtp", 'FarazSMS phone OTP request flow is missing.'],
     [$sms, "function verifyPhoneOtp", 'FarazSMS phone OTP verification flow is missing.'],
     [$sms, "function sampleParams", 'SMS test sample parameter generator is missing.'],
-    [$sms, "REQUIRED_PATTERN_SIGNATURE", 'Registered site signature guard is missing from pattern compatibility.'],
     [$panel, "مدیریت کامل فراز اس‌ام‌اس / ایران‌پیامک", 'Web SMS management page is missing.'],
     [$panel, "save_templates", 'SMS template management is missing from the panel.'],
     [$panel, "BluebotSms::sampleParams", 'SMS test form must auto-populate event variables.'],
@@ -58,8 +57,8 @@ $checks = [
     [$panel, "refresh_lines", 'Sender-line refresh action is missing from the panel.'],
     [$panel, 'name="otp_active"', 'OTP enable control is missing from the SMS panel.'],
     [$panel, "متن دقیق برای ثبت در فراز SMS", 'FarazSMS pattern registration guidance is missing from the panel.'],
-    [$panel, "bot.bluepanel.ir", 'Mandatory BlueVPN sender branding guidance is missing from the SMS panel.'],
-    [$farazDocs, "bot.bluepanel.ir", 'FarazSMS pattern docs must include explicit BlueVPN sender branding.'],
+    [$panel, "bot.bluepanel.ir", 'Registered IranPayamak system guidance is missing from the SMS panel.'],
+    [$farazDocs, "bot.bluepanel.ir", 'IranPayamak system selection must be documented.'],
     [$panel, "broadcast", 'Broadcast SMS action is missing from the panel.'],
     [$layout, 'href="sms.php"', 'SMS center is not linked from the web panel sidebar.'],
     [$jobs, "['job' => 'sms'", 'SMS cron worker is not scheduled.'],
@@ -90,6 +89,13 @@ foreach ($checks as [$source, $needle, $message]) {
 
 if (str_contains($langFa, "'confirming' => '🔐 <b>تأیید شماره موبایل</b>\\n")) {
     $failures[] = 'Phone verification prompt must not render literal \\n sequences.';
+}
+
+if (str_contains($sms, 'REQUIRED_PATTERN_SIGNATURE')) {
+    $failures[] = 'Approved provider patterns must not require the registered system domain inside pattern text.';
+}
+if (!str_contains($sms, "\$row['system']") || !str_contains($sms, "\$row['domain']")) {
+    $failures[] = 'Provider system/domain metadata must be preserved when present.';
 }
 
 require_once $root . '/src/Support/SmsService.php';
@@ -124,11 +130,8 @@ foreach ($catalog as $eventKey => $eventSpec) {
         }
     }
     $body = (string) ($eventSpec['body'] ?? '');
-    if (!str_starts_with($body, "بلو پنل\n")) {
-        $failures[] = "SMS body must start with Blue Panel branding and a real newline: {$eventKey}";
-    }
-    if (!str_ends_with($body, "\nbot.bluepanel.ir")) {
-        $failures[] = "SMS body must end with the registered site address on its own line: {$eventKey}";
+    if (!str_starts_with($body, "BlueVPN | بلو پنل\n")) {
+        $failures[] = "SMS body must start with the approved BlueVPN / Blue Panel branding and a real newline: {$eventKey}";
     }
     if (str_contains($body, '\\n')) {
         $failures[] = "SMS body contains a literal \\n instead of a real newline: {$eventKey}";
