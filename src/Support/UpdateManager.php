@@ -7,6 +7,33 @@ function bluebotUpdateRepository(): string
     return 'hazhanhasani/bluebot';
 }
 
+function bluebotUpdateNormalizeDisplayVersion(string $version): string
+{
+    $version = ltrim(trim($version), 'vV');
+    if ($version === '') {
+        return '';
+    }
+
+    // Compatibility with older beta builds that wrote beta+<sha>-<version>.
+    if (preg_match('/^beta\+([0-9a-f]{7,40})-(\d+(?:\.\d+){1,3})$/i', $version, $match)) {
+        return $match[2] . '-beta+' . strtolower($match[1]);
+    }
+
+    return $version;
+}
+
+function bluebotUpdateBaseVersion(string $version): string
+{
+    $version = bluebotUpdateNormalizeDisplayVersion($version);
+    $base = preg_replace('/-beta\+[0-9a-f]{7,40}$/i', '', $version) ?? $version;
+
+    if (preg_match('/\d+(?:\.\d+){1,3}/', $base, $match)) {
+        return $match[0];
+    }
+
+    return $base;
+}
+
 
 function bluebotWriteInstalledBuildState(string $channel, string $ref): array
 {
@@ -19,8 +46,7 @@ function bluebotWriteInstalledBuildState(string $channel, string $ref): array
     }
 
     $versionPath = $root . '/version';
-    $base = is_file($versionPath) ? trim((string) file_get_contents($versionPath)) : '';
-    $base = preg_replace('/-beta\+[0-9a-f]{7,40}$/i', '', $base) ?? $base;
+    $base = is_file($versionPath) ? bluebotUpdateBaseVersion((string) file_get_contents($versionPath)) : '';
 
     if ($channel === 'beta' && $ref !== '') {
         $display = ($base !== '' ? $base . '-' : '') . 'beta+' . substr($ref, 0, 7);
@@ -72,14 +98,16 @@ function bluebotInstalledBuildState(): array
 function bluebotUpdateCurrentVersion(): string
 {
     $build = bluebotInstalledBuildState();
-    $display = trim((string) ($build['display_version'] ?? ''));
+    $display = bluebotUpdateNormalizeDisplayVersion((string) ($build['display_version'] ?? ''));
     if ($display !== '') {
         return $display;
     }
 
     $root = dirname(__DIR__, 2);
     $basePath = $root . '/version';
-    return is_file($basePath) ? trim((string) file_get_contents($basePath)) : '';
+    return is_file($basePath)
+        ? bluebotUpdateNormalizeDisplayVersion((string) file_get_contents($basePath))
+        : '';
 }
 
 function bluebotUpdateNormalizeChannel($channel): string
@@ -151,6 +179,135 @@ function bluebotUpdateFetchJson(string $url): ?array
     return is_array($decoded) ? $decoded : null;
 }
 
+function bluebotUpdateFetchText(string $url): ?string
+{
+    $parts = parse_url($url);
+    if (!is_array($parts)
+        || strtolower((string) ($parts['scheme'] ?? '')) !== 'https'
+        || strtolower((string) ($parts['host'] ?? '')) !== 'raw.githubusercontent.com'
+        || !function_exists('curl_init')) {
+        return null;
+    }
+
+    $curl = curl_init($url);
+    if ($curl === false) {
+        return null;
+    }
+
+    curl_setopt_array($curl, [
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_FOLLOWLOCATION => false,
+        CURLOPT_CONNECTTIMEOUT_MS => 3000,
+        CURLOPT_TIMEOUT_MS => 6000,
+        CURLOPT_PROTOCOLS => CURLPROTO_HTTPS,
+        CURLOPT_SSL_VERIFYPEER => true,
+        CURLOPT_SSL_VERIFYHOST => 2,
+        CURLOPT_HTTPHEADER => [
+            'Accept: text/plain',
+            'User-Agent: BlueBot-Updater',
+        ],
+    ]);
+
+    $raw = curl_exec($curl);
+    $status = (int) curl_getinfo($curl, CURLINFO_HTTP_CODE);
+    curl_close($curl);
+
+    if (!is_string($raw) || $raw === '' || $status < 200 || $status >= 300) {
+        return null;
+    }
+
+    return trim($raw);
+}
+
+function bluebotUpdateLatestReleaseFromRedirect(): ?array
+{
+    if (!function_exists('curl_init')) {
+        return null;
+    }
+
+    $repo = bluebotUpdateRepository();
+    $url = "https://github.com/{$repo}/releases/latest";
+    $curl = curl_init($url);
+    if ($curl === false) {
+        return null;
+    }
+
+    curl_setopt_array($curl, [
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_NOBODY => true,
+        CURLOPT_FOLLOWLOCATION => true,
+        CURLOPT_MAXREDIRS => 3,
+        CURLOPT_CONNECTTIMEOUT_MS => 3000,
+        CURLOPT_TIMEOUT_MS => 6000,
+        CURLOPT_PROTOCOLS => CURLPROTO_HTTPS,
+        CURLOPT_REDIR_PROTOCOLS => CURLPROTO_HTTPS,
+        CURLOPT_SSL_VERIFYPEER => true,
+        CURLOPT_SSL_VERIFYHOST => 2,
+        CURLOPT_HTTPHEADER => [
+            'User-Agent: BlueBot-Updater',
+        ],
+    ]);
+
+    curl_exec($curl);
+    $status = (int) curl_getinfo($curl, CURLINFO_HTTP_CODE);
+    $effectiveUrl = (string) curl_getinfo($curl, CURLINFO_EFFECTIVE_URL);
+    curl_close($curl);
+
+    if ($status < 200 || $status >= 400) {
+        return null;
+    }
+
+    $path = (string) (parse_url($effectiveUrl, PHP_URL_PATH) ?? '');
+    if (!preg_match('~/releases/tag/([^/]+)$~', rtrim($path, '/'), $match)) {
+        return null;
+    }
+
+    $tag = rawurldecode($match[1]);
+    $version = ltrim($tag, 'vV');
+    if (!preg_match('/^\d+(?:\.\d+){2,3}$/', $version)) {
+        return null;
+    }
+
+    return [
+        'channel' => 'release',
+        'ref' => $tag,
+        'version' => $version,
+        'label' => $version,
+        'summary' => '',
+        'url' => $effectiveUrl,
+        'published_at' => '',
+        'source' => 'github_release_redirect',
+    ];
+}
+
+function bluebotUpdateLatestReleaseFromRaw(): ?array
+{
+    $repo = bluebotUpdateRepository();
+    $version = bluebotUpdateFetchText("https://raw.githubusercontent.com/{$repo}/main/version");
+    if (!is_string($version) || !preg_match('/^\d+(?:\.\d+){2,3}$/', $version)) {
+        return null;
+    }
+
+    $tag = 'v' . $version;
+    $tagVersion = bluebotUpdateFetchText(
+        "https://raw.githubusercontent.com/{$repo}/" . rawurlencode($tag) . "/version"
+    );
+    if (!is_string($tagVersion) || !hash_equals($version, trim($tagVersion))) {
+        return null;
+    }
+
+    return [
+        'channel' => 'release',
+        'ref' => $tag,
+        'version' => $version,
+        'label' => $version,
+        'summary' => '',
+        'url' => "https://github.com/{$repo}/releases/tag/" . rawurlencode($tag),
+        'published_at' => '',
+        'source' => 'raw_tag_version',
+    ];
+}
+
 function bluebotUpdateLatestRelease(): ?array
 {
     $repo = bluebotUpdateRepository();
@@ -160,32 +317,47 @@ function bluebotUpdateLatestRelease(): ?array
         $tag = (string) $release['tag_name'];
         $name = trim((string) ($release['name'] ?? ''));
         $body = trim((string) ($release['body'] ?? ''));
+        $version = ltrim($tag, 'vV');
+        if (!preg_match('/^\d+(?:\.\d+){2,3}$/', $version)) {
+            return null;
+        }
+
         return [
             'channel' => 'release',
             'ref' => $tag,
-            'version' => ltrim($tag, 'vV'),
-            'label' => $name !== '' ? $name : $tag,
+            'version' => $version,
+            'label' => $version,
             'summary' => $body !== '' ? mb_substr(preg_replace('/\s+/', ' ', $body), 0, 700) : '',
             'url' => (string) ($release['html_url'] ?? "https://github.com/{$repo}/releases"),
             'published_at' => (string) ($release['published_at'] ?? ''),
+            'source' => 'github_releases_api',
         ];
     }
 
     $tags = bluebotUpdateFetchJson("https://api.github.com/repos/{$repo}/tags?per_page=1");
     if (is_array($tags) && isset($tags[0]['name'])) {
         $tag = (string) $tags[0]['name'];
-        return [
-            'channel' => 'release',
-            'ref' => $tag,
-            'version' => ltrim($tag, 'vV'),
-            'label' => $tag,
-            'summary' => '',
-            'url' => "https://github.com/{$repo}/releases/tag/" . rawurlencode($tag),
-            'published_at' => '',
-        ];
+        $version = ltrim($tag, 'vV');
+        if (preg_match('/^\d+(?:\.\d+){2,3}$/', $version)) {
+            return [
+                'channel' => 'release',
+                'ref' => $tag,
+                'version' => $version,
+                'label' => $version,
+                'summary' => '',
+                'url' => "https://github.com/{$repo}/releases/tag/" . rawurlencode($tag),
+                'published_at' => '',
+                'source' => 'github_tags_api',
+            ];
+        }
     }
 
-    return null;
+    $redirectRelease = bluebotUpdateLatestReleaseFromRedirect();
+    if ($redirectRelease !== null) {
+        return $redirectRelease;
+    }
+
+    return bluebotUpdateLatestReleaseFromRaw();
 }
 
 function bluebotUpdateLatestBeta(): ?array
@@ -244,8 +416,8 @@ function bluebotUpdateAvailable(array $target, ?array $settings = null): bool
     $sourceChannel = (string) ($target['channel'] ?? '');
 
     if (!empty($target['version']) && $sourceChannel !== 'beta') {
-        $current = ltrim(bluebotUpdateCurrentVersion(), 'vV');
-        $latest = ltrim((string) $target['version'], 'vV');
+        $current = bluebotUpdateNormalizeDisplayVersion(bluebotUpdateCurrentVersion());
+        $latest = bluebotUpdateNormalizeDisplayVersion((string) $target['version']);
 
         if ($current === '') {
             return true;
@@ -420,17 +592,17 @@ function bluebotUpdateCenterText(?array $settings = null, ?array $target = null)
     $target ??= bluebotUpdateLatest($channel);
     $current = bluebotUpdateCurrentVersion();
 
-    $text = "🔄 <b>مرکز بروزرسانی BlueBot</b>\n\n";
+    $text = "🔄 <b>مرکز بروزرسانی بلو پنل</b>\n\n";
     $text .= "📦 کانال انتخابی: <b>" . bluebotUpdateChannelLabel($channel) . "</b>\n";
     $text .= "🔹 نسخه فعلی: <code>" . htmlspecialchars($current, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . "</code>\n";
 
     if ($target === null) {
-        $text .= "⚠️ دریافت اطلاعات نسخه جدید از GitHub ممکن نشد.\n";
+        $text .= "⚠️ ارتباط با منبع انتشار برقرار نشد. چند لحظه دیگر دوباره بررسی کنید.\n";
     } else {
-        $label = htmlspecialchars((string) ($target['label'] ?? $target['ref'] ?? ''), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+        $label = htmlspecialchars((string) ($target['version'] ?? $target['label'] ?? $target['ref'] ?? ''), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
         $available = bluebotUpdateAvailable($target, $settings);
         $text .= "🆕 آخرین نسخه: <code>{$label}</code>\n";
-        $text .= $available ? "🟢 بروزرسانی جدید آماده است.\n" : "✅ BlueBot بروز است.\n";
+        $text .= $available ? "🟢 بروزرسانی جدید آماده است.\n" : "✅ بلو پنل بروز است.\n";
     }
 
     $queue = bluebotUpdateQueueStatus();
