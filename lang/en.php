@@ -1839,6 +1839,24 @@ Your current merchant code: %s',
                         'askZarinpalMerchant' => '💳 Obtain your merchant code from ZarinPal and enter it in this section
          
 Your current merchant code: %s',
+                        'askZarinpalCallbackDomain' => "🔗 <b>ZarinPal callback domain</b>
+
+Send the domain registered for your ZarinPal terminal and routed to this BlueBot installation.
+
+Current domain: <code>%s</code>
+Final callback: <code>%s</code>
+
+Send only the domain, for example:
+<code>bot.example.com</code>
+
+Send <code>0</code> to use the bot's primary domain.",
+                        'invalidZarinpalCallbackDomain' => "❌ Invalid domain. Send only a domain without a path, e.g. <code>bot.example.com</code>",
+                        'savedZarinpalCallbackDomain' => "✅ ZarinPal callback domain saved.
+
+Domain: <code>%s</code>
+Callback: <code>%s</code>
+
+⚠️ The same domain must be registered for your ZarinPal terminal.",
                         'askVarizaApiToken' => '💳 Enter your Variza API token from Variza panel (Profile → API key)
 
 Current key: <code>%s</code>',
@@ -4183,6 +4201,7 @@ We hope you had a good experience with the ease and speed of your service. If yo
                 'zarinPalGateway' => 'ZarinPal',
                 'varizaGateway' => 'Variza',
                 'zarinPalMerchant' => 'ZarinPal merchant',
+                'zarinPalCallbackDomain' => '🔗 ZarinPal callback domain',
                 'varizaApiToken' => 'Variza API token',
                 'varizaWebhookSecret' => 'Variza webhook secret',
                 'cashbackVariza' => 'Variza cashback',
