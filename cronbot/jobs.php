@@ -64,7 +64,79 @@ function mirza_cron_dispatcher_command(string $seed = ''): string
     return '* * * * * sleep ' . $sleep . '; ' . $php . ' ' . $path . ' >/dev/null 2>&1';
 }
 
+function mirza_cron_http_secret_path(): string
+{
+    return dirname(__DIR__) . '/storage/cron-http.secret';
+}
+
+function mirza_cron_http_secret(bool $create = true): string
+{
+    $path = mirza_cron_http_secret_path();
+
+    if (is_file($path) && is_readable($path)) {
+        $secret = trim((string) @file_get_contents($path));
+        if (preg_match('/^[a-f0-9]{64}$/', $secret)) {
+            return $secret;
+        }
+    }
+
+    if (!$create) {
+        return '';
+    }
+
+    $directory = dirname($path);
+    if (!is_dir($directory) && !@mkdir($directory, 0775, true) && !is_dir($directory)) {
+        return '';
+    }
+
+    try {
+        $secret = bin2hex(random_bytes(32));
+        $tmp = $path . '.tmp.' . bin2hex(random_bytes(6));
+    } catch (Throwable $e) {
+        return '';
+    }
+
+    if (@file_put_contents($tmp, $secret . PHP_EOL, LOCK_EX) === false) {
+        @unlink($tmp);
+        return '';
+    }
+
+    @chmod($tmp, 0640);
+    if (!@rename($tmp, $path)) {
+        @unlink($tmp);
+        return '';
+    }
+    @chmod($path, 0640);
+
+    return $secret;
+}
+
+function mirza_cron_http_authorized(array $server): bool
+{
+    if (PHP_SAPI === 'cli') {
+        return true;
+    }
+
+    $secret = mirza_cron_http_secret(false);
+    $provided = trim((string) ($server['HTTP_X_BLUEBOT_CRON_TOKEN'] ?? ''));
+
+    return $secret !== ''
+        && $provided !== ''
+        && hash_equals($secret, $provided);
+}
+
 function mirza_cron_dispatcher_curl_command(string $baseUrl): string
 {
-    return '* * * * * curl -s ' . rtrim($baseUrl, '/') . '/cronbot/run.php > /dev/null 2>&1';
+    $secret = mirza_cron_http_secret(true);
+    if ($secret === '') {
+        return '';
+    }
+
+    $secretPath = escapeshellarg(mirza_cron_http_secret_path());
+    $url = escapeshellarg(rtrim($baseUrl, '/') . '/cronbot/run.php');
+
+    return '* * * * * token=$(cat ' . $secretPath
+        . ' 2>/dev/null); [ -n "$token" ] && curl -fsS --max-time 55 '
+        . '-H "X-BlueBot-Cron-Token: $token" ' . $url
+        . ' >/dev/null 2>&1';
 }
