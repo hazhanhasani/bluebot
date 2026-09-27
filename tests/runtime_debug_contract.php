@@ -22,6 +22,9 @@ $dailyStatus = $read('cronbot/statusday.php');
 $cronCard = $read('cronbot/croncard.php');
 $cronPlisio = $read('cronbot/plisio.php');
 $cronIranpay = $read('cronbot/iranpay1.php');
+$cronJobs = $read('cronbot/jobs.php');
+$cronRun = $read('cronbot/run.php');
+$storageHtaccess = $read('storage/.htaccess');
 $admin = $read('admin.php');
 $iranpay1 = $read('payment/iranpay1.php');
 $zarinpal = $read('payment/zarinpal.php');
@@ -54,6 +57,10 @@ $mustContain = [
     [$cronCard, 'markPaymentDeliveryError', 'Auto-confirmed payments must preserve delivery failures.'],
     [$cronPlisio, 'markPaymentDeliveryError', 'Plisio cron must preserve delivery failures.'],
     [$cronIranpay, 'markPaymentDeliveryError', 'IranPay cron must preserve delivery failures.'],
+    [$cronJobs, 'function mirza_cron_http_authorized', 'Web cron dispatch must require authentication.'],
+    [$cronJobs, 'X-BlueBot-Cron-Token: $token', 'Generated curl cron command must send the cron token header.'],
+    [$cronRun, "PHP_SAPI !== 'cli' && !mirza_cron_http_authorized", 'Cron dispatcher must reject unauthenticated web calls.'],
+    [$storageHtaccess, '<Files "cron-http.secret">', 'Cron dispatcher secret must be denied from web access.'],
     [$admin, "bluebotAudit('admin.user_transfer'", 'Admin account transfers must be audited.'],
     [$admin, "['sms_otp_challenges', 'user_id']", 'Admin account transfer must move OTP ownership.'],
 ];
