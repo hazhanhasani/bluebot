@@ -37,6 +37,13 @@ $iranpay4Callback = $read('payment/iranpay4.php');
 $zarinpalCallback = $read('payment/zarinpal.php');
 $varizaWebhook = $read('payment/variza_webhook.php');
 $admin = $read('admin.php');
+$botIndex = $read('index.php');
+$vpnDefaultIndex = $read('vpnbot/Default/index.php');
+$vpnUpdateIndex = $read('vpnbot/update/index.php');
+$vpnDefaultKeyboard = $read('vpnbot/Default/keyboard.php');
+$vpnUpdateKeyboard = $read('vpnbot/update/keyboard.php');
+$vpnDefaultFunc = $read('vpnbot/Default/func.php');
+$vpnUpdateFunc = $read('vpnbot/update/func.php');
 $iranpay1 = $read('payment/iranpay1.php');
 $zarinpal = $read('payment/zarinpal.php');
 
@@ -99,6 +106,17 @@ $mustContain = [
     [$apiProduct, '$decodedUserData', 'Product API must validate decoded adapter responses.'],
     [$miniApp, 'selectValue("user", "Balance"', 'Mini App must read balance through the safe scalar helper.'],
     [$wgDashboard, 'function wgDashboardInvoicePublicKey', 'WGDashboard must validate stored peer public keys.'],
+    [$functions, 'function bluebotDownloadTelegramFile', 'Telegram media downloads must use the bounded downloader.'],
+    [$functions, 'getimagesizefromstring($content)', 'QR backgrounds must be validated as images before storage.'],
+    [$functions, "if (!is_array(\$response) || empty(\$response['ok']))", 'Channel membership checks must guard Telegram failures.'],
+    [$admin, 'bluebotDownloadTelegramFile($filePath', 'Admin QR uploads must use the safe Telegram downloader.'],
+    [$botIndex, 'AND refral = :referral', 'Affiliate statistics must use a bound referral parameter.'],
+    [$vpnDefaultKeyboard, '$stmt->execute(is_array($queryParams) ? $queryParams : []);', 'Default VPNBot product keyboard must bind query parameters.'],
+    [$vpnUpdateKeyboard, '$stmt->execute(is_array($queryParams) ? $queryParams : []);', 'Update VPNBot product keyboard must bind query parameters.'],
+    [$vpnDefaultFunc, 'function vpnbotSendTempDocument', 'Default VPNBot must use safe temporary document handling.'],
+    [$vpnUpdateFunc, 'function vpnbotSendQrPhoto', 'Update VPNBot must use safe temporary QR handling.'],
+    [$vpnDefaultIndex, "getStructuredSettingValue(", 'Default VPNBot must guard per-agent structured settings.'],
+    [$vpnUpdateIndex, "getStructuredSettingValue(", 'Update VPNBot must guard per-agent structured settings.'],
 ];
 
 foreach ($mustContain as [$source, $needle, $message]) {
@@ -125,6 +143,21 @@ if (str_contains($usersPage, "onchange=\"document.getElementById('usersForm').su
 
 if (str_contains($notifications, 'shouldRemoveServiceـvolume')) {
     $failures[] = 'Notification cron still contains the legacy non-ASCII method identifier.';
+}
+
+foreach ([
+    'vpnbot/Default/index.php' => $vpnDefaultIndex,
+    'vpnbot/update/index.php' => $vpnUpdateIndex,
+] as $path => $source) {
+    if (preg_match('/SELECT \* FROM product WHERE \(Location = \'\{\$locationproduct/', $source)) {
+        $failures[] = "{$path} still interpolates product location into SQL.";
+    }
+    if (str_contains($source, 'file_put_contents($urlimage')) {
+        $failures[] = "{$path} still writes generated media to request-controlled local paths.";
+    }
+    if (preg_match('/json_decode\(\$marzban_list_get\[[^\]]+\], true\);\s*\$[A-Za-z_]+ = \$[A-Za-z_]+\[\$userbot\[\'agent\'\]\]/s', $source)) {
+        $failures[] = "{$path} still dereferences unvalidated per-agent JSON.";
+    }
 }
 
 if ($failures !== []) {
