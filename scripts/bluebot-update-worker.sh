@@ -45,6 +45,25 @@ if ! [[ "$CHAT_ID" =~ ^-?[0-9]+$ ]]; then
     exit 2
 fi
 
+case "$INSTALLED_CHANNEL" in
+    release)
+        if [ -z "$REF" ] || [[ "$REF" == *[[:space:]]* ]] || [ "${#REF}" -gt 128 ]; then
+            rm -f "$QUEUE_FILE"
+            exit 2
+        fi
+        ;;
+    beta)
+        if ! [[ "$REF" =~ ^[0-9a-fA-F]{40}$ ]]; then
+            rm -f "$QUEUE_FILE"
+            exit 2
+        fi
+        ;;
+    *)
+        rm -f "$QUEUE_FILE"
+        exit 2
+        ;;
+esac
+
 mv -f "$QUEUE_FILE" "$RUNNING_FILE"
 
 write_status() {
@@ -91,7 +110,13 @@ notify "🚀 بروزرسانی BlueBot شروع شد. تا پایان عملی�
 : > "$LOG_FILE"
 export TERM="${TERM:-xterm}"
 
-if /usr/local/bin/bluebot update --channel "$CHANNEL" --background >>"$LOG_FILE" 2>&1; then
+UPDATE_ARGS=(update --background)
+case "$INSTALLED_CHANNEL" in
+    release) UPDATE_ARGS+=(--version "$REF") ;;
+    beta)    UPDATE_ARGS+=(--ref "$REF") ;;
+esac
+
+if /usr/local/bin/bluebot "${UPDATE_ARGS[@]}" >>"$LOG_FILE" 2>&1; then
     if [ -f "$BOT_DIR/scripts/update-state.php" ]; then
         php "$BOT_DIR/scripts/update-state.php" "$INSTALLED_CHANNEL" "$REF" >>"$LOG_FILE" 2>&1 || true
     fi
