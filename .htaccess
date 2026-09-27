@@ -1,5 +1,13 @@
 <IfModule mod_rewrite.c>
     RewriteEngine On
+
+    # Internal application code is never a public HTTP surface.
+    RewriteRule ^(?:db|src|tests|scripts|vendor)(?:/|$) - [F,L,NC]
+
+    # Cron jobs are executed by the authenticated dispatcher. Individual jobs
+    # must never be triggerable directly from the web.
+    RewriteRule ^cronbot/(?!run\.php$).*\.php$ - [F,L,NC]
+
     RewriteCond %{DOCUMENT_ROOT}/install/index.php -f
     RewriteCond %{REQUEST_URI} !^/install/
     RewriteRule ^ - [F,L]
@@ -19,6 +27,8 @@
 </Files>
 <IfModule mod_alias.c>
     RedirectMatch 404 /\.git
+    RedirectMatch 404 ^/(?:db|src|tests|scripts|vendor)(?:/|$)
+    RedirectMatch 404 ^/cronbot/(?!run\.php$).*\.php$
 </IfModule>
 <Files "*.json">
     Require all denied
