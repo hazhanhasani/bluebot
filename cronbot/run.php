@@ -24,6 +24,12 @@ if (!flock($lockFh, LOCK_EX | LOCK_NB)) {
 }
 
 $slotFh = mirza_cron_try_host_slot(3, 2);
+if ($slotFh === null) {
+    flock($lockFh, LOCK_UN);
+    fclose($lockFh);
+    exit(0);
+}
+
 $scorestatus = null;
 $cronStatusFile = dirname($cronbotDir) . '/storage/cron_status.json';
 $cronStatus = json_decode((string) @file_get_contents($cronStatusFile), true) ?: [];
