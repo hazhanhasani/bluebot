@@ -1044,16 +1044,27 @@ class ManagePanel
                         'msg' => $download_config['error']
                     );
                 }
-                $download_config = json_decode($download_config['body'], true)['data'];
+                $downloadPayload = json_decode((string) ($download_config['body'] ?? ''), true);
+                $downloadData = is_array($downloadPayload) && is_array($downloadPayload['data'] ?? null)
+                    ? $downloadPayload['data']
+                    : [];
+                $subscriptionUrl = trim((string) ($downloadData['file'] ?? ''));
+                if ($subscriptionUrl === '') {
+                    return [
+                        'status' => 'Unsuccessful',
+                        'msg' => 'invalid_subscription_response',
+                    ];
+                }
+
                 $Output = array(
                     'status' => $status,
-                    'username' => $UsernameData['name'],
-                    'data_limit' => $jobvolume['Value'] * pow(1024, 3),
+                    'username' => (string) ($UsernameData['name'] ?? $username),
+                    'data_limit' => ((float) ($jobvolume['Value'] ?? 0)) * pow(1024, 3),
                     'expire' => $expire,
                     'online_at' => null,
                     'used_traffic' => $data_useage,
                     'links' => [],
-                    'subscription_url' => strval($download_config['file']),
+                    'subscription_url' => $subscriptionUrl,
                     'sub_updated_at' => null,
                     'sub_last_user_agent' => null,
                 );
