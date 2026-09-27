@@ -914,7 +914,7 @@ list_tags_desc() {
 
 # Choose which source to download.
 # Sets globals: SRC_ZIP_URL, SRC_LABEL
-# Honors flags ARG_CHANNEL (beta|release|auto) and ARG_VERSION (tag) for non-interactive use.
+# Honors flags ARG_CHANNEL (beta|release|auto), ARG_VERSION (tag), and ARG_REF (commit SHA) for non-interactive use.
 # Returns: 0 = chosen, 1 = error, 2 = back to menu
 choose_source() {
     SRC_ZIP_URL=""; SRC_LABEL=""
@@ -922,6 +922,15 @@ choose_source() {
     local tagbase="https://github.com/${GIT_REPO}/archive/refs/tags"
 
     # ── Non-interactive (flags) ──────────────────────────────
+    if [ -n "$ARG_REF" ]; then
+        if ! [[ "$ARG_REF" =~ ^[0-9a-fA-F]{40}$ ]]; then
+            echo -e "    ${C_BAD}●${CR} ${C_BAD}Invalid commit ref '${ARG_REF}'.${CR}"
+            return 1
+        fi
+        SRC_ZIP_URL="https://github.com/${GIT_REPO}/archive/${ARG_REF}.zip"
+        SRC_LABEL="Beta (commit ${ARG_REF:0:7})"
+        return 0
+    fi
     if [ -n "$ARG_VERSION" ]; then
         # Verify the requested tag actually exists (when the list is reachable)
         local _avail; _avail=$(list_tags_desc)
@@ -2480,8 +2489,13 @@ function update_bot() {
     case "$TARGET_LABEL" in
         Beta*)
             TARGET_CHANNEL="beta"
-            TARGET_REF="$(get_main_commit_sha)"
-            [ -n "$TARGET_REF" ] && TARGET_LABEL="Beta (main @ ${TARGET_REF:0:7})"
+            if [ -n "$ARG_REF" ]; then
+                TARGET_REF="$ARG_REF"
+                TARGET_LABEL="Beta (commit ${TARGET_REF:0:7})"
+            else
+                TARGET_REF="$(get_main_commit_sha)"
+                [ -n "$TARGET_REF" ] && TARGET_LABEL="Beta (main @ ${TARGET_REF:0:7})"
+            fi
             ;;
         Release\ *)
             TARGET_CHANNEL="release"
@@ -3021,7 +3035,7 @@ EOF
 # ── Command-line argument parsing ────────────────────────────
 # Globals filled from flags (consumed by install/update where relevant)
 ARG_TOKEN=""    ARG_ADMIN=""   ARG_DOMAIN=""
-ARG_DBUSER=""   ARG_DBPASS=""  ARG_VERSION=""  ARG_CHANNEL=""  ARG_BACKGROUND="0"
+ARG_DBUSER=""   ARG_DBPASS=""  ARG_VERSION=""  ARG_REF=""  ARG_CHANNEL=""  ARG_BACKGROUND="0"
 
 print_usage() {
     cat <<USAGE
@@ -3048,6 +3062,7 @@ print_usage() {
     --db-user <user>   Database username
     --db-pass <pass>   Database password
     --version <tag>    Install/update a specific release tag (e.g. 0.1.7)
+    --ref <sha>        Install/update an exact 40-character Git commit
     --channel <name>   Source channel: beta | release | auto
     -h, --help         Show this help and exit
 
@@ -3056,6 +3071,7 @@ print_usage() {
     bluebot install --token 123:ABC --admin 111 --domain bot.example.com --version 0.1.7
     bluebot update --channel release
     bluebot update --version 0.1.6
+    bluebot update --ref 0123456789abcdef0123456789abcdef01234567
 
 USAGE
 }
@@ -3080,6 +3096,7 @@ process_arguments() {
             --db-user) ARG_DBUSER="$2";  shift 2 ;;
             --db-pass) ARG_DBPASS="$2";  shift 2 ;;
             --version) ARG_VERSION="$2"; shift 2 ;;
+            --ref)     ARG_REF="$2";     shift 2 ;;
             --channel) ARG_CHANNEL="$2"; shift 2 ;;
             --background) ARG_BACKGROUND="1"; shift ;;
             -h|--help) print_usage; exit 0 ;;
