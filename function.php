@@ -2192,12 +2192,110 @@ function bluebotQrBackgroundPath(): string
 
 function bluebotStoreQrBackground(string $content): bool
 {
-    $directory = __DIR__ . '/storage/qr';
-    if (!is_dir($directory) && !@mkdir($directory, 0775, true) && !is_dir($directory)) {
+    if ($content === '' || strlen($content) > 8 * 1024 * 1024) {
         return false;
     }
 
-    return @file_put_contents($directory . '/background.jpg', $content, LOCK_EX) !== false;
+    $info = @getimagesizefromstring($content);
+    if (!is_array($info)
+        || empty($info[0])
+        || empty($info[1])
+        || $info[0] > 4096
+        || $info[1] > 4096) {
+        return false;
+    }
+
+    $image = @imagecreatefromstring($content);
+    if ($image === false) {
+        return false;
+    }
+
+    $directory = __DIR__ . '/storage/qr';
+    if (!is_dir($directory) && !@mkdir($directory, 0700, true) && !is_dir($directory)) {
+        imagedestroy($image);
+        return false;
+    }
+
+    try {
+        $tmp = $directory . '/background.tmp.' . bin2hex(random_bytes(6)) . '.jpg';
+    } catch (Throwable $e) {
+        $tmp = $directory . '/background.tmp.' . str_replace('.', '', uniqid('', true)) . '.jpg';
+    }
+
+    $written = @imagejpeg($image, $tmp, 90);
+    imagedestroy($image);
+
+    if (!$written) {
+        @unlink($tmp);
+        return false;
+    }
+
+    @chmod($tmp, 0640);
+    $target = $directory . '/background.jpg';
+    if (!@rename($tmp, $target)) {
+        @unlink($tmp);
+        return false;
+    }
+
+    @chmod($target, 0640);
+    return true;
+}
+
+function bluebotDownloadTelegramFile(string $filePath, string $botToken, int $maxBytes = 8388608): ?string
+{
+    $filePath = ltrim(trim($filePath), '/');
+    $botToken = trim($botToken);
+    $maxBytes = max(1024, min($maxBytes, 20 * 1024 * 1024));
+
+    if ($filePath === ''
+        || $botToken === ''
+        || str_contains($filePath, '..')
+        || !preg_match('#^[A-Za-z0-9_./-]+$#', $filePath)) {
+        return null;
+    }
+
+    $ch = curl_init('https://api.telegram.org/file/bot' . rawurlencode($botToken) . '/' . $filePath);
+    if ($ch === false) {
+        return null;
+    }
+
+    $body = '';
+    $tooLarge = false;
+
+    curl_setopt_array($ch, [
+        CURLOPT_RETURNTRANSFER => false,
+        CURLOPT_CONNECTTIMEOUT => 5,
+        CURLOPT_TIMEOUT => 20,
+        CURLOPT_FOLLOWLOCATION => false,
+        CURLOPT_PROTOCOLS => CURLPROTO_HTTPS,
+        CURLOPT_SSL_VERIFYPEER => true,
+        CURLOPT_SSL_VERIFYHOST => 2,
+        CURLOPT_WRITEFUNCTION => static function ($handle, string $chunk) use (&$body, &$tooLarge, $maxBytes): int {
+            if (strlen($body) + strlen($chunk) > $maxBytes) {
+                $tooLarge = true;
+                return 0;
+            }
+
+            $body .= $chunk;
+            return strlen($chunk);
+        },
+    ]);
+
+    $ok = curl_exec($ch);
+    $status = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    $error = $ok === false ? curl_error($ch) : '';
+    curl_close($ch);
+
+    if ($tooLarge || $ok === false || $status < 200 || $status >= 300 || $body === '') {
+        bluebotLog('warning', 'Telegram file download failed', [
+            'http_code' => $status,
+            'too_large' => $tooLarge,
+            'error' => $error,
+        ]);
+        return null;
+    }
+
+    return $body;
 }
 
 function addBackgroundImage($urlimage, $qrCodeResult, $backgroundPath)
