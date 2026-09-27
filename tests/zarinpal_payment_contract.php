@@ -20,14 +20,9 @@ zarinpalContractContains(
     $failures
 );
 zarinpalContractContains($helper, "'currency' => 'IRT'", 'ZarinPal checkout must declare IRT currency.', $failures);
-zarinpalContractContains(
-    $helper,
-    <<<'PHP'
-'callback_url' => 'https://' . $domain . '/payment/zarinpal.php'
-PHP,
-    'ZarinPal callback URL is missing.',
-    $failures
-);
+zarinpalContractContains($helper, "function zarinpalCallbackUrl(): ?string", 'ZarinPal callback URL helper is missing.', $failures);
+zarinpalContractContains($helper, "'callback_url' => $callbackUrl", 'ZarinPal checkout must use the resolved callback URL.', $failures);
+zarinpalContractContains($helper, "zarinpal_callback_domain", 'ZarinPal callback domain override is missing.', $failures);
 zarinpalContractContains($helper, "CURLOPT_PROTOCOLS => CURLPROTO_HTTPS", 'ZarinPal client must restrict transport to HTTPS.', $failures);
 zarinpalContractContains($helper, "CURLOPT_SSL_VERIFYPEER => true", 'ZarinPal TLS peer verification must remain enabled.', $failures);
 zarinpalContractContains($helper, "'gateway_message'", 'ZarinPal request failures must retain gateway diagnostics.', $failures);
@@ -49,6 +44,15 @@ zarinpalContractContains($index, '$zarinpalAuthority', 'ZarinPal checkout must v
 zarinpalContractContains($index, 'Unknown ZarinPal error', 'ZarinPal checkout must normalize gateway errors.', $failures);
 zarinpalContractContains($index, "'-14' => 'دامنه Callback", 'ZarinPal checkout must explain callback-domain mismatch.', $failures);
 zarinpalContractContains($index, "errorLinkPaymentDetails", 'ZarinPal checkout must show a safe gateway error code and reason.', $failures);
+
+$admin = (string) @file_get_contents($root . '/admin.php');
+zarinpalContractContains($admin, "zarinpal_callback_domain", 'ZarinPal callback domain must be configurable from administration.', $failures);
+
+$keyboard = (string) @file_get_contents($root . '/keyboard.php');
+zarinpalContractContains($keyboard, "zarinPalCallbackDomain", 'ZarinPal callback domain control is missing from the gateway keyboard.', $failures);
+
+$settings = (string) @file_get_contents($root . '/db/tables/PaySetting.php');
+zarinpalContractContains($settings, "'zarinpal_callback_domain' => '0'", 'ZarinPal callback domain default is missing.', $failures);
 
 if ($failures !== []) {
     fwrite(STDERR, "ZarinPal payment contract failed:\n");
