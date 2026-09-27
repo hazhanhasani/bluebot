@@ -96,7 +96,7 @@ $jsonInput = is_array($jsonInput) ? $jsonInput : [];
 $callback_order_id = trim((string) ($jsonInput['order_id'] ?? ($_REQUEST['order_id'] ?? '')));
 $callback_sig = trim((string) ($jsonInput['sig'] ?? ($_REQUEST['sig'] ?? '')));
 $callback_status = trim((string) ($jsonInput['status'] ?? ($_REQUEST['status'] ?? '')));
-$callback_amount = trim((string) ($jsonInput['amount'] ?? $jsonInput['amount_toman'] ?? ($_REQUEST['amount'] ?? ($_REQUEST['amount_toman'] ?? '')));
+$callback_amount = trim((string) ($jsonInput['amount'] ?? $jsonInput['amount_toman'] ?? ($_REQUEST['amount'] ?? ($_REQUEST['amount_toman'] ?? ''))));
 $isSignedCallback = ($callback_sig !== '' && $callback_order_id !== '');
 
 $authority = trim((string) ($jsonInput['authority'] ?? ($_REQUEST['authority'] ?? '')));
