@@ -2,41 +2,80 @@
 chdir(__DIR__);
 ini_set('error_log', 'error_log');
 date_default_timezone_set('Asia/Tehran');
+
 require_once __DIR__ . '/../config.php';
 require_once __DIR__ . '/../Marzban.php';
 require_once __DIR__ . '/../botapi.php';
 require_once __DIR__ . '/../function.php';
+
 $textbotlang = languagechange();
 
+$errorTopic = select('topicid', 'idreport', 'report', 'errorreport', 'select');
+$errorreport = is_array($errorTopic) ? ($errorTopic['idreport'] ?? null) : null;
 
+$setting = select('setting', '*');
+if (!is_array($setting)) {
+    return;
+}
 
-$errorreport = select("topicid","idreport","report","errorreport","select")['idreport'];
-$setting = select("setting", "*");
-$status_cron = json_decode($setting['cron_status'],true);
-if(!$status_cron['uptime_node'])return;
-$marzbanlist = select("marzban_panel", "*","type" ,"marzban" ,"fetchAll");
-$inbounds = [];
-foreach ($marzbanlist as $location) {
-    $Getdnodes = Get_Nodes($location['name_panel']);
-    if (!empty($Getdnodes['error']))
+$statusCron = json_decode((string) ($setting['cron_status'] ?? ''), true);
+if (!is_array($statusCron) || empty($statusCron['uptime_node'])) {
+    return;
+}
+
+$channelReport = trim((string) ($setting['Channel_Report'] ?? ''));
+if ($channelReport === '') {
+    return;
+}
+
+$marzbanList = select('marzban_panel', '*', 'type', 'marzban', 'fetchAll');
+if (!is_array($marzbanList)) {
+    return;
+}
+
+foreach ($marzbanList as $location) {
+    if (!is_array($location) || empty($location['name_panel'])) {
         continue;
-    if (!empty($Getdnodes['status']) && $Getdnodes['status'] != 200)
+    }
+
+    $response = Get_Nodes($location['name_panel']);
+    if (!is_array($response)
+        || !empty($response['error'])
+        || (!empty($response['status']) && (int) $response['status'] !== 200)) {
         continue;
-    $Getdnodes = json_decode($Getdnodes['body'], true);
-    $Getdnodes = $Getdnodes['nodes'] ?? $Getdnodes;
-    if (empty($Getdnodes))
+    }
+
+    $decoded = json_decode((string) ($response['body'] ?? ''), true);
+    if (!is_array($decoded)) {
         continue;
-    foreach ($Getdnodes as $data) {
-        if (!in_array($data['status'], ["connected", "disabled"])) {
-            $textnode = sprintf($textbotlang['Admin']['report']['nodeDown'], $data['name'], $data['status'], $data['message']);
-        if (strlen($setting['Channel_Report']) > 0) {
-        telegram('sendmessage',[
-        'chat_id' => $setting['Channel_Report'],
-        'message_thread_id' => $errorreport,
-        'text' => $textnode,
-        'parse_mode' => "HTML"
+    }
+
+    $nodes = isset($decoded['nodes']) && is_array($decoded['nodes'])
+        ? $decoded['nodes']
+        : $decoded;
+
+    foreach ($nodes as $node) {
+        if (!is_array($node)) {
+            continue;
+        }
+
+        $status = trim((string) ($node['status'] ?? 'unknown'));
+        if (in_array($status, ['connected', 'disabled'], true)) {
+            continue;
+        }
+
+        $textnode = sprintf(
+            $textbotlang['Admin']['report']['nodeDown'],
+            (string) ($node['name'] ?? 'unknown'),
+            $status,
+            (string) ($node['message'] ?? '')
+        );
+
+        telegram('sendmessage', [
+            'chat_id' => $channelReport,
+            'message_thread_id' => $errorreport,
+            'text' => $textnode,
+            'parse_mode' => 'HTML',
         ]);
     }
-    }
-}
 }
