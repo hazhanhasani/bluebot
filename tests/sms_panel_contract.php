@@ -41,6 +41,8 @@ $checks = [
     [$sms, "function refreshLines", 'Automatic sender-line discovery is missing.'],
     [$sms, "'/lines/accessible'", 'Official accessible-lines endpoint is missing.'],
     [$sms, "function smartAssignPatterns", 'Smart pattern assignment is missing.'],
+    [$sms, "\$type = 'unknown';", 'Provider variables without explicit type metadata must remain unknown.'],
+    [$sms, "['number', 'unknown']", 'Numeric pattern compatibility must tolerate missing provider type metadata.'],
     [$sms, "function queueAndDispatchForUser", 'Foreground durable SMS dispatch is missing.'],
     [$sms, "function processQueue", 'SMS retry queue processor is missing.'],
     [$sms, "function syncServiceStatus", 'Live service reminder integration is missing.'],
@@ -105,11 +107,35 @@ if (BluebotSms::normalizePhone('not-a-phone') !== '') {
 
 $catalog = BluebotSms::catalog();
 foreach ($catalog as $eventKey => $eventSpec) {
+    $body = (string) ($eventSpec['body'] ?? '');
+    if (!str_starts_with($body, "بلو پنل\n")) {
+        $failures[] = "SMS body must start with Blue Panel branding and a real newline: {$eventKey}";
+    }
+    if (str_contains($body, '\\n')) {
+        $failures[] = "SMS body contains a literal \\n instead of a real newline: {$eventKey}";
+    }
+    if (stripos($body, 'BlueBot') !== false) {
+        $failures[] = "Customer-facing SMS body still contains BlueBot branding: {$eventKey}";
+    }
+
+    $declaredVars = [];
     foreach ((array) ($eventSpec['vars'] ?? []) as $variable) {
         $type = (string) ($variable['type'] ?? '');
         if (!in_array($type, ['string', 'number'], true)) {
             $failures[] = "Unsupported SMS variable type in {$eventKey}: {$type}";
         }
+        $name = (string) ($variable['name'] ?? '');
+        if ($name !== '') {
+            $declaredVars[] = $name;
+        }
+    }
+
+    preg_match_all('/%([A-Za-z0-9_-]+)%/', $body, $matches);
+    $bodyVars = array_values(array_unique($matches[1] ?? []));
+    sort($bodyVars, SORT_STRING);
+    sort($declaredVars, SORT_STRING);
+    if ($bodyVars !== $declaredVars) {
+        $failures[] = "SMS placeholders do not match declared variables in {$eventKey}.";
     }
 }
 
