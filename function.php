@@ -621,6 +621,43 @@ function getPaySettingValue($name, $default = null)
 
     return $default;
 }
+
+function getShopSettingValue($name, $default = null)
+{
+    $row = select("shopSetting", "*", "Namevalue", (string) $name, "select");
+    return is_array($row) && array_key_exists('value', $row)
+        ? $row['value']
+        : $default;
+}
+
+function getStructuredSettingValue($raw, $key, $default = null)
+{
+    $decoded = is_array($raw) ? $raw : json_decode((string) $raw, true);
+    if (!is_array($decoded)) {
+        return $default;
+    }
+
+    $key = (string) $key;
+    return array_key_exists($key, $decoded) ? $decoded[$key] : $default;
+}
+
+function getPaySettingAgentValue($name, $agent, $default = null)
+{
+    return getStructuredSettingValue(
+        getPaySettingValue($name, null),
+        (string) $agent,
+        $default
+    );
+}
+
+function getShopSettingAgentValue($name, $agent, $default = null)
+{
+    return getStructuredSettingValue(
+        getShopSettingValue($name, null),
+        (string) $agent,
+        $default
+    );
+}
 function generateUUID()
 {
     $data = random_bytes(16);
