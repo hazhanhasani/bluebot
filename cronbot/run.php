@@ -9,6 +9,11 @@ date_default_timezone_set('Asia/Tehran');
 
 require_once $cronbotDir . '/jobs.php';
 
+if (PHP_SAPI !== 'cli' && !mirza_cron_http_authorized($_SERVER)) {
+    http_response_code(404);
+    exit;
+}
+
 $lockFh = fopen($cronbotDir . '/.run.lock', 'c+');
 if ($lockFh === false) {
     exit(1);
