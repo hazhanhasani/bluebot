@@ -242,30 +242,61 @@ if (floor($TimeLastMessage / 60) >= 1) {
 
 
 if (strpos($text, "/start ") !== false && $user['step'] != "gettextSystemMessage") {
-    $affiliatesid = explode(" ", $text)[1];
-    if (!in_array($affiliatesid, ['start', "usertest", "/start", "buy", "help"])) {
-        isValidInvitationCode($setting, $from_id, $user['verify']);
+    $startParts = preg_split('/\\s+/', trim((string) $text), 2);
+    $affiliatesPayload = trim((string) ($startParts[1] ?? ''));
+
+    if (!in_array($affiliatesPayload, ['start', "usertest", "/start", "buy", "help"], true)) {
+        $affiliatesid = resolveInvitationOwnerId($affiliatesPayload);
+
+        // Verification-by-link is granted only after the referral payload
+        // resolves to a real user. Random /start payloads can no longer bypass
+        // account verification.
+        isValidInvitationCode($setting, $from_id, $user['verify'], $affiliatesid);
+
         if (!check_active_btn($setting['keyboardmain'], "text_affiliates")) {
             sendmessage($from_id, $textbotlang['users']['affiliates']['offaffiliates'], $keyboard, 'HTML');
             return;
         }
-        if (is_numeric($affiliatesid) && rowExists("user", "id", $affiliatesid)) {
-            if ($affiliatesid == $from_id) {
+
+        if ($affiliatesid !== null) {
+            if ((string) $affiliatesid === (string) $from_id) {
                 sendmessage($from_id, $textbotlang['users']['affiliates']['invalidaffiliates'], null, 'html');
                 return;
             }
+
             $user = select("user", "*", "id", $from_id, "select");
             if (intval($user['affiliates']) != 0) {
                 sendmessage($from_id, $textbotlang['users']['affiliates']['affiliateedago'], null, 'html');
                 return;
             }
+
             update("user", "affiliates", $affiliatesid, "id", $from_id);
             $useraffiliates = select("user", "*", 'id', $affiliatesid, "select");
-            sendmessage($from_id, sprintf($textbotlang['users']['affiliates']['welcomeInvited'], $useraffiliates['username']), $keyboard, 'html');
-            sendmessage($affiliatesid, sprintf($textbotlang['users']['affiliates']['newReferralJoined'], $username), $keyboard, 'html');
+            if (!is_array($useraffiliates)) {
+                sendmessage($from_id, $textbotlang['users']['text_start'], $keyboard, 'html');
+                step('home', $from_id);
+                return;
+            }
+
+            sendmessage(
+                $from_id,
+                sprintf($textbotlang['users']['affiliates']['welcomeInvited'], $useraffiliates['username']),
+                $keyboard,
+                'html'
+            );
+            sendmessage(
+                $affiliatesid,
+                sprintf($textbotlang['users']['affiliates']['newReferralJoined'], $username),
+                $keyboard,
+                'html'
+            );
+
             $addcountaffiliates = intval($useraffiliates['affiliatescount']) + 1;
             update("user", "affiliatescount", $addcountaffiliates, "id", $affiliatesid);
-            $stmt = $pdo->prepare("INSERT IGNORE INTO reagent_report (user_id, get_gift,time,reagent) VALUES (?, ?,?, ?)");
+
+            $stmt = $pdo->prepare(
+                "INSERT IGNORE INTO reagent_report (user_id, get_gift,time,reagent) VALUES (?, ?,?, ?)"
+            );
             $dateacc = date('Y/m/d H:i:s');
             $type_gift = false;
             $stmt->execute([$from_id, $type_gift, $dateacc, $affiliatesid]);
@@ -279,7 +310,7 @@ if (strpos($text, "/start ") !== false && $user['step'] != "gettextSystemMessage
         }
         return;
     } else {
-        $text = $affiliatesid;
+        $text = $affiliatesPayload;
     }
 }
 $manualVerificationRequired = intval($user['verify']) === 0
