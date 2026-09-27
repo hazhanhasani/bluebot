@@ -440,29 +440,48 @@ function Modifyuser($location, $username, array $data)
 
 function Modifyuser_node($location, $id_node, array $data)
 {
-    $marzban_list_get = select("marzban_panel", "*", "name_panel", $location, "select");
-    $Check_token = token_panel($marzban_list_get['code_panel']);
-    $url = $marzban_list_get['url_panel'] . '/api/node/' . $id_node;
-    $currentNode = json_decode(Get_Node($location, $id_node)['body'] ?? '', true);
-    if (isset($currentNode['api_port'])) {
+    $panel = select("marzban_panel", "*", "name_panel", $location, "select");
+    if (!is_array($panel) || empty($panel['code_panel']) || empty($panel['url_panel'])) {
+        return ['error' => 'panel_not_found'];
+    }
+
+    $token = token_panel($panel['code_panel']);
+    if (!is_array($token) || !empty($token['error']) || empty($token['access_token'])) {
+        return is_array($token) ? $token : ['error' => 'panel_auth_failed'];
+    }
+
+    $nodeResponse = Get_Node($location, $id_node);
+    $currentNode = is_array($nodeResponse)
+        ? json_decode((string) ($nodeResponse['body'] ?? ''), true)
+        : null;
+    if (is_array($currentNode) && isset($currentNode['api_port'])) {
         $data += ['api_port' => $currentNode['api_port']];
     }
-    $payload = json_encode($data);
-    $ch = curl_init();
-    curl_setopt($ch, CURLOPT_URL, $url);
-    curl_setopt($ch, CURLOPT_RETURNTRANSFER, 1);
-    curl_setopt($ch, CURLOPT_CUSTOMREQUEST, 'PUT');
-    curl_setopt($ch, CURLOPT_POSTFIELDS, $payload);
-    $headers = array();
-    $headers[] = 'Accept: application/json';
-    $headers[] = 'Authorization: Bearer ' . $Check_token['access_token'];
-    $headers[] = 'Content-Type: application/json';
-    curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
 
-    $result = curl_exec($ch);
-    curl_close($ch);
-    $data_useer = json_decode($result, true);
-    return $data_useer;
+    $payload = json_encode($data, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+    if ($payload === false) {
+        return ['error' => 'invalid_node_payload'];
+    }
+
+    $url = rtrim((string) $panel['url_panel'], '/') . '/api/node/' . rawurlencode((string) $id_node);
+    $request = new CurlRequest($url);
+    $request->setHeaders([
+        'Accept: application/json',
+        'Content-Type: application/json',
+    ]);
+    $request->setBearerToken((string) $token['access_token']);
+
+    $response = $request->put($payload);
+    if (!is_array($response)) {
+        return ['error' => 'invalid_panel_response'];
+    }
+
+    if (!empty($response['error'])) {
+        return $response;
+    }
+
+    $decoded = json_decode((string) ($response['body'] ?? ''), true);
+    return is_array($decoded) ? $decoded : $response;
 }
 //----------------------------------
 function reconnect_node($location, $id_node)
