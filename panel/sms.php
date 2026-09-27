@@ -251,8 +251,9 @@ $renderVariableSpecs = static function (array $vars) use ($normalizeVariableType
             continue;
         }
 
-        $type = $normalizeVariableType((string) ($var['type'] ?? 'string'));
-        $typeLabel = $type === 'number' ? 'عدد' : 'رشته';
+        $rawType = strtolower(trim((string) ($var['type'] ?? 'unknown')));
+        $type = $rawType === '' || $rawType === 'unknown' ? 'unknown' : $normalizeVariableType($rawType);
+        $typeLabel = $type === 'number' ? 'عدد' : ($type === 'string' ? 'متن' : 'نامشخص');
         $length = max(1, min(500, (int) ($var['length'] ?? 160)));
 
         $items[] = '<div class="sms-var-chip">'
@@ -341,7 +342,7 @@ include __DIR__ . '/inc/layout_head.php';
                     <label>خط ارسال خودکار</label>
                     <input class="input" dir="ltr" value="<?= htmlspecialchars((string) ($lineCache['selected'] ?? $settings['from_number'] ?? 'در انتظار Sync')) ?>" disabled>
                     <small style="color:var(--mute)">
-                        BlueBot از <code>/lines/accessible</code> خطوط مجاز همین API Key را می‌خواند و خط مناسب را خودکار انتخاب می‌کند.
+                        بلو پنل از <code>/lines/accessible</code> خطوط مجاز همین API Key را می‌خواند و خط مناسب را خودکار انتخاب می‌کند.
                     </small>
                 </div>
                 <div class="field">
@@ -395,7 +396,7 @@ include __DIR__ . '/inc/layout_head.php';
     <div class="card-head">
         <div>
             <div class="card-title">پترن‌های فراز اس‌ام‌اس / ایران‌پیامک</div>
-            <div class="card-subtitle">پترن‌های فعال مستقیماً از API حساب خوانده می‌شوند و BlueBot می‌تواند موارد سازگار را هوشمند جایگذاری کند.</div>
+            <div class="card-subtitle">پترن‌های فعال مستقیماً از API حساب خوانده می‌شوند و بلو پنل موارد سازگار را هوشمند جایگذاری می‌کند.</div>
         </div>
         <div style="display:flex;gap:8px;flex-wrap:wrap">
             <form method="post">
@@ -443,7 +444,7 @@ include __DIR__ . '/inc/layout_head.php';
     <div class="card-head">
         <div>
             <div class="card-title">رویدادها و پترن‌های پیام</div>
-            <div class="card-subtitle">هر پیام را روشن/خاموش کن و پترن Provider را از پنل انتخاب کن.</div>
+            <div class="card-subtitle">متن‌های پیشنهادی کوتاه، چندخطی و آماده ثبت در پترن هستند؛ هر رویداد را فعال کن و پترن سازگار را انتخاب کن.</div>
         </div>
     </div>
     <form method="post">
@@ -461,7 +462,10 @@ include __DIR__ . '/inc/layout_head.php';
                         <td data-label="فعال"><input type="checkbox" name="enabled[<?= htmlspecialchars((string) $template['event_key']) ?>]" value="1" <?= !empty($template['enabled']) ? 'checked' : '' ?>></td>
                         <td data-label="رویداد"><strong><?= htmlspecialchars((string) $template['title']) ?></strong><br><small class="cf cm"><?= htmlspecialchars((string) $template['event_key']) ?></small></td>
                         <td data-label="دسته"><?= htmlspecialchars((string) $template['category']) ?></td>
-                        <td data-label="متن پترن" style="min-width:280px"><code style="white-space:pre-wrap"><?= htmlspecialchars((string) ($catalog[$template['event_key']]['body'] ?? $template['body'] ?? '')) ?></code></td>
+                        <td data-label="متن پترن" style="min-width:280px">
+                            <code class="sms-pattern-copy" style="white-space:pre-wrap;display:block;line-height:1.9"><?= htmlspecialchars((string) ($catalog[$template['event_key']]['body'] ?? $template['body'] ?? '')) ?></code>
+                            <small style="display:block;margin-top:8px;color:var(--mute)">خط‌های بالا باید در پترن دقیقاً با همین شکست خط ثبت شوند.</small>
+                        </td>
                         <td data-label="متغیرها"><?= $renderVariableSpecs((array) ($catalog[$template['event_key']]['vars'] ?? $vars)) ?></td>
                         <td data-label="پترن">
                             <select class="select" name="pattern[<?= htmlspecialchars((string) $template['event_key']) ?>]" style="min-width:260px">
