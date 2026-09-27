@@ -62,7 +62,7 @@ $checks = [
     [$panel, "refresh_lines", 'Sender-line refresh action is missing from the panel.'],
     [$panel, 'name="otp_active"', 'OTP enable control is missing from the SMS panel.'],
     [$panel, "متن دقیق برای ثبت در فراز SMS", 'FarazSMS pattern registration guidance is missing from the panel.'],
-    [$panel, "bot.bluepanel.ir", 'Registered IranPayamak system guidance is missing from the SMS panel.'],
+    [$panel, "bot.blluepanel.ir", 'Registered IranPayamak system guidance is missing from the SMS panel.'],
     [$farazDocs, "bot.blluepanel.ir", 'IranPayamak system selection must be documented.'],
     [$panel, "broadcast", 'Broadcast SMS action is missing from the panel.'],
     [$layout, 'href="sms.php"', 'SMS center is not linked from the web panel sidebar.'],
