@@ -12,21 +12,21 @@ BlueBot discovers accessible sender lines automatically, walks all pattern pages
 
 ## Pattern texts to create in FarazSMS
 
-Create the following patterns in FarazSMS. Variable names are case-sensitive and must match exactly.
+Create the following patterns in FarazSMS. Variable names are case-sensitive and must match exactly. Preserve the shown line breaks as real new lines; do not type the two characters `\\n`.
 
 | Event | Suggested category | Exact pattern text | Variables |
 | --- | --- | --- | --- |
-| `phone_verification` | OTP | `کد تأیید BlueBot: %code%\nاین کد را در اختیار دیگران قرار ندهید.` | `code`: number, max 6 |
-| `service_activated` | Others | `سرویس %service% با نام کاربری %username% فعال شد. اعتبار تا %expire_date%` | `service`: string, max 40; `username`: string, max 40; `expire_date`: string, max 20 |
-| `service_renewed` | Others | `سرویس %username% تمدید شد. اعتبار جدید تا %expire_date%` | `username`: string, max 40; `expire_date`: string, max 20 |
-| `subscription_reminder` | Others | `تنها %days_left% روز از سرویس %username% باقی مانده است.` | `days_left`: number, max 3; `username`: string, max 40 |
-| `subscription_expired` | Others | `زمان سرویس %username% به پایان رسید.` | `username`: string, max 40 |
-| `low_remaining_volume` | Others | `حجم باقی‌مانده سرویس %username% حدود %remaining_volume% گیگابایت است.` | `username`: string, max 40; `remaining_volume`: string, max 12 |
-| `volume_expired` | Others | `حجم سرویس %username% به پایان رسید.` | `username`: string, max 40 |
-| `payment_success` | Order | `پرداخت %amount% تومان با موفقیت انجام شد. شماره سفارش: %order_id%` | `amount`: number, max 12; `order_id`: string, max 40 |
-| `payment_failed` | Order | `پرداخت سفارش %order_id% ناموفق بود.` | `order_id`: string, max 40 |
-| `wallet_charged` | Others | `کیف پول شما %amount% تومان شارژ شد. موجودی: %balance% تومان` | `amount`: number, max 12; `balance`: number, max 12 |
-| `admin_announcement` | Others | `اطلاعیه BlueBot: %message%` | `message`: string, max 120 |
+| `phone_verification` | OTP | `بلو پنل`<br>`کد ورود: %code%`<br>`این کد محرمانه است.` | `code`: number, max 6 |
+| `service_activated` | Others | `بلو پنل`<br>`سرویس %service% فعال شد.`<br>`کاربر: %username%`<br>`اعتبار: %expire_date%` | `service`: string, max 40; `username`: string, max 40; `expire_date`: string, max 20 |
+| `service_renewed` | Others | `بلو پنل`<br>`سرویس %username% تمدید شد.`<br>`اعتبار جدید: %expire_date%` | `username`: string, max 40; `expire_date`: string, max 20 |
+| `subscription_reminder` | Others | `بلو پنل`<br>`%days_left% روز تا پایان سرویس %username% باقی مانده.`<br>`برای جلوگیری از قطعی، تمدید کنید.` | `days_left`: number, max 3; `username`: string, max 40 |
+| `subscription_expired` | Others | `بلو پنل`<br>`اعتبار سرویس %username% تمام شد.`<br>`برای اتصال مجدد، تمدید کنید.` | `username`: string, max 40 |
+| `low_remaining_volume` | Others | `بلو پنل`<br>`حجم سرویس %username% رو به پایان است.`<br>`باقی‌مانده: %remaining_volume% گیگ` | `username`: string, max 40; `remaining_volume`: string, max 12 |
+| `volume_expired` | Others | `بلو پنل`<br>`حجم سرویس %username% تمام شد.`<br>`برای ادامه، سرویس را تمدید کنید.` | `username`: string, max 40 |
+| `payment_success` | Order | `بلو پنل`<br>`پرداخت %amount% تومان موفق بود.`<br>`کد سفارش: %order_id%` | `amount`: number, max 12; `order_id`: string, max 40 |
+| `payment_failed` | Order | `بلو پنل`<br>`پرداخت سفارش %order_id% ناموفق بود.`<br>`لطفاً دوباره تلاش کنید.` | `order_id`: string, max 40 |
+| `wallet_charged` | Others | `بلو پنل`<br>`%amount% تومان به کیف پول اضافه شد.`<br>`موجودی: %balance% تومان` | `amount`: number, max 12; `balance`: number, max 12 |
+| `admin_announcement` | Others | `بلو پنل`<br>`%message%` | `message`: string, max 120 |
 
 ### Variable rules
 
