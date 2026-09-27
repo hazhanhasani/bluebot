@@ -9,7 +9,7 @@
 </p>
 
 [![BlueBot CI](https://github.com/hazhanhasani/bluebot/actions/workflows/ci.yml/badge.svg)](https://github.com/hazhanhasani/bluebot/actions/workflows/ci.yml)
-[![Version](https://img.shields.io/badge/version-0.5.12-0A84FF?style=flat-square)](version)
+[![Version](https://img.shields.io/badge/version-0.5.13-0A84FF?style=flat-square)](version)
 [![PHP](https://img.shields.io/badge/PHP-8.2%2B-777BB4?style=flat-square&logo=php&logoColor=white)](https://www.php.net/)
 [![License](https://img.shields.io/badge/License-AGPL--3.0-blue?style=flat-square)](LICENSE)
 [![GitHub](https://img.shields.io/badge/GitHub-hazhanhasani%2Fbluebot-181717?style=flat-square&logo=github)](https://github.com/hazhanhasani/bluebot)
