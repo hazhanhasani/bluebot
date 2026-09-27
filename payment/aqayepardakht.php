@@ -49,10 +49,7 @@ if ($price <= 0) {
     exit('invalid amount');
 }
 
-$merchant = (string) (
-    select('PaySetting', 'ValuePay', 'NamePay', 'merchant_id_aqayepardakht', 'select')['ValuePay']
-    ?? ''
-);
+$merchant = trim((string) getPaySettingValue('merchant_id_aqayepardakht', ''));
 
 if ($merchant === '' || $merchant === '0') {
     bluebotLog('error', 'AqayePardakht merchant is not configured', [
@@ -71,12 +68,24 @@ $payload = json_encode([
 $verified = false;
 if (is_string($payload)) {
     $ch = curl_init('https://panel.aqayepardakht.ir/api/v2/verify');
+    if ($ch === false) {
+        bluebotLog('error', 'AqayePardakht HTTP client initialization failed', [
+            'order_id' => $invoice_id,
+        ]);
+        http_response_code(503);
+        exit('payment gateway unavailable');
+    }
+
     curl_setopt_array($ch, [
         CURLOPT_RETURNTRANSFER => true,
         CURLOPT_POST => true,
         CURLOPT_POSTFIELDS => $payload,
         CURLOPT_TIMEOUT_MS => 10000,
         CURLOPT_CONNECTTIMEOUT_MS => 4000,
+        CURLOPT_PROTOCOLS => CURLPROTO_HTTPS,
+        CURLOPT_REDIR_PROTOCOLS => CURLPROTO_HTTPS,
+        CURLOPT_SSL_VERIFYPEER => true,
+        CURLOPT_SSL_VERIFYHOST => 2,
         CURLOPT_HTTPHEADER => [
             'Content-Type: application/json',
             'Accept: application/json',
@@ -132,10 +141,7 @@ if ($verified) {
                 : false;
 
             if (is_array($payment) && is_array($buyer)) {
-                $cashback = (float) (
-                    select('PaySetting', 'ValuePay', 'NamePay', 'chashbackaqaypardokht', 'select')['ValuePay']
-                    ?? 0
-                );
+                $cashback = (float) getPaySettingValue('chashbackaqaypardokht', 0);
 
                 if ($cashback > 0) {
                     $reward = ((float) $payment['price'] * $cashback) / 100;
