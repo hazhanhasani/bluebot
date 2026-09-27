@@ -3337,60 +3337,125 @@ function createPayZarinpal($price, $order_id)
 {
     global $domainhosts;
 
-    $marchent_zarinpal = trim((string) getPaySettingValue('merchant_zarinpal', ''));
-    if ($marchent_zarinpal === '' || $marchent_zarinpal === '0') {
-        return ['error' => 'ZarinPal merchant id not set'];
+    $merchantId = trim((string) getPaySettingValue('merchant_zarinpal', ''));
+    if ($merchantId === '' || $merchantId === '0') {
+        return [
+            'data' => [],
+            'errors' => ['code' => 0, 'message' => 'ZarinPal merchant id is not configured'],
+        ];
     }
 
-    $curl = curl_init();
-    if ($curl === false) {
-        return ['error' => 'Unable to initialize HTTP client'];
+    $domain = trim((string) $domainhosts);
+    $domain = preg_replace('#^https?://#i', '', $domain);
+    $domain = rtrim((string) $domain, '/');
+    if ($domain === '' || $domain === '{domain_name}') {
+        return [
+            'data' => [],
+            'errors' => ['code' => 0, 'message' => 'Payment callback domain is not configured'],
+        ];
     }
-    curl_setopt_array($curl, array(
-        CURLOPT_URL => 'https://payment.zarinpal.com/pg/v4/payment/request.json',
+
+    $amount = (int) round((float) $price);
+    if ($amount <= 0) {
+        return [
+            'data' => [],
+            'errors' => ['code' => 0, 'message' => 'Payment amount is invalid'],
+        ];
+    }
+
+    $payload = [
+        'merchant_id' => $merchantId,
+        'amount' => $amount,
+        'currency' => 'IRT',
+        'description' => 'BlueBot order ' . (string) $order_id,
+        'callback_url' => 'https://' . $domain . '/payment/zarinpal.php',
+    ];
+    $jsonPayload = json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+    if (!is_string($jsonPayload)) {
+        return [
+            'data' => [],
+            'errors' => ['code' => 0, 'message' => 'Unable to encode ZarinPal payment request'],
+        ];
+    }
+
+    $curl = curl_init('https://api.zarinpal.com/pg/v4/payment/request.json');
+    if ($curl === false) {
+        return [
+            'data' => [],
+            'errors' => ['code' => 0, 'message' => 'Unable to initialize HTTP client'],
+        ];
+    }
+
+    curl_setopt_array($curl, [
         CURLOPT_RETURNTRANSFER => true,
         CURLOPT_ENCODING => '',
         CURLOPT_MAXREDIRS => 3,
-        CURLOPT_TIMEOUT_MS => 10000,
-        CURLOPT_CONNECTTIMEOUT_MS => 4000,
+        CURLOPT_TIMEOUT => 15,
+        CURLOPT_CONNECTTIMEOUT => 5,
         CURLOPT_FOLLOWLOCATION => true,
         CURLOPT_PROTOCOLS => CURLPROTO_HTTPS,
         CURLOPT_REDIR_PROTOCOLS => CURLPROTO_HTTPS,
         CURLOPT_SSL_VERIFYPEER => true,
         CURLOPT_SSL_VERIFYHOST => 2,
         CURLOPT_HTTP_VERSION => CURL_HTTP_VERSION_1_1,
-        CURLOPT_CUSTOMREQUEST => 'POST',
-        CURLOPT_HTTPHEADER => array(
+        CURLOPT_POST => true,
+        CURLOPT_POSTFIELDS => $jsonPayload,
+        CURLOPT_USERAGENT => 'BlueBot ZarinPal Client/1.0',
+        CURLOPT_HTTPHEADER => [
             'Content-Type: application/json',
-            'Accept: application/json'
-        ),
-    ));
-    curl_setopt($curl, CURLOPT_POSTFIELDS, json_encode([
-        "merchant_id" => $marchent_zarinpal,
-        "currency" => "IRT",
-        "amount" => $price,
-        "callback_url" => "https://$domainhosts/payment/zarinpal.php",
-        "description" => $order_id,
-        "metadata" => array(
-            "order_id" => $order_id
-        )
-    ]));
-    $response = curl_exec($curl);
-    $curlError = $response === false ? curl_error($curl) : '';
+            'Accept: application/json',
+            'Content-Length: ' . strlen($jsonPayload),
+        ],
+    ]);
+
+    $rawResponse = curl_exec($curl);
+    $curlError = $rawResponse === false ? curl_error($curl) : '';
     $httpCode = (int) curl_getinfo($curl, CURLINFO_HTTP_CODE);
     curl_close($curl);
 
-    if (!is_string($response) || $httpCode < 200 || $httpCode >= 300) {
-        bluebotLog('warning', 'ZarinPal payment request failed', [
+    if (!is_string($rawResponse)) {
+        bluebotLog('warning', 'ZarinPal payment request transport failed', [
             'order_id' => (string) $order_id,
             'http_code' => $httpCode,
             'error' => $curlError,
         ]);
-        return ['error' => $curlError ?: ('HTTP ' . $httpCode)];
+        return [
+            'data' => [],
+            'errors' => ['code' => 0, 'message' => $curlError !== '' ? $curlError : 'ZarinPal connection failed'],
+        ];
     }
 
-    $decoded = json_decode($response, true);
-    return is_array($decoded) ? $decoded : ['error' => 'invalid response'];
+    $decoded = json_decode($rawResponse, true);
+    if (!is_array($decoded)) {
+        bluebotLog('warning', 'ZarinPal returned an invalid JSON response', [
+            'order_id' => (string) $order_id,
+            'http_code' => $httpCode,
+        ]);
+        return [
+            'data' => [],
+            'errors' => ['code' => $httpCode, 'message' => 'Invalid response from ZarinPal'],
+        ];
+    }
+
+    $gatewayCode = (int) ($decoded['data']['code'] ?? 0);
+    $authority = trim((string) ($decoded['data']['authority'] ?? ''));
+    if ($httpCode < 200 || $httpCode >= 300 || $gatewayCode !== 100 || $authority === '') {
+        bluebotLog('warning', 'ZarinPal payment request rejected', [
+            'order_id' => (string) $order_id,
+            'http_code' => $httpCode,
+            'gateway_code' => $decoded['errors']['code'] ?? $gatewayCode,
+            'gateway_message' => (string) ($decoded['errors']['message'] ?? $decoded['data']['message'] ?? ''),
+        ]);
+
+        if (!isset($decoded['errors']) || !is_array($decoded['errors'])) {
+            $decoded['errors'] = [
+                'code' => $httpCode,
+                'message' => 'ZarinPal payment request failed',
+            ];
+        }
+    }
+
+    return $decoded;
 }
 function createPayVariza($price, $order_id)
 {

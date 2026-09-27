@@ -67,10 +67,9 @@ curl_setopt_array($curl, array(
 ));
 curl_setopt($curl, CURLOPT_POSTFIELDS, json_encode([
   "merchant_id" => $PaySetting,
-  "amount"=> $price,
-  "authority" => $Authority,
-  "description" => $Payment_reports['id_user']
-        ]));
+  "amount" => (int) round((float) $price),
+  "authority" => $Authority
+], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
 $rawResponse = curl_exec($curl);
 $curlError = $rawResponse === false ? curl_error($curl) : '';
 $httpCode = (int) curl_getinfo($curl, CURLINFO_HTTP_CODE);
@@ -88,8 +87,9 @@ if (!is_string($rawResponse) || $httpCode < 200 || $httpCode >= 300) {
     $response = is_array($response) ? $response : [];
 }
 
+$verifyCode = (int) ($response['data']['code'] ?? 0);
 $payment_status = $textbotlang['paymentGateway']['zarinpalErrors'][$response['errors']['code'] ?? ''] ?? '';
-if (($response['data']['message'] ?? '') === "Verified" || ($response['data']['message'] ?? '') === "Paid") {
+if (in_array($verifyCode, [100, 101], true)) {
     $payment_status = $textbotlang['paymentGateway']['statusSuccess'];
     $dec_payment_status = $textbotlang['paymentGateway']['descThanks'];
     $Payment_report = select("Payment_report", "*", "id_order", $invoice_id,"select");

@@ -5733,8 +5733,14 @@ if ($text == "/start" || $datain == "start" || $text == "start") {
         sendmessage($from_id, $textbotlang['users']['Balance']['linkpayments'], $keyboard, 'HTML');
         $randomString = bin2hex(random_bytes(5));
         $pay = createPayZarinpal($user['Processing_value'], $randomString);
-        if ($pay['data']['code'] != 100) {
-            $text_error = json_encode($pay['errors']);
+        $zarinpalCode = (int) ($pay['data']['code'] ?? 0);
+        $zarinpalAuthority = trim((string) ($pay['data']['authority'] ?? ''));
+        if ($zarinpalCode !== 100 || $zarinpalAuthority === '') {
+            $zarinpalError = [
+                'code' => $pay['errors']['code'] ?? $zarinpalCode,
+                'message' => $pay['errors']['message'] ?? $pay['error'] ?? 'Unknown ZarinPal error',
+            ];
+            $text_error = json_encode($zarinpalError, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
             sendmessage($from_id, $textbotlang['users']['Balance']['errorLinkPayment'], $keyboard, 'HTML');
             step('home', $from_id);
             $ErrorsLinkPayment = sprintf($textbotlang['Admin']['reportgroup']['errorZarinpalLink'], $text_error, $from_id, $username);
