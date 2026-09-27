@@ -110,6 +110,13 @@ function bluebotUpdateSetChannel(string $channel): string
 
 function bluebotUpdateFetchJson(string $url): ?array
 {
+    $parts = parse_url($url);
+    if (!is_array($parts)
+        || strtolower((string) ($parts['scheme'] ?? '')) !== 'https'
+        || strtolower((string) ($parts['host'] ?? '')) !== 'api.github.com') {
+        return null;
+    }
+
     $curl = curl_init($url);
     if ($curl === false) {
         return null;
@@ -118,8 +125,13 @@ function bluebotUpdateFetchJson(string $url): ?array
     curl_setopt_array($curl, [
         CURLOPT_RETURNTRANSFER => true,
         CURLOPT_FOLLOWLOCATION => true,
+        CURLOPT_MAXREDIRS => 3,
         CURLOPT_CONNECTTIMEOUT_MS => 3000,
         CURLOPT_TIMEOUT_MS => 8000,
+        CURLOPT_PROTOCOLS => CURLPROTO_HTTPS,
+        CURLOPT_REDIR_PROTOCOLS => CURLPROTO_HTTPS,
+        CURLOPT_SSL_VERIFYPEER => true,
+        CURLOPT_SSL_VERIFYHOST => 2,
         CURLOPT_HTTPHEADER => [
             'Accept: application/vnd.github+json',
             'User-Agent: BlueBot-Updater',
