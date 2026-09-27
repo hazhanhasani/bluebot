@@ -278,12 +278,76 @@ if (strpos($text, "/start ") !== false && $user['step'] != "gettextSystemMessage
         $text = $affiliatesid;
     }
 }
-if (intval($user['verify']) == 0 && !in_array($from_id, $admin_ids) && $setting['verifystart'] == "onverify") {
-    $textverify = sprintf($textbotlang['users']['account']['notVerifiedNotice'], $setting['id_support']);
-    sendmessage($from_id, $textverify, null, 'html');
-    return;
+$manualVerificationRequired = intval($user['verify']) === 0
+    && !in_array($from_id, $admin_ids)
+    && $setting['verifystart'] === "onverify";
+
+if ($manualVerificationRequired) {
+    $phoneAuthenticationEnabled = ($setting['get_number'] ?? '') === "onAuthenticationphone";
+    $phoneMissing = trim((string) ($user['number'] ?? '')) === ''
+        || (string) ($user['number'] ?? '') === 'none';
+    $phoneVerificationStep = in_array(
+        (string) ($user['step'] ?? ''),
+        ['get_number', 'verify_phone_otp'],
+        true
+    );
+
+    // Phone verification has priority over the legacy manual verification gate.
+    // Without this exception, /start and every OTP/contact message were blocked
+    // by the "waiting for admin verification" notice.
+    if ($phoneAuthenticationEnabled && $phoneMissing) {
+        if (!$phoneVerificationStep) {
+            sendmessage(
+                $from_id,
+                $textbotlang['users']['number']['confirming'],
+                $request_contact,
+                'HTML'
+            );
+            step('get_number', $from_id);
+            return;
+        }
+
+        if ($text === '/start' || $text === 'start' || $datain === 'start') {
+            if (($user['step'] ?? '') === 'verify_phone_otp') {
+                sendmessage(
+                    $from_id,
+                    "🔐 <b>تأیید شماره در حال انجام است</b>\n\n"
+                        . "کد ۶ رقمی ارسال‌شده را وارد کنید یا «دریافت کد جدید» را بزنید.",
+                    json_encode([
+                        'inline_keyboard' => [
+                            [
+                                ['text' => '🔄 دریافت کد جدید', 'callback_data' => 'resend_phone_otp'],
+                            ],
+                        ],
+                    ], JSON_UNESCAPED_UNICODE),
+                    'HTML'
+                );
+            } else {
+                sendmessage(
+                    $from_id,
+                    $textbotlang['users']['number']['confirming'],
+                    $request_contact,
+                    'HTML'
+                );
+            }
+            return;
+        }
+
+        // Contact and OTP messages must continue to the handlers below.
+    } else {
+        $supportUsername = ltrim(trim((string) ($setting['id_support'] ?? '')), '@');
+        $supportLine = preg_match('/^[A-Za-z0-9_]{5,32}$/', $supportUsername)
+            ? "\n\n💬 پشتیبانی: @" . $supportUsername
+            : '';
+
+        $textverify = sprintf(
+            $textbotlang['users']['account']['notVerifiedNotice'],
+            $supportLine
+        );
+        sendmessage($from_id, $textverify, null, 'HTML');
+        return;
+    }
 }
-;
 
 #-----------roll------------#
 if ($setting['roll_Status'] == "rolleon" && $user['roll_Status'] == 0 && ($text != $textbotlang['keyboard']['acceptRulesButton'] and $datain != "acceptrule") && !in_array($from_id, $admin_ids)) {
@@ -496,6 +560,9 @@ if ($text == "/start" || $datain == "start" || $text == "start") {
     sendmessage($from_id, $textbotlang['users']['number']['active'], json_encode(['inline_keyboard' => [], 'remove_keyboard' => true]), 'html');
     sendmessage($from_id, $textbotlang['users']['text_start'], $keyboard, 'html');
     update("user", "number", $normalizedPhone, "id", $from_id);
+    if (($setting['verifystart'] ?? '') === "onverify") {
+        update("user", "verify", "1", "id", $from_id);
+    }
     step('home', $from_id);
 } elseif ($user['step'] == 'verify_phone_otp') {
     $otpKeyboard = json_encode([
@@ -576,6 +643,9 @@ if ($text == "/start" || $datain == "start" || $text == "start") {
         }
 
         update("user", "number", $verifiedPhone, "id", $from_id);
+        if (($setting['verifystart'] ?? '') === "onverify") {
+            update("user", "verify", "1", "id", $from_id);
+        }
         sendmessage(
             $from_id,
             $textbotlang['users']['number']['active'],
