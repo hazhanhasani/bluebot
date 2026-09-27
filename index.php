@@ -3388,7 +3388,7 @@ if ($text == "/start" || $datain == "start" || $text == "start") {
     $username_ac = generateUsername($from_id, $marzban_list_get['MethodUsername'], $user['username'], $randomString, $text, $marzban_list_get['namecustom'], $user['namecustom']);
     $username_ac = strtolower($username_ac);
     $DataUserOut = $ManagePanel->DataUser($marzban_list_get['name_panel'], $username_ac);
-    $random_number = rand(1000000, 9999999);
+    $random_number = random_int(1000000, 9999999);
     if (isset($DataUserOut['username']) || rowExists("invoice", "username", $username_ac)) {
         $username_ac = $random_number . "_" . $username_ac;
     }
@@ -4211,7 +4211,7 @@ if ($text == "/start" || $datain == "start" || $text == "start") {
     $username_ac = generateUsername($from_id, $marzban_list_get['MethodUsername'], $username, $randomString, $text, $marzban_list_get['namecustom'], $user['namecustom']);
     $username_ac = strtolower($username_ac);
     $DataUserOut = $ManagePanel->DataUser($marzban_list_get['name_panel'], $username_ac);
-    $random_number = rand(1000000, 9999999);
+    $random_number = random_int(1000000, 9999999);
     if (isset($DataUserOut['username']) || rowExists("invoice", "username", $username_ac)) {
         $username_ac = $random_number . "_" . $username_ac;
     }
@@ -4294,7 +4294,7 @@ if ($text == "/start" || $datain == "start" || $text == "start") {
     }
     $date = time();
     $randomString = bin2hex(random_bytes(4));
-    $random_number = rand(1000000, 9999999);
+    $random_number = random_int(1000000, 9999999);
     if (rowExists("invoice", "id_invoice", $randomString)) {
         $randomString = $random_number . $randomString;
     }
@@ -4934,7 +4934,7 @@ if ($text == "/start" || $datain == "start" || $text == "start") {
         ]
     ]);
     for ($i = 0; $i < $user['Processing_value_four']; $i++) {
-        $random_number = rand(1000000, 9999999);
+        $random_number = random_int(1000000, 9999999);
         $username_acc = $username_ac . "_" . $i;
         $get_username_Check = $ManagePanel->DataUser($marzban_list_get['name_panel'], $username_acc);
         if (isset($get_username_Check['username']) || rowExists("invoice", "username", $username_acc)) {
