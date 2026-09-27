@@ -676,7 +676,7 @@ final class BluebotSms
 
         $patterns = array_values($patterns);
         usort($patterns, static fn(array $a, array $b): int =>
-            strnatcasecmp($a['description'] ?: $a['string'] ?: $a['code'], $b['description'] ?: $b['string'] ?: $b['code'])
+            strnatcasecmp($a['description'] ?: $a['text'] ?: $a['code'], $b['description'] ?: $b['text'] ?: $b['code'])
         );
 
         $cache = [
@@ -784,7 +784,7 @@ final class BluebotSms
             return null;
         }
 
-        $text = trim(strip_tags((string) ($row['string'] ?? $row['pattern'] ?? $row['body'] ?? '')));
+        $text = trim(strip_tags((string) ($row['text'] ?? $row['pattern'] ?? $row['body'] ?? '')));
         $description = trim(strip_tags((string) ($row['description'] ?? $row['title'] ?? '')));
         $vars = [];
         $specs = [];
@@ -805,9 +805,7 @@ final class BluebotSms
                 } elseif (is_array($item)) {
                     $name = (string) ($item['var'] ?? $item['name'] ?? $item['key'] ?? $item['attribute'] ?? (is_string($itemKey) ? $itemKey : ''));
                     $rawType = strtolower((string) ($item['type'] ?? $item['data_type'] ?? $item['variable_type'] ?? ''));
-                    if (in_array($rawType, ['int','integer','number','number'], true)) {
-                        $type = 'number';
-                    }
+                    $type = self::normalizeVariableType($rawType);
                     foreach (['length','max_length','maxLength','limit'] as $lengthKey) {
                         if (isset($item[$lengthKey]) && is_numeric($item[$lengthKey])) {
                             $length = max(1, min(500, (int) $item[$lengthKey]));
@@ -843,7 +841,7 @@ final class BluebotSms
 
         return [
             'code' => mb_substr($code, 0, 180),
-            'string' => mb_substr($text, 0, 600),
+            'text' => mb_substr($text, 0, 600),
             'description' => mb_substr($description, 0, 250),
             'variables' => $vars,
             'variable_specs' => array_values($specs),
@@ -892,7 +890,7 @@ final class BluebotSms
                 if (!self::patternCompatibleWithSpec($pattern, $spec)) {
                     continue;
                 }
-                $haystack = self::normalizeText(($pattern['description'] ?? '') . ' ' . ($pattern['string'] ?? ''));
+                $haystack = self::normalizeText(($pattern['description'] ?? '') . ' ' . ($pattern['text'] ?? ''));
                 $score = 70;
                 foreach (self::tokens(($spec['title'] ?? '') . ' ' . ($spec['body'] ?? '')) as $token) {
                     if ($token !== '' && str_contains($haystack, $token)) {
