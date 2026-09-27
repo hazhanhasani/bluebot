@@ -426,26 +426,81 @@ function usr_transfer_account(array $data, string $method): void
 
     validateMethod('POST', $method);
 
-    if (!isset($data['chat_id']) || empty($data['chat_id']))
+    $sourceId = trim((string) ($data['chat_id'] ?? ''));
+    $targetId = trim((string) ($data['new_userid'] ?? ''));
+
+    if ($sourceId === '') {
         sendJsonResponse(false, "user-id empty", [], 200);
-    if (!isset($data['new_userid']) || empty($data['new_userid']))
+    }
+    if ($targetId === '') {
         sendJsonResponse(false, "new_userid empty", [], 200);
-    if ($data["chat_id"] == $data["new_userid"])
-        sendJsonResponse(false, "inavlid user_id", [], 200);
-    if (!ctype_digit((string) $data["new_userid"]) || !ctype_digit((string) $data["chat_id"]))
-        sendJsonResponse(false, "inavlid user_id", [], 200);
-    if (!rowExists("user", "id", $data['chat_id']))
+    }
+    if ($sourceId === $targetId || !ctype_digit($sourceId) || !ctype_digit($targetId)) {
+        sendJsonResponse(false, "invalid user_id", [], 200);
+    }
+    if (!rowExists("user", "id", $sourceId)) {
         sendJsonResponse(false, "source user not found", [], 200);
-    $stmt = $pdo->prepare("DELETE FROM user WHERE id = :id_user");
-    $stmt->execute([':id_user' => $data["new_userid"]]);
-    update("user", "id", $data["new_userid"], "id", $data['chat_id']);
-    update("Payment_report", "id_user", $data["new_userid"], "id_user", $data['chat_id']);
-    update("invoice", "id_user", $data["new_userid"], "id_user", $data['chat_id']);
-    update("support_message", "iduser", $data["new_userid"], "iduser", $data['chat_id']);
-    update("service_other", "id_user", $data["new_userid"], "id_user", $data['chat_id']);
-    update("Giftcodeconsumed", "id_user", $data["new_userid"], "id_user", $data['chat_id']);
-    update("botsaz", "id_user", $data["new_userid"], "id_user", $data['chat_id']);
-    sendJsonResponse(true, "Successful");
+    }
+
+    $references = [
+        ['Payment_report', 'id_user'],
+        ['invoice', 'id_user'],
+        ['support_message', 'iduser'],
+        ['service_other', 'id_user'],
+        ['Giftcodeconsumed', 'id_user'],
+        ['botsaz', 'id_user'],
+        ['cancel_service', 'id_user'],
+        ['wheel_list', 'id_user'],
+        ['sms_deliveries', 'user_id'],
+        ['sms_otp_challenges', 'user_id'],
+        ['reagent_report', 'user_id'],
+        ['reagent_report', 'reagent'],
+    ];
+
+    try {
+        $pdo->beginTransaction();
+
+        // Existing target records are intentionally merged into the transferred
+        // Telegram identity. Remove only the duplicate user row; related data
+        // remains attached to the target ID.
+        $stmt = $pdo->prepare("DELETE FROM user WHERE id = :target_id");
+        $stmt->execute([':target_id' => $targetId]);
+
+        $stmt = $pdo->prepare("UPDATE user SET id = :target_id WHERE id = :source_id");
+        $stmt->execute([':target_id' => $targetId, ':source_id' => $sourceId]);
+        if ($stmt->rowCount() !== 1) {
+            throw new RuntimeException('Source user transfer failed');
+        }
+
+        foreach ($references as [$table, $column]) {
+            assertSqlIdentifier($table);
+            assertSqlIdentifier($column);
+            $stmt = $pdo->prepare("UPDATE {$table} SET {$column} = :target_id WHERE {$column} = :source_id");
+            $stmt->execute([':target_id' => $targetId, ':source_id' => $sourceId]);
+        }
+
+        // Referral ownership is stored directly on user rows and also needs to
+        // follow the migrated account.
+        $stmt = $pdo->prepare("UPDATE user SET affiliates = :target_id WHERE affiliates = :source_id");
+        $stmt->execute([':target_id' => $targetId, ':source_id' => $sourceId]);
+
+        $pdo->commit();
+        clearSelectCache();
+
+        bluebotAudit('api.user_transfer', [
+            'source_user_id' => $sourceId,
+            'target_user_id' => $targetId,
+        ]);
+
+        sendJsonResponse(true, "Successful");
+    } catch (Throwable $e) {
+        if ($pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
+
+        error_log('Account transfer failed: ' . $e->getMessage());
+        sendJsonResponse(false, "account transfer failed", [], 500);
+    }
 }
 
 function usr_join_channel_exception(array $data, string $method): void
