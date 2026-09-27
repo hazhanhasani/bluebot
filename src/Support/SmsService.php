@@ -7,7 +7,6 @@ final class BluebotSms
     private const DEFAULT_BASE_URL = 'https://api.iranpayamak.com/ws/v1';
     private const PATTERN_CACHE_TTL = 900;
     private const RETRY_DELAYS = [60, 300, 900, 1800];
-    private const REQUIRED_PATTERN_SIGNATURE = 'bot.bluepanel.ir';
 
     public static function catalog(): array
     {
@@ -21,75 +20,75 @@ final class BluebotSms
             'phone_verification' => [
                 'title' => 'تأیید شماره موبایل',
                 'category' => 'احراز هویت',
-                'body' => "بلو پنل\nکد ورود: %code%\nاین کد محرمانه است.\nbot.bluepanel.ir",
+                'body' => "BlueVPN | بلو پنل\nکد ورود: %code%\nاین کد محرمانه است.",
                 'vars' => [$v('code', 'number', 6)],
                 'default' => 1,
             ],
             'service_activated' => [
                 'title' => 'فعال‌سازی سرویس',
                 'category' => 'سرویس',
-                'body' => "بلو پنل\nسرویس %service% فعال شد.\nکاربر: %username%\nاعتبار: %expire_date%\nbot.bluepanel.ir",
+                'body' => "BlueVPN | بلو پنل\nسرویس %service% فعال شد.\nکاربر: %username%\nاعتبار: %expire_date%",
                 'vars' => [$v('service', 'string', 40), $v('username', 'string', 40), $v('expire_date', 'string', 20)],
                 'default' => 1,
             ],
             'service_renewed' => [
                 'title' => 'تمدید سرویس',
                 'category' => 'سرویس',
-                'body' => "بلو پنل\nسرویس %username% تمدید شد.\nاعتبار جدید: %expire_date%\nbot.bluepanel.ir",
+                'body' => "BlueVPN | بلو پنل\nسرویس %username% تمدید شد.\nاعتبار جدید: %expire_date%",
                 'vars' => [$v('username', 'string', 40), $v('expire_date', 'string', 20)],
                 'default' => 1,
             ],
             'subscription_reminder' => [
                 'title' => 'یادآوری پایان سرویس',
                 'category' => 'سرویس',
-                'body' => "بلو پنل\n%days_left% روز تا پایان سرویس %username% باقی مانده.\nبرای جلوگیری از قطعی، تمدید کنید.\nbot.bluepanel.ir",
+                'body' => "BlueVPN | بلو پنل\n%days_left% روز تا پایان سرویس %username% باقی مانده.\nبرای جلوگیری از قطعی، تمدید کنید.",
                 'vars' => [$v('days_left', 'number', 3), $v('username', 'string', 40)],
                 'default' => 1,
             ],
             'subscription_expired' => [
                 'title' => 'پایان زمان سرویس',
                 'category' => 'سرویس',
-                'body' => "بلو پنل\nاعتبار سرویس %username% تمام شد.\nبرای اتصال مجدد، تمدید کنید.\nbot.bluepanel.ir",
+                'body' => "BlueVPN | بلو پنل\nاعتبار سرویس %username% تمام شد.\nبرای اتصال مجدد، تمدید کنید.",
                 'vars' => [$v('username', 'string', 40)],
                 'default' => 1,
             ],
             'low_remaining_volume' => [
                 'title' => 'هشدار کاهش حجم',
                 'category' => 'سرویس',
-                'body' => "بلو پنل\nحجم سرویس %username% رو به پایان است.\nباقی‌مانده: %remaining_volume% گیگ\nbot.bluepanel.ir",
+                'body' => "BlueVPN | بلو پنل\nحجم سرویس %username% رو به پایان است.\nباقی‌مانده: %remaining_volume% گیگ",
                 'vars' => [$v('username', 'string', 40), $v('remaining_volume', 'string', 12)],
                 'default' => 1,
             ],
             'volume_expired' => [
                 'title' => 'پایان حجم سرویس',
                 'category' => 'سرویس',
-                'body' => "بلو پنل\nحجم سرویس %username% تمام شد.\nبرای ادامه، سرویس را تمدید کنید.\nbot.bluepanel.ir",
+                'body' => "BlueVPN | بلو پنل\nحجم سرویس %username% تمام شد.\nبرای ادامه، سرویس را تمدید کنید.",
                 'vars' => [$v('username', 'string', 40)],
                 'default' => 1,
             ],
             'payment_success' => [
                 'title' => 'پرداخت موفق',
                 'category' => 'پرداخت',
-                'body' => "بلو پنل\nپرداخت %amount% تومان موفق بود.\nکد سفارش: %order_id%\nbot.bluepanel.ir",
+                'body' => "BlueVPN | بلو پنل\nپرداخت %amount% تومان موفق بود.\nکد سفارش: %order_id%",
                 'vars' => [$v('amount', 'number', 12), $v('order_id', 'string', 40)],
                 'default' => 1,
             ],
             'payment_failed' => [
                 'title' => 'پرداخت ناموفق',
                 'category' => 'پرداخت',
-                'body' => "بلو پنل\nپرداخت سفارش %order_id% ناموفق بود.\nلطفاً دوباره تلاش کنید.\nbot.bluepanel.ir",
+                'body' => "BlueVPN | بلو پنل\nپرداخت سفارش %order_id% ناموفق بود.\nلطفاً دوباره تلاش کنید.",
                 'vars' => [$v('order_id', 'string', 40)],
             ],
             'wallet_charged' => [
                 'title' => 'شارژ کیف پول',
                 'category' => 'کیف پول',
-                'body' => "بلو پنل\n%amount% تومان به کیف پول اضافه شد.\nموجودی: %balance% تومان\nbot.bluepanel.ir",
+                'body' => "BlueVPN | بلو پنل\n%amount% تومان به کیف پول اضافه شد.\nموجودی: %balance% تومان",
                 'vars' => [$v('amount', 'number', 12), $v('balance', 'number', 12)],
             ],
             'admin_announcement' => [
                 'title' => 'اطلاعیه عمومی',
                 'category' => 'اطلاع‌رسانی',
-                'body' => "بلو پنل\n%message%\nbot.bluepanel.ir",
+                'body' => "BlueVPN | بلو پنل\n%message%",
                 'vars' => [$v('message', 'string', 120)],
                 'broadcast' => 1,
             ],
@@ -905,11 +904,22 @@ final class BluebotSms
         sort($vars, SORT_STRING);
         ksort($specs, SORT_STRING);
 
+        $system = trim((string) (
+            $row['system']
+            ?? $row['site']
+            ?? $row['website']
+            ?? $row['domain']
+            ?? $row['application']
+            ?? $row['panel']
+            ?? ''
+        ));
+
         return [
             'code' => mb_substr($code, 0, 180),
             'text' => mb_substr($text, 0, 600),
             'description' => mb_substr($description, 0, 250),
             'status' => $status !== '' ? $status : 'active',
+            'system' => mb_substr($system, 0, 180),
             'variables' => $vars,
             'variable_specs' => array_values($specs),
         ];
@@ -1020,13 +1030,6 @@ final class BluebotSms
             if ($type === 'number' && !in_array($providerType, ['number', 'unknown'], true)) {
                 return false;
             }
-        }
-
-        $providerText = self::normalizeText(
-            (string) ($pattern['text'] ?? '') . ' ' . (string) ($pattern['description'] ?? '')
-        );
-        if (!str_contains($providerText, self::normalizeText(self::REQUIRED_PATTERN_SIGNATURE))) {
-            return false;
         }
 
         return true;
