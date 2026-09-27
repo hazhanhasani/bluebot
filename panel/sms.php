@@ -163,6 +163,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $event = preg_replace('/[^a-z0-9_]/', '', strtolower((string) ($_POST['event_key'] ?? ''))) ?: '';
             $phone = trim((string) ($_POST['phone'] ?? ''));
             $params = sms_parse_json_params((string) ($_POST['params_json'] ?? '{}'));
+            $params = array_replace(BluebotSms::sampleParams($event), $params);
             $result = BluebotSms::sendTemplateNow($event, $phone, $params);
             $providerId = '';
             foreach (['message_id','messageId','id','uid','data'] as $key) {
@@ -506,10 +507,37 @@ include __DIR__ . '/inc/layout_head.php';
             <input type="hidden" name="_csrf" value="<?= csrf_token() ?>">
             <input type="hidden" name="action" value="test_sms">
             <div class="card-body" style="padding:16px;display:grid;gap:12px">
-                <div class="field"><label>رویداد</label><select class="select" name="event_key"><?php foreach ($templates as $template): ?><option value="<?= htmlspecialchars((string) $template['event_key']) ?>"><?= htmlspecialchars((string) $template['title']) ?></option><?php endforeach; ?></select></div>
+                <div class="field">
+                    <label>رویداد</label>
+                    <select class="select" name="event_key" id="sms-test-event">
+                        <?php foreach ($templates as $template):
+                            $eventKey = (string) $template['event_key'];
+                            $sampleJson = json_encode(BluebotSms::sampleParams($eventKey), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT);
+                        ?>
+                            <option value="<?= htmlspecialchars($eventKey) ?>" data-sample="<?= htmlspecialchars((string) $sampleJson, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?>"><?= htmlspecialchars((string) $template['title']) ?></option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
                 <div class="field"><label>شماره تست</label><input class="input" dir="ltr" name="phone" placeholder="09123456789" required></div>
-                <div class="field"><label>پارامترها JSON</label><textarea class="input" dir="ltr" name="params_json" rows="5" placeholder='{"service":"یک ماهه","username":"test01","expire_date":"1405/07/30"}'>{}</textarea></div>
+                <div class="field">
+                    <label>پارامترهای تست</label>
+                    <textarea class="input" dir="ltr" name="params_json" id="sms-test-params" rows="6">{}</textarea>
+                    <small style="color:var(--mute)">برای رویداد انتخاب‌شده خودکار پر می‌شود؛ می‌توانی مقدارها را قبل از ارسال تغییر بدهی.</small>
+                </div>
                 <button class="btn btn-ghost" type="submit">ارسال تست</button>
+                <script>
+                (() => {
+                    const eventSelect = document.getElementById('sms-test-event');
+                    const params = document.getElementById('sms-test-params');
+                    if (!eventSelect || !params) return;
+                    const sync = () => {
+                        const option = eventSelect.options[eventSelect.selectedIndex];
+                        params.value = option?.dataset?.sample || '{}';
+                    };
+                    eventSelect.addEventListener('change', sync);
+                    sync();
+                })();
+                </script>
             </div>
         </form>
     </div>
