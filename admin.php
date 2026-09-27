@@ -7431,25 +7431,92 @@ if ($datain == "settimecornremove" && $adminrulecheck['rule'] == "administrator"
     sendmessage($from_id, $textbotlang['Admin']['manageUser']['askTransferTargetId'], $backadmin, 'HTML');
     step("getidfortransfers", $from_id);
 } elseif ($user['step'] == "getidfortransfers") {
-    if (!rowExists("user", "id", $text)) {
+    $sourceId = trim((string) ($user['Processing_value'] ?? ''));
+    $targetId = trim((string) $text);
+
+    if (!ctype_digit($sourceId) || !ctype_digit($targetId)) {
         sendmessage($from_id, $textbotlang['Admin']['notUser'], $backadmin, 'HTML');
         return;
     }
-    if ($text == $user['Processing_value']) {
+    if ($sourceId === $targetId) {
         sendmessage($from_id, $textbotlang['Admin']['manageUser']['transferSameUser'], $keyboardadmin, 'HTML');
         return;
     }
-    sendmessage($from_id, $textbotlang['Admin']['manageUser']['transferDone'], $keyboardadmin, 'HTML');
-    $stmt = $pdo->prepare("DELETE FROM user WHERE id = :id_user");
-    $stmt->bindParam(':id_user', $text, PDO::PARAM_STR);
-    $stmt->execute();
-    update("user", "id", $text, "id", $user['Processing_value']);
-    update("Payment_report", "id_user", $text, "id_user", $user['Processing_value']);
-    update("invoice", "id_user", $text, "id_user", $user['Processing_value']);
-    update("support_message", "iduser", $text, "iduser", $user['Processing_value']);
-    update("service_other", "id_user", $text, "id_user", $user['Processing_value']);
-    update("Giftcodeconsumed", "id_user", $text, "id_user", $user['Processing_value']);
-    step("home", $from_id);
+    if (!rowExists("user", "id", $sourceId) || !rowExists("user", "id", $targetId)) {
+        sendmessage($from_id, $textbotlang['Admin']['notUser'], $backadmin, 'HTML');
+        return;
+    }
+
+    $references = [
+        ['Payment_report', 'id_user'],
+        ['invoice', 'id_user'],
+        ['support_message', 'iduser'],
+        ['service_other', 'id_user'],
+        ['Giftcodeconsumed', 'id_user'],
+        ['botsaz', 'id_user'],
+        ['cancel_service', 'id_user'],
+        ['wheel_list', 'id_user'],
+        ['sms_deliveries', 'user_id'],
+        ['sms_otp_challenges', 'user_id'],
+        ['reagent_report', 'user_id'],
+        ['reagent_report', 'reagent'],
+    ];
+
+    try {
+        $pdo->beginTransaction();
+
+        $stmt = $pdo->prepare("DELETE FROM user WHERE id = :target_id");
+        $stmt->execute([':target_id' => $targetId]);
+
+        $stmt = $pdo->prepare("UPDATE user SET id = :target_id WHERE id = :source_id");
+        $stmt->execute([':target_id' => $targetId, ':source_id' => $sourceId]);
+        if ($stmt->rowCount() !== 1) {
+            throw new RuntimeException('Source account transfer failed');
+        }
+
+        foreach ($references as [$table, $column]) {
+            assertSqlIdentifier($table);
+            assertSqlIdentifier($column);
+            $stmt = $pdo->prepare("UPDATE {$table} SET {$column} = :target_id WHERE {$column} = :source_id");
+            $stmt->execute([':target_id' => $targetId, ':source_id' => $sourceId]);
+        }
+
+        $stmt = $pdo->prepare("UPDATE user SET affiliates = :target_id WHERE affiliates = :source_id");
+        $stmt->execute([':target_id' => $targetId, ':source_id' => $sourceId]);
+
+        $pdo->commit();
+        clearSelectCache();
+
+        bluebotAudit('admin.user_transfer', [
+            'admin_id' => (string) $from_id,
+            'source_user_id' => $sourceId,
+            'target_user_id' => $targetId,
+        ]);
+
+        sendmessage(
+            $from_id,
+            $textbotlang['Admin']['manageUser']['transferDone'],
+            $keyboardadmin,
+            'HTML'
+        );
+        step("home", $from_id);
+    } catch (Throwable $transferError) {
+        if ($pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
+
+        bluebotLog('error', 'Admin account transfer failed', [
+            'source_user_id' => $sourceId,
+            'target_user_id' => $targetId,
+            'error' => $transferError->getMessage(),
+        ]);
+        sendmessage(
+            $from_id,
+            $textbotlang['Admin']['manageUser']['transferFailed'] ?? '❌ انتقال حساب انجام نشد.',
+            $backadmin,
+            'HTML'
+        );
+    }
 } elseif ($text == $textbotlang['keyboard']['qrBackground']) {
     sendmessage($from_id, $textbotlang['Admin']['managepanel']['askQrBackground'], $backadmin, 'HTML');
     step("getimagebackgroundqr", $from_id);
