@@ -645,11 +645,19 @@ $discountCodeFlowKeyboard = json_encode(['inline_keyboard' => [[['text' => $text
 function editFlowMessage($text, $keyboard)
 {
     global $from_id, $message_id, $datain, $user;
-    $flowMessageId = json_decode($user['Processing_value'], true)['message_id'] ?? $message_id;
-    if ($datain == "") {
+
+    $flowState = json_decode((string) ($user['Processing_value'] ?? ''), true);
+    $flowMessageId = is_array($flowState) && !empty($flowState['message_id'])
+        ? (int) $flowState['message_id']
+        : (int) $message_id;
+
+    if ($datain == "" && !empty($message_id)) {
         deletemessage($from_id, $message_id);
     }
-    Editmessagetext($from_id, $flowMessageId, $text, $keyboard);
+
+    if ($flowMessageId > 0) {
+        Editmessagetext($from_id, $flowMessageId, $text, $keyboard);
+    }
 }
 function discountPanelsKeyboard()
 {
@@ -1572,7 +1580,7 @@ function KeyboardProduct($location, $query, $pricediscount, $datakeyboard, $stat
 {
     global $pdo, $textbotlang, $from_id;
     $product = ['inline_keyboard' => []];
-    $statusshowprice = select("shopSetting", "*", "Namevalue", "statusshowprice", "select")['value'];
+    $statusshowprice = (string) getShopSettingValue('statusshowprice', 'off');
     $stmt = $pdo->prepare($query);
     $stmt->execute($queryParams);
     if ($valuetow != null) {
@@ -1582,9 +1590,11 @@ function KeyboardProduct($location, $query, $pricediscount, $datakeyboard, $stat
     }
     $countorder = null;
     while ($result = $stmt->fetch(PDO::FETCH_ASSOC)) {
-        $hide_panel = json_decode($result['hide_panel'], true);
-        if (in_array($location, $hide_panel))
+        $hide_panel = json_decode((string) ($result['hide_panel'] ?? '[]'), true);
+        $hide_panel = is_array($hide_panel) ? $hide_panel : [];
+        if (in_array($location, $hide_panel, true)) {
             continue;
+        }
         if ($result['one_buy_status'] == "1") {
             if ($countorder === null) {
                 $stmts2 = $pdo->prepare("SELECT COUNT(*) FROM invoice WHERE Status != 'Unpaid' AND id_user = :id_user");
@@ -1824,7 +1834,8 @@ function keyboard_config($config_split, $id_invoice, $back_active = true)
             $split_config = base64_decode($split_config);
         }
         if ($type_prtocol == "vmess") {
-            $split_config = json_decode($split_config, true)['ps'] ?? '';
+            $vmess = json_decode((string) $split_config, true);
+            $split_config = is_array($vmess) ? (string) ($vmess['ps'] ?? '') : '';
         } else {
             $parts = explode("#", $split_config);
             $split_config = $parts[1] ?? $parts[0];
