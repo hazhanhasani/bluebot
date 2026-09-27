@@ -1,9 +1,13 @@
-name: BlueBot release hosting bundle
+name: BlueBot stable release
 
 on:
   push:
+    branches:
+      - main
+    paths:
+      - version
     tags:
-      - '*'
+      - 'v*'
   workflow_dispatch:
     inputs:
       tag:
@@ -14,17 +18,62 @@ permissions:
   contents: write
 
 jobs:
-  bundle:
+  release:
     runs-on: ubuntu-latest
     steps:
-      - name: Resolve tag
-        id: tag
-        run: echo "name=${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}" >> "$GITHUB_OUTPUT"
-
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          ref: ${{ steps.tag.outputs.name }}
+          fetch-depth: 0
+
+      - name: Resolve stable version
+        id: version
+        shell: bash
+        env:
+          DISPATCH_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || '' }}
+        run: |
+          set -euo pipefail
+
+          FILE_VERSION="$(tr -d '[:space:]' < version)"
+          if ! [[ "$FILE_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Invalid stable version in version file: $FILE_VERSION" >&2
+            exit 1
+          fi
+
+          if [ -n "$DISPATCH_TAG" ]; then
+            TAG="$DISPATCH_TAG"
+          elif [[ "${GITHUB_REF}" == refs/tags/* ]]; then
+            TAG="${GITHUB_REF_NAME}"
+          else
+            TAG="v$FILE_VERSION"
+          fi
+
+          NORMALIZED="${TAG#v}"
+          NORMALIZED="${NORMALIZED#V}"
+          if [ "$NORMALIZED" != "$FILE_VERSION" ]; then
+            echo "Tag $TAG does not match version file $FILE_VERSION" >&2
+            exit 1
+          fi
+
+          echo "version=$FILE_VERSION" >> "$GITHUB_OUTPUT"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+
+      - name: Ensure stable tag exists
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        shell: bash
+        env:
+          TAG: ${{ steps.version.outputs.tag }}
+        run: |
+          set -euo pipefail
+          if git ls-remote --exit-code --tags origin "refs/tags/$TAG" >/dev/null 2>&1; then
+            echo "Tag $TAG already exists; reusing it."
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -a "$TAG" -m "BlueBot ${TAG#v} stable"
+          git push origin "$TAG"
 
       - name: Setup PHP
         uses: shivammathur/setup-php@v2
@@ -33,30 +82,50 @@ jobs:
           extensions: curl, mbstring, zip, gd, dom, simplexml, xmlwriter, xmlreader, fileinfo, iconv, bcmath
           tools: composer
 
-      - name: Install dependencies
+      - name: Install production dependencies
         run: composer install --no-dev --no-interaction --no-progress --optimize-autoloader --classmap-authoritative
 
-      - name: Verify autoloader
-        run: test -f vendor/autoload.php
-
-      - name: Build bundle
-        id: bundle
+      - name: Verify release version
+        shell: bash
         env:
-          TAG: ${{ steps.tag.outputs.name }}
+          VERSION: ${{ steps.version.outputs.version }}
         run: |
+          test "$(tr -d '[:space:]' < version)" = "$VERSION"
+          test -f vendor/autoload.php
+
+      - name: Build hosting bundle
+        id: bundle
+        shell: bash
+        env:
+          TAG: ${{ steps.version.outputs.tag }}
+        run: |
+          set -euo pipefail
           FILE="bluebot-host-${TAG}.zip"
-          zip -r -q "../${FILE}" . -x '.git/*' '.github/*' 'graphify-out/*' '.gitignore' 'install.sh'
+          zip -r -q "../${FILE}" . \
+            -x '.git/*' '.github/*' 'graphify-out/*' '.gitignore' 'install.sh'
           mv "../${FILE}" .
           echo "file=${FILE}" >> "$GITHUB_OUTPUT"
           unzip -l "${FILE}" | tail -1
 
-      - name: Attach bundle to release
+      - name: Publish stable GitHub release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAG: ${{ steps.tag.outputs.name }}
+          TAG: ${{ steps.version.outputs.tag }}
+          VERSION: ${{ steps.version.outputs.version }}
           FILE: ${{ steps.bundle.outputs.file }}
+        shell: bash
         run: |
-          if ! gh release view "$TAG" >/dev/null 2>&1; then
-            gh release create "$TAG" --title "$TAG" --generate-notes
+          set -euo pipefail
+
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release edit "$TAG" \
+              --title "BlueBot $VERSION" \
+              --latest
+          else
+            gh release create "$TAG" \
+              --title "BlueBot $VERSION" \
+              --generate-notes \
+              --latest
           fi
+
           gh release upload "$TAG" "$FILE" --clobber
