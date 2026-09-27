@@ -1863,6 +1863,24 @@ nowpayments.io
                         'askZarinpalMerchant' => '💳 从 ZarinPal 获取您的商户代码并在此部分输入
         
 您当前的商户代码：%s',
+                        'askZarinpalCallbackDomain' => "🔗 <b>ZarinPal 回调域名</b>
+
+请发送已在 ZarinPal 终端注册且指向此 BlueBot 安装的域名。
+
+当前域名：<code>%s</code>
+最终回调：<code>%s</code>
+
+仅发送域名，例如：
+<code>bot.example.com</code>
+
+发送 <code>0</code> 可恢复使用机器人主域名。",
+                        'invalidZarinpalCallbackDomain' => "❌ 域名无效。请仅发送不带路径的域名，例如 <code>bot.example.com</code>",
+                        'savedZarinpalCallbackDomain' => "✅ ZarinPal 回调域名已保存。
+
+域名：<code>%s</code>
+回调：<code>%s</code>
+
+⚠️ ZarinPal 终端中必须注册同一域名。",
                         'askMerchant' => '💳 获取您的商户代码并在此部分输入
         
 您当前的商户代码：%s',
@@ -4198,6 +4216,7 @@ f,n.n2',
                 'setEducationBlupal' => '📚 Blupal 教程',
                 'checkBlupalPayment' => '🔄 检查支付',
                 'zarinPalMerchant' => 'ZarinPal 商户',
+                'zarinPalCallbackDomain' => '🔗 ZarinPal 回调域名',
                 'zeroBalance' => '0️⃣ 余额清零',
                 'panelSetting' => '🎛 面板设置',
                 'mirzaAgentPanel' => '代理 / 经销商面板',
