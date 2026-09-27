@@ -122,6 +122,52 @@ foreach ($expectedAdapters as $file) {
     }
 }
 
+// Refactors that move runtime files must update every include site, not only the
+// main entry point. Linting alone cannot detect requires that point at files
+// which no longer exist.
+$legacyIncludeNames = array_merge($legacyRootAdapters, ['jdf.php']);
+$iterator = new RecursiveIteratorIterator(
+    new RecursiveDirectoryIterator($root, FilesystemIterator::SKIP_DOTS)
+);
+foreach ($iterator as $fileInfo) {
+    if (!$fileInfo->isFile() || strtolower($fileInfo->getExtension()) !== 'php') {
+        continue;
+    }
+
+    $path = $fileInfo->getPathname();
+    $relative = ltrim(str_replace($root, '', $path), DIRECTORY_SEPARATOR);
+    if (str_starts_with($relative, 'vendor' . DIRECTORY_SEPARATOR)
+        || $relative === 'tests' . DIRECTORY_SEPARATOR . 'project_structure_contract.php') {
+        continue;
+    }
+
+    $source = @file($path, FILE_IGNORE_NEW_LINES);
+    if (!is_array($source)) {
+        continue;
+    }
+
+    foreach ($source as $lineNo => $line) {
+        if (!preg_match('/\b(?:require|require_once|include|include_once)\b/', $line)) {
+            continue;
+        }
+
+        if (str_contains($line, 'jdf.php')) {
+            $failures[] = "{$relative}:" . ($lineNo + 1) . ' still loads removed jdf.php';
+        }
+
+        foreach ($legacyRootAdapters as $legacyAdapter) {
+            if (!str_contains($line, $legacyAdapter)) {
+                continue;
+            }
+            if (str_contains($line, 'src/Panel/Adapters/')) {
+                continue;
+            }
+            $failures[] = "{$relative}:" . ($lineNo + 1)
+                . " still loads removed root adapter {$legacyAdapter}";
+        }
+    }
+}
+
 if ($failures !== []) {
     fwrite(STDERR, "Project structure contract failed:\n");
     foreach ($failures as $failure) {
