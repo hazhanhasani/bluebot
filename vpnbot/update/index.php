@@ -11,7 +11,7 @@ $Pathfiles = rtrim($rootPath . $Pathfile, '/\\') . '/';
 require_once 'config.php';
 require_once $Pathfiles . 'function.php';
 require_once $Pathfiles . 'config.php';
-require_once $Pathfiles . 'jdf.php';
+require_once $Pathfiles . 'src/Support/JalaliDate.php';
 require_once $Pathfiles . 'panels.php';
 require_once 'func.php';
 require_once 'botapi.php';
