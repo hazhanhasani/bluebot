@@ -442,6 +442,10 @@ if ($text == "/start" || $datain == "start" || $text == "start") {
     if (BluebotSms::phoneOtpEnabled()) {
         try {
             $otp = BluebotSms::requestPhoneOtp((string) $from_id, $normalizedPhone);
+            $expiresIn = max(1, (int) ($otp['expires_in'] ?? 120));
+            $expiryLabel = ($expiresIn >= 60 && $expiresIn % 60 === 0)
+                ? (int) ($expiresIn / 60) . ' دقیقه'
+                : $expiresIn . ' ثانیه';
             $otpKeyboard = json_encode([
                 'inline_keyboard' => [
                     [
@@ -452,15 +456,24 @@ if ($text == "/start" || $datain == "start" || $text == "start") {
                     ],
                 ],
             ], JSON_UNESCAPED_UNICODE);
-            sendmessage(
+            $keyboardReset = sendmessage(
                 $from_id,
                 '✅ شماره موبایل دریافت شد.',
-                json_encode(['remove_keyboard' => true]),
+                json_encode(['remove_keyboard' => true], JSON_UNESCAPED_UNICODE),
                 'html'
             );
+            $keyboardResetMessageId = (int) ($keyboardReset['result']['message_id'] ?? 0);
+            if ($keyboardResetMessageId > 0) {
+                deletemessage($from_id, $keyboardResetMessageId);
+            }
+
             sendmessage(
                 $from_id,
-                "🔐 <b>تأیید شماره موبایل</b>\n\n📩 کد ۶ رقمی برای شماره شما ارسال شد.\nکد را همین‌جا وارد کنید.\n\n⏱ <b>اعتبار کد:</b> " . (int) ($otp['expires_in'] ?? 120) . " ثانیه\n🛡️ کد را با هیچ‌کس به اشتراک نگذارید.",
+                "🔐 <b>تأیید شماره موبایل</b>\n\n"
+                    . "📩 کد ۶ رقمی برای شماره شما ارسال شد.\n"
+                    . "کد را همین‌جا وارد کنید.\n\n"
+                    . "⏱ <b>اعتبار کد:</b> {$expiryLabel}\n"
+                    . "🛡️ کد را با هیچ‌کس به اشتراک نگذارید.",
                 $otpKeyboard,
                 'html'
             );
@@ -499,6 +512,10 @@ if ($text == "/start" || $datain == "start" || $text == "start") {
     if ($datain === 'resend_phone_otp') {
         try {
             $otp = BluebotSms::resendPhoneOtp((string) $from_id);
+            $expiresIn = max(1, (int) ($otp['expires_in'] ?? 120));
+            $expiryLabel = ($expiresIn >= 60 && $expiresIn % 60 === 0)
+                ? (int) ($expiresIn / 60) . ' دقیقه'
+                : $expiresIn . ' ثانیه';
             if ($callback_query_id) {
                 telegram('answerCallbackQuery', [
                     'callback_query_id' => $callback_query_id,
@@ -509,18 +526,37 @@ if ($text == "/start" || $datain == "start" || $text == "start") {
             Editmessagetext(
                 $from_id,
                 $message_id,
-                "✅ <b>کد جدید ارسال شد</b>\n\n📩 کد ۶ رقمی جدید برای شماره شما ارسال شد.\nکد را همین‌جا وارد کنید.\n\n⏱ <b>اعتبار کد:</b> " . (int) ($otp['expires_in'] ?? 120) . " ثانیه\n🛡️ فقط آخرین کد ارسال‌شده معتبر است.",
+                "✅ <b>کد جدید ارسال شد</b>\n\n"
+                    . "📩 کد ۶ رقمی جدید برای شماره شما ارسال شد.\n"
+                    . "کد را همین‌جا وارد کنید.\n\n"
+                    . "⏱ <b>اعتبار کد:</b> {$expiryLabel}\n"
+                    . "🛡️ فقط آخرین کد ارسال‌شده معتبر است.",
                 $otpKeyboard
             );
         } catch (Throwable $otpError) {
+            bluebotLog('warning', 'Phone OTP resend failed', [
+                'user_id' => (string) $from_id,
+                'error' => $otpError->getMessage(),
+            ]);
+
+            $otpErrorText = trim((string) $otpError->getMessage());
+            $publicOtpError = preg_match('/^\d+ ثانیه تا ارسال دوباره کد صبر کنید\.$/u', $otpErrorText)
+                ? $otpErrorText
+                : 'ارسال دوباره کد ممکن نشد. کمی بعد دوباره تلاش کنید.';
+
             if ($callback_query_id) {
                 telegram('answerCallbackQuery', [
                     'callback_query_id' => $callback_query_id,
-                    'text' => mb_substr($otpError->getMessage(), 0, 180),
+                    'text' => mb_substr($publicOtpError, 0, 180),
                     'show_alert' => true,
                 ]);
             } else {
-                sendmessage($from_id, $otpError->getMessage(), $otpKeyboard, 'html');
+                sendmessage(
+                    $from_id,
+                    '⚠️ ' . htmlspecialchars($publicOtpError, ENT_QUOTES, 'UTF-8'),
+                    $otpKeyboard,
+                    'html'
+                );
             }
         }
         return;
@@ -549,9 +585,23 @@ if ($text == "/start" || $datain == "start" || $text == "start") {
         sendmessage($from_id, $textbotlang['users']['text_start'], $keyboard, 'html');
         step('home', $from_id);
     } catch (Throwable $otpError) {
+        bluebotLog('warning', 'Phone OTP verification failed', [
+            'user_id' => (string) $from_id,
+            'error' => $otpError->getMessage(),
+        ]);
+
+        $otpErrorText = trim((string) $otpError->getMessage());
+        $safeOtpError = preg_match(
+            '/^(کد تأیید باید دقیقاً ۶ رقم باشد\.|درخواست تأیید شماره پیدا نشد؛ شماره را دوباره ارسال کنید\.|مهلت کد تأیید تمام شده است؛ کد جدید بگیرید\.|کد تأیید نادرست است؛ \d+ تلاش باقی مانده\.|تعداد تلاش‌های ناموفق تمام شد؛ کد جدید بگیرید\.)$/u',
+            $otpErrorText
+        );
+        $publicOtpError = $safeOtpError
+            ? $otpErrorText
+            : 'تأیید کد انجام نشد. لطفاً یک کد جدید دریافت کنید.';
+
         sendmessage(
             $from_id,
-            htmlspecialchars($otpError->getMessage(), ENT_QUOTES, 'UTF-8'),
+            '⚠️ ' . htmlspecialchars($publicOtpError, ENT_QUOTES, 'UTF-8'),
             $otpKeyboard,
             'html'
         );
