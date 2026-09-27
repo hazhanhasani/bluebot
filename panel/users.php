@@ -75,15 +75,13 @@ include __DIR__ . '/inc/layout_head.php';
         </div>
 
         <form method="GET" id="usersForm" class="toolbar-end">
-            <select id="filterStatus" name="status" class="select" style="width:auto"
-                onchange="document.getElementById('usersForm').submit()">
+            <select id="filterStatus" name="status" class="select" style="width:auto">
                 <option value=""><?= $textbotlang['panel']['usersColBalance'] ?></option>
                 <option value="active" <?= $status === 'active' ? 'selected' : '' ?>><?= $textbotlang['panel']['usersColGroup'] ?></option>
                 <option value="block" <?= $status === 'block' ? 'selected' : '' ?>><?= $textbotlang['panel']['usersColStatus'] ?></option>
             </select>
 
-            <select id="filterRole" name="role" class="select" style="width:auto"
-                onchange="document.getElementById('usersForm').submit()">
+            <select id="filterRole" name="role" class="select" style="width:auto">
                 <option value=""><?= $textbotlang['panel']['usersColActions'] ?></option>
                 <option value="f" <?= $role === 'f' ? 'selected' : '' ?>><?= $textbotlang['panel']['usersColJoinDate'] ?></option>
                 <option value="n" <?= $role === 'n' ? 'selected' : '' ?>><?= $textbotlang['panel']['usersColPhone'] ?></option>
