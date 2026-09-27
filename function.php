@@ -1868,7 +1868,7 @@ function checktelegramip()
     return bluebotTelegramWebhookIpAllowed($_SERVER);
 }
 
-function webhookSecretMatches($secret)
+function webhookHeaderSecretMatches($secret)
 {
     $secret = trim((string) $secret);
     if ($secret === '') {
@@ -1876,14 +1876,28 @@ function webhookSecretMatches($secret)
     }
 
     $headerSecret = $_SERVER['HTTP_X_TELEGRAM_BOT_API_SECRET_TOKEN'] ?? '';
-    if (is_string($headerSecret) && $headerSecret !== '' && hash_equals($secret, $headerSecret)) {
-        return true;
+    return is_string($headerSecret)
+        && $headerSecret !== ''
+        && hash_equals($secret, $headerSecret);
+}
+
+function webhookLegacyQuerySecretMatches($secret)
+{
+    $secret = trim((string) $secret);
+    if ($secret === '') {
+        return false;
     }
 
-    // Backward compatibility for BlueBot installations that already use the
-    // legacy query-string secret in their Telegram webhook URL.
     $querySecret = $_GET['secret'] ?? '';
-    return is_string($querySecret) && $querySecret !== '' && hash_equals($secret, $querySecret);
+    return is_string($querySecret)
+        && $querySecret !== ''
+        && hash_equals($secret, $querySecret);
+}
+
+function webhookSecretMatches($secret)
+{
+    return webhookHeaderSecretMatches($secret)
+        || webhookLegacyQuerySecretMatches($secret);
 }
 
 function bluebotSetMainWebhook($secret)
@@ -1895,7 +1909,9 @@ function bluebotSetMainWebhook($secret)
     }
 
     $response = telegram('setWebhook', [
-        'url' => "https://$host/index.php?secret=$secret",
+        // Keep the secret out of URLs and access logs. Telegram sends it in
+        // X-Telegram-Bot-Api-Secret-Token instead.
+        'url' => "https://$host/index.php",
         'secret_token' => $secret,
         'drop_pending_updates' => false,
     ]);
