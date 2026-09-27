@@ -910,26 +910,34 @@ function StatusPayment($paymentid)
 function channel(array $id_channel)
 {
     global $from_id;
-    $channel_link = array();
+
+    $channel_link = [];
     foreach ($id_channel as $channel) {
         if (isTelegramChatIdEmpty($channel)) {
             continue;
         }
+
         $response = telegram('getChatMember', [
             'chat_id' => $channel,
-            'user_id' => $from_id
+            'user_id' => $from_id,
         ]);
-        if ($response['ok']) {
-            if (!in_array($response['result']['status'], ['member', 'creator', 'administrator'])) {
-                $channel_link[] = $channel;
-            }
+
+        if (!is_array($response) || empty($response['ok'])) {
+            // On transport/API failures, do not falsely confirm membership.
+            $channel_link[] = $channel;
+            continue;
+        }
+
+        $status = is_array($response['result'] ?? null)
+            ? (string) ($response['result']['status'] ?? '')
+            : '';
+
+        if (!in_array($status, ['member', 'creator', 'administrator'], true)) {
+            $channel_link[] = $channel;
         }
     }
-    if (count($channel_link) == 0) {
-        return [];
-    } else {
-        return $channel_link;
-    }
+
+    return $channel_link;
 }
 function isValidDate($date)
 {
