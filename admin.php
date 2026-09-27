@@ -3933,7 +3933,7 @@ elseif ($datain == "systemsms") {
     $textadd = sprintf($textbotlang['users']['Balance']['addedNotice'], $heibalanceuser);
     sendmessage($user['Processing_value'], $textadd, null, 'HTML');
     step('home', $from_id);
-    $Balance_user_after = number_format(select("user", "*", "id", $user['Processing_value'], "select")['Balance']);
+    $Balance_user_after = number_format((float) selectValue("user", "Balance", "id", $user['Processing_value'], 0));
     $pricadd = number_format($text);
     if (strlen($setting['Channel_Report']) > 0) {
         $textaddbalance = sprintf($textbotlang['Admin']['reportgroup']['balanceIncreased'], $username, $from_id, $user['Processing_value'], $pricadd, $Balance_user_after);
@@ -3979,7 +3979,7 @@ elseif ($datain == "systemsms") {
     $textkam = sprintf($textbotlang['users']['Balance']['deductedNotice2'], $lowbalanceuser);
     sendmessage($user['Processing_value'], $textkam, null, 'HTML');
     step('home', $from_id);
-    $Balance_user_afters = number_format(select("user", "*", "id", $user['Processing_value'], "select")['Balance']);
+    $Balance_user_afters = number_format((float) selectValue("user", "Balance", "id", $user['Processing_value'], 0));
     if (strlen($setting['Channel_Report']) > 0) {
         $textaddbalance = sprintf($textbotlang['Admin']['reportgroup']['balanceDecreased2'], $username, $from_id, $user['Processing_value'], $text, $Balance_user_afters);
         telegram('sendmessage', [
@@ -4315,10 +4315,10 @@ elseif ($datain == "systemsms") {
     ];
     $panelLabel = $discountCode['code_panel'] == "/all"
         ? $textbotlang['keyboard']['allPanels']
-        : (select("marzban_panel", "name_panel", "code_panel", $discountCode['code_panel'], "select")['name_panel'] ?? $discountCode['code_panel']);
+        : (selectValue("marzban_panel", "name_panel", "code_panel", $discountCode['code_panel'], $discountCode['code_panel']));
     $productLabel = $discountCode['code_product'] == "all"
         ? $textbotlang['keyboard']['allProducts']
-        : (select("product", "name_product", "code_product", $discountCode['code_product'], "select")['name_product'] ?? $discountCode['code_product']);
+        : (selectValue("product", "name_product", "code_product", $discountCode['code_product'], $discountCode['code_product']));
     $discountDetailText = sprintf(
         $textbotlang['Admin']['Discount']['discountDetail'],
         $discountCode['codeDiscount'],
@@ -4555,7 +4555,7 @@ elseif ($datain == "systemsms") {
         $stmt->bindParam(':username', $usernameconfig, PDO::PARAM_STR);
         $stmt->bindParam(':notes', $usernameconfig, PDO::PARAM_STR);
     } else {
-        $usernameconfig = select("invoice", "*", "id_invoice", $datagetr[1], "select")['username'];
+        $usernameconfig = selectValue("invoice", "username", "id_invoice", $datagetr[1], '');
         $sql = "SELECT * FROM invoice WHERE username = :username OR note  = :notes";
         $stmt = $pdo->prepare($sql);
         $stmt->bindParam(':username', $usernameconfig, PDO::PARAM_STR);
@@ -5430,7 +5430,7 @@ if ($datain == "settimecornremove" && $adminrulecheck['rule'] == "administrator"
     sendmessage($from_id, $textbotlang['Admin']['addorder']['stepFive'], $keyboardadmin, 'HTML');
     step('home', $from_id);
 } elseif ($text == $textbotlang['keyboard']['minBulkBalance'] && $adminrulecheck['rule'] == "administrator") {
-    $PaySetting = select("shopSetting", "value", "Namevalue", "minbalancebuybulk", "select")['value'];
+    $PaySetting = getShopSettingValue('minbalancebuybulk', 0);
     $textmin = sprintf($textbotlang['Admin']['price']['askBulkMin'], $PaySetting);
     sendmessage($from_id, $textmin, $backadmin, 'HTML');
     step('minbalancebulk', $from_id);
@@ -8601,7 +8601,7 @@ if (isset($update["inline_query"])) {
     }
     step("home", $from_id);
     $userdate = json_decode($user['Processing_value'], true);
-    $botinfo = json_decode(select("botsaz", "setting", "id_user", $userdate['id_user'], "select")['setting'], true);
+    $botinfo = json_decode((string) selectValue("botsaz", "setting", "id_user", $userdate['id_user'], '{}'), true);
     $botinfo['minpricevolume'] = $text;
     update("botsaz", "setting", json_encode($botinfo), "id_user", $userdate['id_user']);
     sendmessage($from_id, $textbotlang['Admin']['price']['saved'], $keyboardadmin, 'HTML');
@@ -8617,7 +8617,7 @@ if (isset($update["inline_query"])) {
     }
     step("home", $from_id);
     $userdate = json_decode($user['Processing_value'], true);
-    $botinfo = json_decode(select("botsaz", "setting", "id_user", $userdate['id_user'], "select")['setting'], true);
+    $botinfo = json_decode((string) selectValue("botsaz", "setting", "id_user", $userdate['id_user'], '{}'), true);
     $botinfo['minpricetime'] = $text;
     update("botsaz", "setting", json_encode($botinfo), "id_user", $userdate['id_user']);
     sendmessage($from_id, $textbotlang['Admin']['price']['saved'], $keyboardadmin, 'HTML');
@@ -9252,7 +9252,7 @@ if ($datain == "settimecornday" && $adminrulecheck['rule'] == "administrator") {
     step("home", $from_id);
 } elseif ($user['step'] == "getpanelhidebotsaz") {
     $userdata = json_decode($user['Processing_value'], true);
-    $list_panel = json_decode(select("botsaz", "hide_panel", "id_user", $userdata['id_user'], "select")['hide_panel'] ?? '[]', true);
+    $list_panel = json_decode((string) selectValue("botsaz", "hide_panel", "id_user", $userdata['id_user'], '[]'), true);
     if (!is_array($list_panel)) {
         $list_panel = [];
     }
@@ -9267,7 +9267,7 @@ if ($datain == "settimecornday" && $adminrulecheck['rule'] == "administrator") {
     global $list_hide_panel;
     $id_user = $datagetr[1];
     savedata("clear", "id_user", $id_user);
-    $list_panel = json_decode(select("botsaz", "hide_panel", "id_user", $id_user, "select")['hide_panel'] ?? '[]', true);
+    $list_panel = json_decode((string) selectValue("botsaz", "hide_panel", "id_user", $id_user, '[]'), true);
     if (!is_array($list_panel)) {
         $list_panel = [];
     }
@@ -9291,7 +9291,7 @@ if ($datain == "settimecornday" && $adminrulecheck['rule'] == "administrator") {
     step("home", $from_id);
 } elseif ($user['step'] == "getremovehidepanel") {
     $userdata = json_decode($user['Processing_value'], true);
-    $list_panel = json_decode(select("botsaz", "hide_panel", "id_user", $userdata['id_user'], "select")['hide_panel'] ?? '[]', true);
+    $list_panel = json_decode((string) selectValue("botsaz", "hide_panel", "id_user", $userdata['id_user'], '[]'), true);
     if (!is_array($list_panel)) {
         $list_panel = [];
     }
@@ -9556,7 +9556,7 @@ if ($datain == "settimecornday" && $adminrulecheck['rule'] == "administrator") {
     sendmessage($from_id, $textbotlang['Admin']['managepanel']['panelsHiddenProduct'], $shopkeyboard, 'HTML');
     step("home", $from_id);
 } elseif ($user['step'] == "getlistpanel") {
-    $list_panel = json_decode(select("product", "hide_panel", "id", $user['Processing_value'], "select")['hide_panel'] ?? '', true);
+    $list_panel = json_decode((string) selectValue("product", "hide_panel", "id", $user['Processing_value'], '[]'), true);
     if (!is_array($list_panel)) {
         $list_panel = [];
     }
