@@ -1,0 +1,93 @@
+<?php
+
+declare(strict_types=1);
+
+$root = dirname(__DIR__);
+$failures = [];
+
+$read = static function (string $path) use ($root): string {
+    $value = @file_get_contents($root . '/' . $path);
+    return is_string($value) ? $value : '';
+};
+
+$botapi = $read('botapi.php');
+$functions = $read('function.php');
+$index = $read('index.php');
+$panelConfig = $read('panel/inc/config.php');
+$panelLogin = $read('panel/login.php');
+$vpnDefaultBotapi = $read('vpnbot/Default/botapi.php');
+$vpnUpdateBotapi = $read('vpnbot/update/botapi.php');
+$vpnDefaultAdmin = $read('vpnbot/Default/admin.php');
+$vpnUpdateAdmin = $read('vpnbot/update/admin.php');
+
+$checks = [
+    [$botapi, 'curl_close($ch);', 'Main Telegram client must close cURL handles.'],
+    [$functions, 'CURLOPT_SSL_VERIFYHOST, 2', 'Subscription fetcher must verify TLS hostnames.'],
+    [$functions, 'CURLOPT_SSL_VERIFYPEER, true', 'Subscription fetcher must verify TLS peers.'],
+    [$functions, "'url' => \"https://\$host/index.php\"", 'Main webhook URL must not expose the secret in the query string.'],
+    [$functions, 'function webhookHeaderSecretMatches', 'Header-only Telegram webhook verification helper is missing.'],
+    [$index, '$telegramHeaderSecretAllowed', 'Main webhook migration must distinguish header authentication.'],
+    [$panelConfig, 'function bluebotPanelIsHttps', 'Panel HTTPS proxy detection is missing.'],
+    [$panelConfig, 'function bluebotPanelClientIp', 'Panel trusted client IP resolution is missing.'],
+    [$panelLogin, '$ip = bluebotPanelClientIp();', 'Panel login rate limit must use the resolved client IP.'],
+    [$vpnDefaultBotapi, 'curl_close($ch);', 'Default VPNBot Telegram client must close cURL handles.'],
+    [$vpnUpdateBotapi, 'curl_close($ch);', 'Update VPNBot Telegram client must close cURL handles.'],
+    [$vpnDefaultAdmin, '__BLUEBOT_UPDATE_COPY_OK__', 'Default VPNBot updater must verify file copy success.'],
+    [$vpnUpdateAdmin, '__BLUEBOT_UPDATE_COPY_OK__', 'Update VPNBot updater must verify file copy success.'],
+    [$vpnDefaultAdmin, 'escapeshellarg(rtrim($source', 'Default VPNBot updater must shell-escape source paths.'],
+    [$vpnUpdateAdmin, 'escapeshellarg(rtrim($source', 'Update VPNBot updater must shell-escape source paths.'],
+];
+
+foreach ($checks as [$source, $needle, $message]) {
+    if ($source === '' || !str_contains($source, $needle)) {
+        $failures[] = $message;
+    }
+}
+
+if (str_contains($functions, '"https://$host/index.php?secret=$secret"')) {
+    $failures[] = 'Webhook secret must never be embedded in the webhook URL.';
+}
+
+if (preg_match('/function\s+outputlink\s*\([^)]*\)\s*\{(?<body>.*?)\n\}/s', $functions, $match)) {
+    $body = (string) ($match['body'] ?? '');
+    if (str_contains($body, 'CURLOPT_SSL_VERIFYPEER, false')
+        || str_contains($body, 'CURLOPT_SSL_VERIFYHOST, false')
+        || str_contains($body, 'CURLOPT_SSL_VERIFYHOST, 0')) {
+        $failures[] = 'outputlink() must not disable TLS verification.';
+    }
+} else {
+    $failures[] = 'outputlink() could not be inspected.';
+}
+
+foreach ([
+    'vpnbot/Default/botapi.php' => $vpnDefaultBotapi,
+    'vpnbot/update/botapi.php' => $vpnUpdateBotapi,
+] as $path => $source) {
+    if (str_contains($source, 'var_dump(curl_error(')) {
+        $failures[] = "{$path} must not dump transport errors to users.";
+    }
+}
+
+foreach ([
+    'vpnbot/Default/admin.php' => $vpnDefaultAdmin,
+    'vpnbot/update/admin.php' => $vpnUpdateAdmin,
+] as $path => $source) {
+    if (str_contains($source, '$command = "cp -r $source/* $destination 2>&1";')) {
+        $failures[] = "{$path} contains the unsafe legacy updater copy command.";
+    }
+}
+
+if (!preg_match("/\\$dummyHash\s*=\s*'(?<hash>\\$2y\\$12\\$[^']+)'/", $panelLogin, $dummyMatch)
+    || strlen((string) ($dummyMatch['hash'] ?? '')) !== 60) {
+    $failures[] = 'Panel login dummy bcrypt hash must be a valid cost-12 bcrypt hash.';
+}
+
+if ($failures !== []) {
+    fwrite(STDERR, "Security hardening contract failed:\n");
+    foreach ($failures as $failure) {
+        fwrite(STDERR, " - {$failure}\n");
+    }
+    exit(1);
+}
+
+echo "Security hardening contract OK.\n";
