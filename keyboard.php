@@ -1,7 +1,8 @@
 <?php
-require_once 'config.php';
+require_once __DIR__ . '/config.php';
 require_once __DIR__ . '/src/Support/MiniApp.php';
 $setting = select("setting", "*", null, null, "select");
+$setting = is_array($setting) ? $setting : [];
 $textbotlang = languagechange();
 //-----------------------------[  text panel  ]-------------------------------
 $adminrulecheck = select("admin", "*", "id_admin", $from_id, "select");
@@ -43,7 +44,7 @@ $miniAppButton = $miniAppUrl !== '' ? [
     'text' => $textbotlang['keyboard']['miniAppOpen'],
     'web_app' => ['url' => $miniAppUrl],
 ] : null;
-$keyboardLayout = json_decode($setting['keyboardmain'], true);
+$keyboardLayout = json_decode((string) ($setting['keyboardmain'] ?? ''), true);
 $keyboardRows = [];
 if (is_array($keyboardLayout) && isset($keyboardLayout['keyboard']) && is_array($keyboardLayout['keyboard'])) {
     $keyboardRows = $keyboardLayout['keyboard'];
@@ -77,7 +78,7 @@ if (!empty($keyboardRows)) {
     $keyboardRows = array_values($keyboardRows);
 }
 
-if ($setting['inlinebtnmain'] == "oninline" && !empty($keyboardRows)) {
+if (($setting['inlinebtnmain'] ?? '') === "oninline" && !empty($keyboardRows)) {
     $trace_keyboard = $keyboardRows;
     foreach ($trace_keyboard as $key => $callback_set) {
         foreach ($callback_set as $keyboard_key => $keyboard) {
