@@ -78,6 +78,15 @@ if ($worker === false || !str_contains($worker, 'bluebotUpdateCurrentVersion')) 
 if ($worker === false || !str_contains($worker, 'INSTALLED_CHANNEL')) {
     $failures[] = 'Update worker does not preserve the resolved installed source channel.';
 }
+if ($worker === false || !str_contains($worker, 'UPDATE_ARGS+=(--version "$REF")')) {
+    $failures[] = 'Release updates must be pinned to the queued release tag.';
+}
+if ($worker === false || !str_contains($worker, 'UPDATE_ARGS+=(--ref "$REF")')) {
+    $failures[] = 'Beta updates must be pinned to the queued commit SHA.';
+}
+if ($worker !== false && str_contains($worker, 'update --channel "$CHANNEL" --background')) {
+    $failures[] = 'Update worker must not re-resolve a moving channel after the update was queued.';
+}
 if ($worker !== false) {
     $managerPos = strpos($worker, 'bluebotUpdateCurrentVersion');
     $fallbackPos = strpos($worker, 'tr -d');
@@ -111,6 +120,12 @@ if ($manager === false || !str_contains($manager, "'display_version' => \$displa
 
 if ($installerVersioning === false || !str_contains($installerVersioning, '$BOT_DIR_DEFAULT/version')) {
     $failures[] = 'Installer does not synchronize the runtime version file.';
+}
+if ($installerVersioning === false || !str_contains($installerVersioning, '--ref <sha>')) {
+    $failures[] = 'Installer CLI is missing exact commit-ref support.';
+}
+if ($installerVersioning === false || !str_contains($installerVersioning, 'archive/${ARG_REF}.zip')) {
+    $failures[] = 'Installer does not download the exact queued beta commit.';
 }
 
 $setting = @file_get_contents($root . '/db/tables/setting.php');
