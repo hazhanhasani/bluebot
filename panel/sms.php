@@ -225,18 +225,46 @@ foreach ($providerPatterns as $pattern) {
     }
 }
 
-$formatVariableSpecs = static function (array $vars): string {
-    $parts = [];
+$normalizeVariableType = static function (string $type): string {
+    $type = strtolower(trim($type));
+
+    return in_array(
+        $type,
+        ['number', 'numeric', 'int', 'integer', 'float', 'double', 'decimal'],
+        true
+    ) ? 'number' : 'string';
+};
+
+$renderVariableSpecs = static function (array $vars) use ($normalizeVariableType): string {
+    $items = [];
+
     foreach ($vars as $var) {
+        if (is_string($var)) {
+            $var = ['name' => $var, 'type' => 'string', 'length' => 160];
+        }
         if (!is_array($var) || empty($var['name'])) {
             continue;
         }
-        $name = (string) $var['name'];
-        $type = (string) ($var['type'] ?? 'text') === 'numeric' ? 'int / عددی' : 'str / متنی';
-        $length = max(1, (int) ($var['length'] ?? 160));
-        $parts[] = '%' . $name . '% — ' . $type . ' — max ' . $length;
+
+        $name = preg_replace('/[^A-Za-z0-9_-]/', '', (string) $var['name']) ?: '';
+        if ($name === '') {
+            continue;
+        }
+
+        $type = $normalizeVariableType((string) ($var['type'] ?? 'string'));
+        $typeLabel = $type === 'number' ? 'عدد' : 'رشته';
+        $length = max(1, min(500, (int) ($var['length'] ?? 160)));
+
+        $items[] = '<div class="sms-var-chip">'
+            . '<code class="sms-var-name">%' . htmlspecialchars($name, ENT_QUOTES, 'UTF-8') . '%</code>'
+            . '<span class="sms-var-type">' . $typeLabel . '</span>'
+            . '<span class="sms-var-limit">حداکثر ' . number_format($length) . '</span>'
+            . '</div>';
     }
-    return implode("\n", $parts);
+
+    return $items
+        ? '<div class="sms-var-list">' . implode('', $items) . '</div>'
+        : '<span class="sms-var-empty">بدون متغیر</span>';
 };
 
 $pageTitle = 'پیامک و اعلان‌ها';
@@ -244,6 +272,27 @@ $pageLede = 'مدیریت کامل فراز اس‌ام‌اس / ایران‌پ
 $activeNav = 'sms';
 include __DIR__ . '/inc/layout_head.php';
 ?>
+<style>
+.sms-var-list{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.sms-var-chip{display:inline-flex;align-items:center;gap:7px;padding:7px 9px;border:1px solid var(--line);border-radius:10px;background:color-mix(in srgb,var(--card) 82%,transparent);white-space:nowrap}
+.sms-var-name{direction:ltr;unicode-bidi:isolate;font-size:12px}
+.sms-var-type{font-size:12px;font-weight:800;color:var(--text)}
+.sms-var-limit{font-size:11px;color:var(--mute)}
+.sms-var-empty{color:var(--mute);font-size:12px}
+@media (max-width:760px){
+    .sms-mobile-table{display:block;width:100%}
+    .sms-mobile-table thead{display:none}
+    .sms-mobile-table tbody{display:grid;gap:12px;padding:12px}
+    .sms-mobile-table tr{display:block;border:1px solid var(--line);border-radius:16px;background:var(--card);overflow:hidden}
+    .sms-mobile-table td{display:grid;grid-template-columns:92px minmax(0,1fr);gap:10px;align-items:start;width:auto!important;min-width:0!important;padding:11px 12px!important;border:0!important;border-bottom:1px solid var(--line)!important;white-space:normal!important;word-break:break-word}
+    .sms-mobile-table td:last-child{border-bottom:0!important}
+    .sms-mobile-table td::before{content:attr(data-label);font-size:11px;font-weight:800;color:var(--mute)}
+    .sms-mobile-table .select{width:100%;min-width:0!important}
+    .sms-mobile-table code{white-space:pre-wrap;word-break:break-word}
+    .sms-var-list{gap:6px}
+    .sms-var-chip{width:100%;justify-content:space-between}
+}
+</style>
 
 <div class="stats-row fade-up" style="grid-template-columns:repeat(4,minmax(0,1fr));margin-bottom:16px">
     <div class="stat-card"><div class="stat-label">در صف</div><div class="stat-num"><?= number_format($stats['pending'] + $stats['retry'] + $stats['sending']) ?></div></div>
@@ -369,16 +418,15 @@ include __DIR__ . '/inc/layout_head.php';
                 <?= number_format((int) ($cache['pages_fetched'] ?? 1)) ?> صفحه بارگذاری شده است.
             </div>
             <div class="tbl-wrap" style="max-height:360px;overflow:auto">
-                <table class="tbl-lg">
+                <table class="tbl-lg sms-mobile-table sms-pattern-table">
                     <thead><tr><th>Code</th><th>توضیح / متن</th><th>متغیرها</th></tr></thead>
                     <tbody>
                     <?php foreach ($providerPatterns as $pattern): ?>
                         <tr>
-                            <td class="cm"><?= htmlspecialchars((string) ($pattern['code'] ?? '')) ?></td>
-                            <td><?= htmlspecialchars(trunc((string) (($pattern['description'] ?? '') ?: ($pattern['text'] ?? '')), 100)) ?></td>
-                            <td class="cm" style="white-space:pre-line"><?= htmlspecialchars(
-                                $formatVariableSpecs((array) ($pattern['variable_specs'] ?? []))
-                                ?: (implode('، ', (array) ($pattern['variables'] ?? [])) ?: 'بدون متغیر')
+                            <td class="cm" data-label="کد"><?= htmlspecialchars((string) ($pattern['code'] ?? '')) ?></td>
+                            <td data-label="متن"><?= htmlspecialchars(trunc((string) (($pattern['description'] ?? '') ?: ($pattern['text'] ?? '')), 100)) ?></td>
+                            <td data-label="متغیرها"><?= $renderVariableSpecs(
+                                (array) (($pattern['variable_specs'] ?? []) ?: ($pattern['variables'] ?? []))
                             ) ?></td>
                         </tr>
                     <?php endforeach; ?>
@@ -402,7 +450,7 @@ include __DIR__ . '/inc/layout_head.php';
         <input type="hidden" name="_csrf" value="<?= csrf_token() ?>">
         <input type="hidden" name="action" value="save_templates">
         <div class="tbl-wrap">
-            <table class="tbl-lg">
+            <table class="tbl-lg sms-mobile-table sms-template-table">
                 <thead><tr><th>فعال</th><th>رویداد</th><th>دسته</th><th>متن دقیق برای ثبت در فراز SMS</th><th>متغیرها و نوع</th><th>پترن Provider</th></tr></thead>
                 <tbody>
                 <?php foreach ($templates as $template):
@@ -410,15 +458,12 @@ include __DIR__ . '/inc/layout_head.php';
                     $names = array_values(array_filter(array_map(static fn($v) => is_array($v) ? ($v['name'] ?? '') : '', $vars)));
                 ?>
                     <tr>
-                        <td><input type="checkbox" name="enabled[<?= htmlspecialchars((string) $template['event_key']) ?>]" value="1" <?= !empty($template['enabled']) ? 'checked' : '' ?>></td>
-                        <td><strong><?= htmlspecialchars((string) $template['title']) ?></strong><br><small class="cf cm"><?= htmlspecialchars((string) $template['event_key']) ?></small></td>
-                        <td><?= htmlspecialchars((string) $template['category']) ?></td>
-                        <td style="min-width:280px"><code style="white-space:pre-wrap"><?= htmlspecialchars((string) ($catalog[$template['event_key']]['body'] ?? $template['body'] ?? '')) ?></code></td>
-                        <td class="cm" style="white-space:pre-line;min-width:190px"><?= htmlspecialchars(
-                            $formatVariableSpecs((array) ($catalog[$template['event_key']]['vars'] ?? $vars))
-                            ?: 'بدون متغیر'
-                        ) ?></td>
-                        <td>
+                        <td data-label="فعال"><input type="checkbox" name="enabled[<?= htmlspecialchars((string) $template['event_key']) ?>]" value="1" <?= !empty($template['enabled']) ? 'checked' : '' ?>></td>
+                        <td data-label="رویداد"><strong><?= htmlspecialchars((string) $template['title']) ?></strong><br><small class="cf cm"><?= htmlspecialchars((string) $template['event_key']) ?></small></td>
+                        <td data-label="دسته"><?= htmlspecialchars((string) $template['category']) ?></td>
+                        <td data-label="متن پترن" style="min-width:280px"><code style="white-space:pre-wrap"><?= htmlspecialchars((string) ($catalog[$template['event_key']]['body'] ?? $template['body'] ?? '')) ?></code></td>
+                        <td data-label="متغیرها"><?= $renderVariableSpecs((array) ($catalog[$template['event_key']]['vars'] ?? $vars)) ?></td>
+                        <td data-label="پترن">
                             <select class="select" name="pattern[<?= htmlspecialchars((string) $template['event_key']) ?>]" style="min-width:260px">
                                 <option value="">— بدون پترن —</option>
                                 <?php
