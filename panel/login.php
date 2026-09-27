@@ -12,7 +12,7 @@ $error = '';
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
   $username = trim($_POST['username'] ?? '');
   $password = $_POST['password'] ?? '';
-  $ip = $_SERVER['REMOTE_ADDR'] ?? '0.0.0.0';
+  $ip = bluebotPanelClientIp();
 
   if (!csrf_check_value($_POST['_csrf'] ?? '')) {
     $error = $textbotlang['panel']['loginWrongCredentials'];
@@ -26,7 +26,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     $admin = select("admin", "*", "username", $username, "select");
 
-    $dummyHash = '$2y$10$dummy.hash.for.timing.attack.prevention.xxxxxxxxxxxxxxxx';
+    // Valid bcrypt hash keeps missing-user verification on the same expensive
+    // code path and avoids a fast username-enumeration timing oracle.
+    $dummyHash = '$2y$12$Wq0LwnFpxb6NMZ4lEZYxmeiGT9QJBFzEZZJtgUg2.JHpVTrLeJ5Na';
     $storedHash = $admin ? (string) $admin['password'] : $dummyHash;
 
     $isCorrect = false;
