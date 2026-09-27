@@ -7,6 +7,7 @@ final class BluebotSms
     private const DEFAULT_BASE_URL = 'https://api.iranpayamak.com/ws/v1';
     private const PATTERN_CACHE_TTL = 900;
     private const RETRY_DELAYS = [60, 300, 900, 1800];
+    private const REQUIRED_PATTERN_SIGNATURE = 'bot.bluepanel.ir';
 
     public static function catalog(): array
     {
@@ -93,6 +94,44 @@ final class BluebotSms
                 'broadcast' => 1,
             ],
         ];
+    }
+
+    public static function sampleParams(string $eventKey): array
+    {
+        $spec = self::catalog()[$eventKey] ?? null;
+        if (!is_array($spec)) {
+            return [];
+        }
+
+        $samples = [
+            'code' => '123456',
+            'service' => 'سرویس تست',
+            'username' => 'test01',
+            'expire_date' => '1405/07/30',
+            'days_left' => '3',
+            'remaining_volume' => '1.5',
+            'amount' => '100000',
+            'order_id' => 'TEST123',
+            'balance' => '250000',
+            'message' => 'این یک پیام آزمایشی است.',
+        ];
+
+        $out = [];
+        foreach ((array) ($spec['vars'] ?? []) as $var) {
+            $name = (string) ($var['name'] ?? '');
+            if ($name === '') {
+                continue;
+            }
+
+            $type = self::normalizeVariableType((string) ($var['type'] ?? 'string'));
+            $value = (string) ($samples[$name] ?? ($type === 'number' ? '1' : 'test'));
+            if ($type === 'number') {
+                $value = preg_replace('/\D+/', '', $value) ?: '1';
+            }
+            $out[$name] = mb_substr($value, 0, max(1, (int) ($var['length'] ?? 160)));
+        }
+
+        return $out;
     }
 
     public static function settings(): array
@@ -779,9 +818,36 @@ final class BluebotSms
             return null;
         }
 
-        $status = strtolower(trim((string) ($row['status'] ?? $row['state'] ?? 'active')));
-        if ($status !== '' && !in_array($status, ['active','approved','accepted','accept','1','true'], true)) {
-            return null;
+        $statusRaw = $row['status']
+            ?? $row['state']
+            ?? $row['pattern_status']
+            ?? $row['patternStatus']
+            ?? $row['approval_status']
+            ?? $row['approvalStatus']
+            ?? null;
+
+        $status = is_scalar($statusRaw) ? mb_strtolower(trim((string) $statusRaw), 'UTF-8') : '';
+        $status = strtr($status, ['ي' => 'ی', 'ك' => 'ک']);
+
+        $explicitFlags = [
+            $row['is_active'] ?? $row['isActive'] ?? $row['active'] ?? null,
+            $row['is_approved'] ?? $row['isApproved'] ?? $row['approved'] ?? null,
+        ];
+        foreach ($explicitFlags as $flag) {
+            if ($flag === null || $flag === '') {
+                continue;
+            }
+            $normalizedFlag = mb_strtolower(trim((string) $flag), 'UTF-8');
+            if (in_array($normalizedFlag, ['0', 'false', 'no', 'off'], true)) {
+                return null;
+            }
+        }
+
+        if ($status !== '') {
+            $acceptedStatuses = ['active','enabled','approved','accepted','accept','1','true','فعال','تایید شده','تأیید شده','تاییدشده','تأییدشده'];
+            if (!in_array($status, $acceptedStatuses, true)) {
+                return null;
+            }
         }
 
         $text = trim(strip_tags((string) ($row['text'] ?? $row['pattern'] ?? $row['body'] ?? '')));
@@ -843,6 +909,7 @@ final class BluebotSms
             'code' => mb_substr($code, 0, 180),
             'text' => mb_substr($text, 0, 600),
             'description' => mb_substr($description, 0, 250),
+            'status' => $status !== '' ? $status : 'active',
             'variables' => $vars,
             'variable_specs' => array_values($specs),
         ];
@@ -953,6 +1020,13 @@ final class BluebotSms
             if ($type === 'number' && !in_array($providerType, ['number', 'unknown'], true)) {
                 return false;
             }
+        }
+
+        $providerText = self::normalizeText(
+            (string) ($pattern['text'] ?? '') . ' ' . (string) ($pattern['description'] ?? '')
+        );
+        if (!str_contains($providerText, self::normalizeText(self::REQUIRED_PATTERN_SIGNATURE))) {
+            return false;
         }
 
         return true;
