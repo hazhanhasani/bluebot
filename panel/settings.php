@@ -219,7 +219,7 @@ include __DIR__ . '/inc/layout_head.php';
                 </div>
                 <div class="kv">
                     <span class="kv-key"><?= $textbotlang['panel']['settingsSidebarToggleLabel'] ?></span>
-                    <span class="kv-val cm"><?= htmlspecialchars($_SERVER['REMOTE_ADDR'] ?? '—') ?></span>
+                    <span class="kv-val cm"><?= htmlspecialchars(bluebotPanelClientIp()) ?></span>
                 </div>
             </div>
         </div>
