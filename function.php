@@ -3022,10 +3022,34 @@ function createqrcode($contents)
 function qrTempPath($filename)
 {
     $dir = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'bluebot_qr';
-    if (!is_dir($dir) && !@mkdir($dir, 0775, true) && !is_dir($dir)) {
+    if (!is_dir($dir) && !@mkdir($dir, 0700, true) && !is_dir($dir)) {
         $dir = sys_get_temp_dir();
     }
-    return rtrim($dir, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR . ltrim($filename, DIRECTORY_SEPARATOR);
+
+    $filename = basename(trim((string) $filename));
+    $extension = pathinfo($filename, PATHINFO_EXTENSION);
+    $stem = pathinfo($filename, PATHINFO_FILENAME);
+    $stem = preg_replace('/[^A-Za-z0-9._-]+/', '_', $stem) ?: 'file';
+    $stem = trim($stem, '._-');
+    if ($stem === '') {
+        $stem = 'file';
+    }
+
+    try {
+        $suffix = bin2hex(random_bytes(6));
+    } catch (Throwable $e) {
+        $suffix = str_replace('.', '', uniqid('', true));
+    }
+
+    $safeName = $stem . '_' . $suffix;
+    if ($extension !== '') {
+        $safeExt = preg_replace('/[^A-Za-z0-9]+/', '', $extension);
+        if ($safeExt !== '') {
+            $safeName .= '.' . strtolower($safeExt);
+        }
+    }
+
+    return rtrim($dir, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR . $safeName;
 }
 function sanitize_recursive(array $data): array
 {
