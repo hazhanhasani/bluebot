@@ -25,6 +25,12 @@ $cronIranpay = $read('cronbot/iranpay1.php');
 $cronJobs = $read('cronbot/jobs.php');
 $cronRun = $read('cronbot/run.php');
 $storageHtaccess = $read('storage/.htaccess');
+$nowPaymentCallback = $read('payment/nowpayment.php');
+$iranpay1Callback = $read('payment/iranpay1.php');
+$cubepayCallback = $read('payment/iranpay2.php');
+$iranpay4Callback = $read('payment/iranpay4.php');
+$zarinpalCallback = $read('payment/zarinpal.php');
+$varizaWebhook = $read('payment/variza_webhook.php');
 $admin = $read('admin.php');
 $iranpay1 = $read('payment/iranpay1.php');
 $zarinpal = $read('payment/zarinpal.php');
@@ -61,6 +67,19 @@ $mustContain = [
     [$cronJobs, 'X-BlueBot-Cron-Token: $token', 'Generated curl cron command must send the cron token header.'],
     [$cronRun, "PHP_SAPI !== 'cli' && !mirza_cron_http_authorized", 'Cron dispatcher must reject unauthenticated web calls.'],
     [$storageHtaccess, '<Files "cron-http.secret">', 'Cron dispatcher secret must be denied from web access.'],
+    [$cronRun, 'if ($slotFh === null)', 'Cron dispatcher must stop when host concurrency slots are exhausted.'],
+    [$functions, 'if ($bytes <= 0)', 'Byte formatter must handle zero and invalid byte values safely.'],
+    [$functions, 'random_int(1000000, 9999999)', 'Username generation must use a cryptographically secure random suffix.'],
+    [$functions, "getPaySettingValue('marchent_tronseller'", 'NOWPayments helpers must tolerate missing payment settings.'],
+    [$nowPaymentCallback, "getPaySettingValue('cashbacknowpayment'", 'NOWPayments callback must tolerate missing cashback settings.'],
+    [$iranpay1Callback, "Payment_Method'] ?? '') !== 'Currency Rial 1'", 'IranPay1 callback must be bound to IranPay1 orders.'],
+    [$iranpay1Callback, 'languagechange(dirname(__DIR__))', 'IranPay1 callback must initialize language text before rendering.'],
+    [$zarinpalCallback, "Payment_Method'] ?? '') !== 'zarinpal'", 'ZarinPal callback must be bound to ZarinPal orders.'],
+    [$zarinpalCallback, 'languagechange(dirname(__DIR__))', 'ZarinPal callback must initialize language text before rendering.'],
+    [$cubepayCallback, "'delivery_failed'", 'CubePay callback must surface delivery failures separately from payment failures.'],
+    [$cubepayCallback, 'CURLOPT_PROTOCOLS => CURLPROTO_HTTPS', 'CubePay verification must be HTTPS-only.'],
+    [$iranpay4Callback, "Payment_Method'] ?? '') !== 'iranpay4'", 'IranPay4 callback must be bound to IranPay4 orders.'],
+    [$varizaWebhook, "Payment_Method'] ?? '') !== 'variza'", 'Variza webhook must be bound to Variza orders.'],
     [$admin, "bluebotAudit('admin.user_transfer'", 'Admin account transfers must be audited.'],
     [$admin, "['sms_otp_challenges', 'user_id']", 'Admin account transfer must move OTP ownership.'],
 ];
