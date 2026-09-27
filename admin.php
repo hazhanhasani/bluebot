@@ -393,53 +393,92 @@ if ($text === "/debug") {
 } elseif ($text == $textbotlang['keyboard']['channelSettings'] && $adminrulecheck['rule'] == "administrator") {
     sendmessage($from_id, $textbotlang['Admin']['channel']['description'], $channelkeyboard, 'HTML');
 } elseif ($text == $textbotlang['Admin']['Status']['btn'] || $datain == "stat_all_bot") {
-    $Balanceall = select("user", "SUM(Balance)", null, null, "select")['SUM(Balance)'];
-    $statistics = select("user", "*", null, null, "count");
-    $sumpanel = select("marzban_panel", "*", null, null, "count");
-    $sql1 = "SELECT COUNT(id) AS count FROM user WHERE agent != 'f'";
-    $stmt1 = $pdo->query($sql1);
-    $agentsum = $stmt1->fetch(PDO::FETCH_ASSOC)['count'];
-    $agentsumn = select("user", "COUNT(id)", "agent", "n", "select")['COUNT(id)'];
-    $agentsumn2 = select("user", "COUNT(id)", "agent", "n2", "select")['COUNT(id)'];
-    $sql1 = "SELECT COUNT(*) AS invoice_count FROM invoice WHERE (status = 'active' OR status = 'end_of_time' OR status = 'end_of_volume' OR status = 'sendedwarn' OR status = 'send_on_hold') AND name_product != '{$textbotlang['common']['labels']['testServiceName']}'";
-    $stmt1 = $pdo->query($sql1);
-    $invoiceactive = $stmt1->fetch(PDO::FETCH_ASSOC)['invoice_count'];
-    $sqlall = "SELECT COUNT(*) AS invoice_count FROM invoice WHERE status != 'Unpaid' AND name_product != '{$textbotlang['common']['labels']['testServiceName']}'";
-    $sqlall = $pdo->query($sqlall);
-    $invoice = $sqlall->fetch(PDO::FETCH_ASSOC)['invoice_count'];
-    $sql2 = "SELECT SUM(price_product) AS total_price FROM invoice WHERE (status = 'active' OR status = 'end_of_time' OR status = 'end_of_volume' OR status = 'sendedwarn' OR status = 'send_on_hold') AND name_product != '{$textbotlang['common']['labels']['testServiceName']}'";
-    $stmt2 = $pdo->query($sql2);
-    $invoicesum = $stmt2->fetch(PDO::FETCH_ASSOC)['total_price'];
-    $sql33 = "SELECT SUM(price_product) AS total_price FROM invoice WHERE status!= 'Unpaid' AND name_product != '{$textbotlang['common']['labels']['testServiceName']}'";
-    $sql33 = $pdo->query($sql33);
-    $invoiceSumRow = $sql33->fetch(PDO::FETCH_ASSOC);
-    $invoiceTotal = isset($invoiceSumRow['total_price']) ? (float) $invoiceSumRow['total_price'] : 0;
-    $invoicesumall = number_format($invoiceTotal, 0);
-    $sql3 = "SELECT SUM(price) AS total_extend FROM service_other WHERE type = 'extend_user'";
-    $stmt3 = $pdo->query($sql3);
-    $extendSumRow = $stmt3->fetch(PDO::FETCH_ASSOC);
-    $extendsum = isset($extendSumRow['total_extend']) ? (float) $extendSumRow['total_extend'] : 0;
-    $count_usertest = select("invoice", "*", "name_product", $textbotlang['common']['labels']['testServiceName'], "count");
+    $Balanceall = (float) selectValue("user", "SUM(Balance)", null, null, 0);
+    $statistics = (int) select("user", "*", null, null, "count");
+    $sumpanel = (int) select("marzban_panel", "*", null, null, "count");
+    $testServiceName = (string) ($textbotlang['common']['labels']['testServiceName'] ?? 'test');
+
+    $stmt = $pdo->query("SELECT COUNT(id) FROM user WHERE agent != 'f'");
+    $agentsum = $stmt !== false ? (int) $stmt->fetchColumn() : 0;
+    $agentsumn = (int) selectValue("user", "COUNT(id)", "agent", "n", 0);
+    $agentsumn2 = (int) selectValue("user", "COUNT(id)", "agent", "n2", 0);
+
+    $stmt = $pdo->prepare(
+        "SELECT COUNT(*) FROM invoice
+         WHERE status IN ('active','end_of_time','end_of_volume','sendedwarn','send_on_hold')
+           AND name_product != :testServiceName"
+    );
+    $stmt->execute([':testServiceName' => $testServiceName]);
+    $invoiceactive = (int) $stmt->fetchColumn();
+
+    $stmt = $pdo->prepare(
+        "SELECT COUNT(*) FROM invoice
+         WHERE status != 'Unpaid'
+           AND name_product != :testServiceName"
+    );
+    $stmt->execute([':testServiceName' => $testServiceName]);
+    $invoice = (int) $stmt->fetchColumn();
+
+    $stmt = $pdo->prepare(
+        "SELECT COALESCE(SUM(price_product), 0) FROM invoice
+         WHERE status IN ('active','end_of_time','end_of_volume','sendedwarn','send_on_hold')
+           AND name_product != :testServiceName"
+    );
+    $stmt->execute([':testServiceName' => $testServiceName]);
+    $invoicesum = (float) $stmt->fetchColumn();
+
+    $stmt = $pdo->prepare(
+        "SELECT COALESCE(SUM(price_product), 0) FROM invoice
+         WHERE status != 'Unpaid'
+           AND name_product != :testServiceName"
+    );
+    $stmt->execute([':testServiceName' => $testServiceName]);
+    $invoicesumall = number_format((float) $stmt->fetchColumn(), 0);
+
+    $stmt = $pdo->query("SELECT COALESCE(SUM(price), 0) FROM service_other WHERE type = 'extend_user'");
+    $extendsum = $stmt !== false ? (float) $stmt->fetchColumn() : 0;
+
+    $count_usertest = (int) select(
+        "invoice",
+        "*",
+        "name_product",
+        $testServiceName,
+        "count"
+    );
+
     $timeacc = jdate('H:i:s', time());
-    $stmt2 = $pdo->prepare("SELECT COUNT(DISTINCT id_user) as count FROM `invoice` WHERE Status != 'Unpaid'");
-    $stmt2->execute();
-    $statisticsorder = $stmt2->fetch(PDO::FETCH_ASSOC)['count'];
-    $sqlsum = "SELECT SUM(price) AS sumpay , Payment_Method,COUNT(price) AS countpay FROM Payment_report WHERE payment_Status = 'paid' AND Payment_Method NOT IN ('add balance by admin','low balance by admin') GROUP BY  Payment_Method;";
+    $stmt = $pdo->query("SELECT COUNT(DISTINCT id_user) FROM invoice WHERE Status != 'Unpaid'");
+    $statisticsorder = $stmt !== false ? (int) $stmt->fetchColumn() : 0;
+
+    $sqlsum = "SELECT SUM(price) AS sumpay, Payment_Method, COUNT(price) AS countpay
+               FROM Payment_report
+               WHERE payment_Status = 'paid'
+                 AND Payment_Method NOT IN ('add balance by admin','low balance by admin')
+               GROUP BY Payment_Method";
     $stmt = $pdo->prepare($sqlsum);
     $stmt->execute();
-    $statispay = $stmt->fetchAll();
+    $statispay = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    $statispay = is_array($statispay) ? $statispay : [];
+
     $date = date("Y-m-d");
     $timeacc = jdate('H:i:s', time());
     $start_time = date('d.m.Y', strtotime("-1 days")) . " 00:00:00";
     $end_time = date('d.m.Y', strtotime("-1 days")) . " 23:59:59";
     $start_time_timestamp = strtotime($start_time);
     $end_time_timestamp = strtotime($end_time);
-    $sql = "SELECT SUM(price_product) FROM invoice WHERE (time_sell BETWEEN :requestedDate AND :requestedDateend) AND (status = 'active' OR status = 'end_of_time'  OR status = 'end_of_volume' OR Status = 'send_on_hold' OR Status = 'sendedwarn') AND name_product != '{$textbotlang['common']['labels']['testServiceName']}'";
-    $stmt = $pdo->prepare($sql);
-    $stmt->bindParam(':requestedDate', $start_time_timestamp);
-    $stmt->bindParam(':requestedDateend', $end_time_timestamp);
-    $stmt->execute();
-    $suminvoiceday = $stmt->fetch(PDO::FETCH_ASSOC)['SUM(price_product)'];
+
+    $stmt = $pdo->prepare(
+        "SELECT COALESCE(SUM(price_product), 0) FROM invoice
+         WHERE time_sell BETWEEN :requestedDate AND :requestedDateend
+           AND status IN ('active','end_of_time','end_of_volume','send_on_hold','sendedwarn')
+           AND name_product != :testServiceName"
+    );
+    $stmt->execute([
+        ':requestedDate' => $start_time_timestamp,
+        ':requestedDateend' => $end_time_timestamp,
+        ':testServiceName' => $testServiceName,
+    ]);
+    $suminvoiceday = (float) $stmt->fetchColumn();
     $invoicesum = (float) ($invoicesum ?? 0);
     $extendsum = (float) ($extendsum ?? 0);
     $suminvoiceday = (float) ($suminvoiceday ?? 0);
