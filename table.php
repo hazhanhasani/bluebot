@@ -2,10 +2,17 @@
 
 require_once __DIR__ . '/db/bootstrap.php';
 
-global $domainhosts;
+$webhookState = ensureWebhookSecret();
+$webhookSecret = trim((string) ($webhookState['secret'] ?? ''));
 
-$webhookSecret = ensureWebhookSecret();
+if ($webhookSecret === '' || !bluebotSetMainWebhook($webhookSecret)) {
+    error_log('BlueBot webhook setup failed after database bootstrap.');
 
-telegram('setWebhook', [
-    'url' => "https://$domainhosts/index.php?secret={$webhookSecret['secret']}",
-]);
+    if (PHP_SAPI !== 'cli') {
+        http_response_code(500);
+        exit('webhook setup failed');
+    }
+
+    fwrite(STDERR, "Webhook setup failed.\n");
+    exit(1);
+}
