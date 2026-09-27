@@ -1115,7 +1115,10 @@ function mini_purchase(array $data, string $method): void
         $scorenew = $user_info['score'] + 1;
         update("user", "score", $scorenew, "id", $user_info['id']);
     }
-    $balanceformatsell = number_format(select("user", "Balance", "id", $user_info['id'], "select")['Balance'], 0);
+    $balanceformatsell = number_format(
+        (float) selectValue("user", "Balance", "id", $user_info['id'], 0),
+        0
+    );
     $textonebuy = "";
     if ($countinvoice == 1) {
         $textonebuy = $textbotlang['common']['labels']['firstPurchase'];
