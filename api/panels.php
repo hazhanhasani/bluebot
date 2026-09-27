@@ -368,9 +368,13 @@ function panel_set_inbounds(array $data, string $method): void
         $proxy_output = json_encode($DataUserOut[$proxyKey]);
         $datainbound = json_encode($isNewMarzban ? ($DataUserOut['group_ids'] ?? []) : ($DataUserOut['inbounds'] ?? []));
     } elseif ($panel['type'] == "marzneshin") {
-        $userdata = json_decode(getuserm($data['input'], $panel['name_panel'])['body'] ?? '', true);
-        if (!is_array($userdata) || (isset($userdata['detail']) and $userdata['detail'] == "User not found"))
+        $panelResponse = getuserm($data['input'], $panel['name_panel']);
+        $userdata = is_array($panelResponse)
+            ? json_decode((string) ($panelResponse['body'] ?? ''), true)
+            : null;
+        if (!is_array($userdata) || (isset($userdata['detail']) && $userdata['detail'] == "User not found")) {
             sendJsonResponse(false, "User Not Found", [], 200);
+        }
         $datainbound = json_encode($userdata['service_ids'] ?? []);
     } elseif ($panel['type'] == "x-ui_single") {
         $user_data = get_clinets($data['input'], $panel['name_panel']);
@@ -378,9 +382,13 @@ function panel_set_inbounds(array $data, string $method): void
             sendJsonResponse(false, $user_data['error'], [], 200);
         if (!empty($user_data['status']) && $user_data['status'] != 200)
             sendJsonResponse(false, $user_data['msg'], [], 200);
-        $user_data = json_decode($user_data['body'] ?? '', true)['obj'] ?? null;
-        if ($user_data == null)
+        $decodedUserData = json_decode((string) ($user_data['body'] ?? ''), true);
+        $user_data = is_array($decodedUserData['obj'] ?? null)
+            ? $decodedUserData['obj']
+            : null;
+        if ($user_data === null) {
             sendJsonResponse(false, "User Not Found", [], 200);
+        }
         $datainbound = $user_data['inboundId'];
     } elseif ($panel['type'] == "s_ui") {
         $user_data = GetClientsS_UI($data['input'], $panel['name_panel']);
