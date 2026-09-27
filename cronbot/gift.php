@@ -11,7 +11,8 @@ $ManagePanel = new ManagePanel();
 
 
 $setting = select("setting", "*");
-$errorreport = select("topicid","idreport","report","errorreport","select")['idreport'];
+$topicRow = select("topicid", "idreport", "report", "errorreport", "select");
+$errorreport = is_array($topicRow) ? ($topicRow['idreport'] ?? null) : null;
 
 $textbotlang = languagechange();
 if(!is_file('gift'))return;
