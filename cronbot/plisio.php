@@ -9,22 +9,56 @@ require_once __DIR__ . '/../jdf.php';
 require __DIR__ . '/../vendor/autoload.php';
 $ManagePanel = new ManagePanel();
 $setting = select("setting", "*");
-$paymentreports = select("topicid", "idreport", "report", "paymentreport", "select")['idreport'];
+$setting = is_array($setting) ? $setting : [];
+$paymentTopic = select("topicid", "idreport", "report", "paymentreport", "select");
+$paymentreports = is_array($paymentTopic) ? ($paymentTopic['idreport'] ?? null) : null;
 
 function statusplisio($tx_id)
 {
-    $api_key = getPaySettingValue('apinowpayment');
-    $url = 'https://api.plisio.net/api/v1/operations';
-    $url .= '?api_key=' . urlencode($api_key);
-    $url .= '&search=' . urlencode($tx_id);
-    $ch = curl_init($url);
-    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-    curl_setopt($ch, CURLOPT_TIMEOUT, 20);
-    $response = curl_exec($ch);
-    if ($response === false) {
+    $apiKey = trim((string) getPaySettingValue('apinowpayment', ''));
+    if ($apiKey === '' || $apiKey === '0') {
         return null;
     }
-    return json_decode($response, true);
+
+    $query = http_build_query([
+        'api_key' => $apiKey,
+        'search' => (string) $tx_id,
+    ], '', '&', PHP_QUERY_RFC3986);
+
+    $ch = curl_init('https://api.plisio.net/api/v1/operations?' . $query);
+    if ($ch === false) {
+        return null;
+    }
+
+    curl_setopt_array($ch, [
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_CONNECTTIMEOUT => 5,
+        CURLOPT_TIMEOUT => 20,
+        CURLOPT_FOLLOWLOCATION => true,
+        CURLOPT_MAXREDIRS => 3,
+        CURLOPT_PROTOCOLS => CURLPROTO_HTTPS,
+        CURLOPT_REDIR_PROTOCOLS => CURLPROTO_HTTPS,
+        CURLOPT_SSL_VERIFYPEER => true,
+        CURLOPT_SSL_VERIFYHOST => 2,
+        CURLOPT_HTTPHEADER => ['Accept: application/json'],
+    ]);
+
+    $response = curl_exec($ch);
+    $error = $response === false ? curl_error($ch) : '';
+    $status = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    curl_close($ch);
+
+    if (!is_string($response) || $status < 200 || $status >= 300) {
+        bluebotLog('warning', 'Plisio status request failed', [
+            'order_id' => (string) $tx_id,
+            'http_code' => $status,
+            'error' => $error,
+        ]);
+        return null;
+    }
+
+    $decoded = json_decode($response, true);
+    return is_array($decoded) ? $decoded : null;
 }
 $list_service = $pdo->prepare("SELECT * FROM Payment_report WHERE payment_Status = 'Unpaid' AND Payment_Method = 'plisio'");
 $list_service->execute();
@@ -39,8 +73,13 @@ while ($Payment_report = ($list_service)->fetch(PDO::FETCH_ASSOC)) {
     $StatusPayment = statusplisio($Payment_report['id_order']);
     if (!is_array($StatusPayment) || !isset($StatusPayment['data']['operations']) || !is_array($StatusPayment['data']['operations']))
         continue;
-    $operationStatus = $StatusPayment['data']['operations'][0]['status'] ?? null;
-    if ($operationStatus == null || $operationStatus == "cancelled") {
+    $operation = $StatusPayment['data']['operations'][0] ?? null;
+    if (!is_array($operation)) {
+        continue;
+    }
+
+    $operationStatus = strtolower(trim((string) ($operation['status'] ?? '')));
+    if ($operationStatus === '' || in_array($operationStatus, ['cancelled', 'expired'], true)) {
         $textexpire = sprintf($textbotlang['users']['Balance']['plisioExpired'], $Payment_report['id_order'], $Payment_report['price']);
         sendmessage($Payment_report['id_user'], $textexpire, null, 'html');
         update("Payment_report", "payment_Status", "expire", "id_order", $Payment_report['id_order']);
@@ -48,12 +87,31 @@ while ($Payment_report = ($list_service)->fetch(PDO::FETCH_ASSOC)) {
     if ($operationStatus == "completed") {
         if (!claimPaymentPaid($Payment_report['id_order']))
             continue;
-        DirectPayment($Payment_report['id_order'], "../images.jpg");
-        $pricecashback = select("PaySetting", "ValuePay", "NamePay", "chashbackplisio", "select")['ValuePay'];
+        try {
+            DirectPayment($Payment_report['id_order'], "../images.jpg");
+        } catch (Throwable $deliveryError) {
+            markPaymentDeliveryError($Payment_report['id_order'], $deliveryError->getMessage());
+            bluebotLog('error', 'Plisio payment delivery failed', [
+                'order_id' => (string) $Payment_report['id_order'],
+                'error' => $deliveryError->getMessage(),
+            ]);
+            continue;
+        }
+
+        $cashbackRow = select("PaySetting", "ValuePay", "NamePay", "chashbackplisio", "select");
+        $pricecashback = is_array($cashbackRow) ? ($cashbackRow['ValuePay'] ?? '0') : '0';
         $__q18 = $pdo->prepare("SELECT * FROM user WHERE id = ? LIMIT 1");
         $__q18->bindValue(1, $Payment_report['id_user'], PDO::PARAM_STR);
         $__q18->execute();
         $Balance_id = $__q18->fetch(PDO::FETCH_ASSOC);
+        if (!is_array($Balance_id)) {
+            bluebotLog('warning', 'Plisio paid order has no buyer record', [
+                'order_id' => (string) $Payment_report['id_order'],
+                'user_id' => (string) $Payment_report['id_user'],
+            ]);
+            continue;
+        }
+
         if ($pricecashback != "0") {
             $result = ($Payment_report['price'] * $pricecashback) / 100;
             $Balance_confrim = intval($Balance_id['Balance']) + $result;
@@ -62,7 +120,22 @@ while ($Payment_report = ($list_service)->fetch(PDO::FETCH_ASSOC)) {
             $text_report = sprintf($textbotlang['users']['Balance']['giftDepositPlisio'], $result);
             sendmessage($Balance_id['id'], $text_report, null, 'HTML');
         }
-        $text_reportpayment = sprintf($textbotlang['Admin']['reportgroup']['newPaymentPlisio'], $Balance_id['username'], $Balance_id['id'], $Payment_report['price'], $StatusPayment['tx_url'][0], $StatusPayment['invoice_url'], $StatusPayment['invoice_total_sum']);
+        $txUrl = (string) ($operation['tx_url'] ?? $StatusPayment['data']['tx_url'] ?? '');
+        if (is_array($operation['tx_url'] ?? null)) {
+            $txUrl = (string) (($operation['tx_url'][0] ?? '') ?: '');
+        }
+        $invoiceUrl = (string) ($operation['invoice_url'] ?? $StatusPayment['data']['invoice_url'] ?? '');
+        $invoiceTotal = (string) ($operation['invoice_total_sum'] ?? $StatusPayment['data']['invoice_total_sum'] ?? '');
+
+        $text_reportpayment = sprintf(
+            $textbotlang['Admin']['reportgroup']['newPaymentPlisio'],
+            $Balance_id['username'],
+            $Balance_id['id'],
+            $Payment_report['price'],
+            $txUrl,
+            $invoiceUrl,
+            $invoiceTotal
+        );
         if (strlen($setting['Channel_Report']) > 0) {
             telegram('sendmessage', [
                 'chat_id' => $setting['Channel_Report'],
