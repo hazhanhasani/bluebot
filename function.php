@@ -2702,15 +2702,46 @@ function sendMessageService($panel_info, $config, $sub_link, $username_service, 
     }
 }
 
-function isValidInvitationCode($setting, $fromId, $verfy_status)
+function resolveInvitationOwnerId(string $payload): ?string
+{
+    global $pdo;
+
+    $payload = trim($payload);
+    if ($payload === '' || strlen($payload) > 128) {
+        return null;
+    }
+
+    // Current referral links use the per-user random codeInvitation value.
+    $stmt = $pdo->prepare('SELECT id FROM user WHERE codeInvitation = ? LIMIT 1');
+    $stmt->execute([$payload]);
+    $ownerId = $stmt->fetchColumn();
+    if ($ownerId !== false && $ownerId !== null && $ownerId !== '') {
+        return (string) $ownerId;
+    }
+
+    // Backward compatibility for old links that used the numeric Telegram ID.
+    if (ctype_digit($payload) && rowExists('user', 'id', $payload)) {
+        return $payload;
+    }
+
+    return null;
+}
+
+function isValidInvitationCode($setting, $fromId, $verifyStatus, ?string $inviterId = null): bool
 {
     global $textbotlang;
 
-    if ($setting['verifybucodeuser'] == "onverify" && $verfy_status != 1) {
-        sendmessage($fromId, $textbotlang['users']['account']['verified'], null, 'html');
-        update("user", "verify", "1", "id", $fromId);
-        update("user", "cardpayment", "1", "id", $fromId);
+    if (($setting['verifybucodeuser'] ?? '') !== "onverify"
+        || (int) $verifyStatus === 1
+        || $inviterId === null
+        || (string) $inviterId === (string) $fromId) {
+        return false;
     }
+
+    sendmessage($fromId, $textbotlang['users']['account']['verified'], null, 'html');
+    update("user", "verify", "1", "id", $fromId);
+    update("user", "cardpayment", "1", "id", $fromId);
+    return true;
 }
 function createPayZarinpal($price, $order_id)
 {
