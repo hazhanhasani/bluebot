@@ -20,6 +20,14 @@ $base = trim((string) $versionBackup);
 $base = preg_replace('/-beta\+[0-9a-f]{7,40}$/i', '', $base) ?? $base;
 $betaRef = '1234567890abcdef1234567890abcdef12345678';
 
+$legacyMalformed = bluebotUpdateNormalizeDisplayVersion('beta+36c1ffd-0.5.8');
+if ($legacyMalformed !== '0.5.8-beta+36c1ffd') {
+    throw new RuntimeException('Legacy malformed Beta version was not normalized.');
+}
+if (bluebotUpdateBaseVersion('beta+36c1ffd-0.5.8') !== '0.5.8') {
+    throw new RuntimeException('Legacy malformed Beta version did not resolve to its stable base.');
+}
+
 try {
     $beta = bluebotWriteInstalledBuildState('beta', $betaRef);
     $expectedBeta = $base . '-beta+1234567';
