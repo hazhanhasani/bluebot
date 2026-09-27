@@ -1885,7 +1885,7 @@ if ($text == "/start" || $datain == "start" || $text == "start") {
         Editmessagetext($from_id, $message_id, $textbotlang['users']['sell']['selectDuration'], $monthkeyboard);
     }
 } elseif ($user['step'] == "gettimecustomvolomforextend") {
-    $userdate = json_decode($user['Processing_value'], true);
+    $userdate = bluebotJsonArray($user['Processing_value'] ?? '');
     $nameloc = select("invoice", "*", "id_invoice", $userdate['id_invoice'], "select");
     $marzban_list_get = select("marzban_panel", "*", "name_panel", $nameloc['Service_location'], "select");
     $mainvolume = json_decode($marzban_list_get['mainvolume'], true);
@@ -1913,7 +1913,7 @@ if ($text == "/start" || $datain == "start" || $text == "start") {
     step('getvolumecustomuserforextend', $from_id);
 } elseif (preg_match('/productextendmonths_(\w+)/', $datain, $dataget)) {
     $monthenumber = $dataget[1];
-    $userdate = json_decode($user['Processing_value'], true);
+    $userdate = bluebotJsonArray($user['Processing_value'] ?? '');
     $nameloc = select("invoice", "*", "id_invoice", $userdate['id_invoice'], "select");
     $stmt = $pdo->prepare("SELECT * FROM product WHERE (Location = :service_location OR Location = '/all') AND agent = :agent AND Service_time = :monthe AND one_buy_status = '0'");
     $stmt->execute([
@@ -1951,7 +1951,7 @@ if ($text == "/start" || $datain == "start" || $text == "start") {
     $json_list_product_lists = json_encode($productextend);
     Editmessagetext($from_id, $message_id, $textbotlang['users']['extend']['selectservice'], $json_list_product_lists);
 } elseif (preg_match('/^serviceextendselect_(.*)/', $datain, $dataget) || $user['step'] == "getvolumecustomuserforextend" || $datain == "exntedagei") {
-    $userdate = json_decode($user['Processing_value'], true);
+    $userdate = bluebotJsonArray($user['Processing_value'] ?? '');
     $nameloc = select("invoice", "*", "id_invoice", $userdate['id_invoice'], "select");
     $marzban_list_get = select("marzban_panel", "*", "name_panel", $nameloc['Service_location'], "select");
     if ($user['step'] == "getvolumecustomuserforextend") {
@@ -2050,7 +2050,7 @@ if ($text == "/start" || $datain == "start" || $text == "start") {
     step('getcodesellDiscountextend', $from_id);
     deletemessage($from_id, $message_id);
 } elseif ($user['step'] == "getcodesellDiscountextend") {
-    $userdate = json_decode($user['Processing_value'], true);
+    $userdate = bluebotJsonArray($user['Processing_value'] ?? '');
     $nameloc = select("invoice", "*", "id_invoice", $userdate['id_invoice'], "select");
     $marzban_list_get = select("marzban_panel", "*", "name_panel", $nameloc['Service_location'], "select");
     if (!rowExists("DiscountSell", "codeDiscount", $text)) {
@@ -2134,7 +2134,7 @@ if ($text == "/start" || $datain == "start" || $text == "start") {
 } elseif ($datain == "confirmserivce" || $datain == "confirmserdiscount") {
     Editmessagetext($from_id, $message_id, $text_inline, json_encode(['inline_keyboard' => []]));
     $partsdic = explode("_", $user['Processing_value_four']);
-    $userdata = json_decode($user['Processing_value'], true);
+    $userdata = bluebotJsonArray($user['Processing_value'] ?? '');
     $id_invoice = $userdata['id_invoice'];
     $nameloc = select("invoice", "*", "id_invoice", $id_invoice, "select");
     if ($nameloc == false) {
@@ -3134,7 +3134,7 @@ if ($text == "/start" || $datain == "start" || $text == "start") {
     Editmessagetext($from_id, $message_id, $textbotlang['users']['status']['askDeleteReason'], $bakinfos);
     step("getdisdeleteconfig", $from_id);
 } elseif ($user['step'] == "getdisdeleteconfig") {
-    $userdata = json_decode($user['Processing_value'], true);
+    $userdata = bluebotJsonArray($user['Processing_value'] ?? '');
     $id_invoice = $userdata['id_invoice'];
     savedata("save", "descritionsremove", $text);
     $nameloc = select("invoice", "*", "id_invoice", $id_invoice, "select");
@@ -3164,7 +3164,7 @@ if ($text == "/start" || $datain == "start" || $text == "start") {
     sendmessage($from_id, $textbotlang['users']['status']['descriptionsRemoveService'], $confirmremove, "html");
     step("home", $from_id);
 } elseif (preg_match('/confirmremoveservices-(\w+)/', $datain, $dataget)) {
-    $userdata = json_decode($user['Processing_value'], true);
+    $userdata = bluebotJsonArray($user['Processing_value'] ?? '');
     $stmt = $pdo->prepare("SELECT * FROM cancel_service WHERE id_user = :from_id AND status = 'waiting'");
     $stmt->execute([
         ':from_id' => $from_id
@@ -3630,7 +3630,7 @@ if ($text == "/start" || $datain == "start" || $text == "start") {
     sendmessage($from_id, $textbotlang['users']['support']['sendMessage'], $backuser, 'HTML');
     step("gettextticket", $from_id);
 } elseif ($user['step'] == "gettextticket" && $text) {
-    $userdata = json_decode($user['Processing_value'], true);
+    $userdata = bluebotJsonArray($user['Processing_value'] ?? '');
     $departeman = select("departman", "*", "id", $userdata['iddeparteman'], "select");
     $time = date('Y/m/d H:i:s');
     $timejalali = jdate('Y/m/d H:i:s');
@@ -3933,7 +3933,7 @@ if ($text == "/start" || $datain == "start" || $text == "start") {
         sendmessage($from_id, $textbotlang['textbot']['selectLocation'], $list_marzban_panel_user, 'HTML');
     }
 } elseif (preg_match('/^location_(.*)/', $datain, $dataget) || $datain == "backproduct") {
-    $userdate = json_decode($user['Processing_value'], true);
+    $userdate = bluebotJsonArray($user['Processing_value'] ?? '');
     if ($datain != "backproduct") {
         $location = selectValue("marzban_panel", "name_panel", "code_panel", $dataget[1], '');
     } else {
@@ -4009,7 +4009,7 @@ if ($text == "/start" || $datain == "start" || $text == "start") {
 } elseif (preg_match('/^categorynames_(.*)/', $datain, $dataget)) {
     $categorynames = $dataget[1];
     $categorynames = selectValue("category", "remark", "id", $categorynames, '');
-    $userdate = json_decode($user['Processing_value'], true);
+    $userdate = bluebotJsonArray($user['Processing_value'] ?? '');
     if (isset($userdate['monthproduct'])) {
         $query = "SELECT * FROM product WHERE (Location = :loc OR Location = '/all') AND agent = :agent AND category = :category AND Service_time = :stime";
         $queryParams = [':loc' => $userdate['name_panel'], ':agent' => $user['agent'], ':category' => $categorynames, ':stime' => $userdate['monthproduct']];
@@ -4032,7 +4032,7 @@ if ($text == "/start" || $datain == "start" || $text == "start") {
     Editmessagetext($from_id, $message_id, $textbotlang['users']['sell']['serviceSelectFirst'], KeyboardProduct($marzban_list_get['name_panel'], $query, $user['pricediscount'], $datakeyboard, $statuscustom, "backuser", null, "customsellvolume", $queryParams));
 } elseif (preg_match('/^productmonth_(\w+)/', $datain, $dataget)) {
     $monthenumber = $dataget[1];
-    $userdate = json_decode($user['Processing_value'], true);
+    $userdate = bluebotJsonArray($user['Processing_value'] ?? '');
     if (!is_array($userdate) || empty($userdate['name_panel'])) {
         sendmessage($from_id, $textbotlang['users']['sell']['panelUnavailable'], $keyboard, 'HTML');
         step('home', $from_id);
@@ -4074,7 +4074,7 @@ if ($text == "/start" || $datain == "start" || $text == "start") {
         Editmessagetext($from_id, $message_id, $textbotlang['users']['sell']['serviceSelectFirst'], KeyboardProduct($marzban_list_get['name_panel'], $query, $user['pricediscount'], $datakeyboard, $statuscustom, "backuser", null, "customsellvolume", $queryParams));
     }
 } elseif ($datain == "customsellvolume") {
-    $userdate = json_decode($user['Processing_value'], true);
+    $userdate = bluebotJsonArray($user['Processing_value'] ?? '');
     $marzban_list_get = select("marzban_panel", "*", "name_panel", $userdate['name_panel'], "select");
     $eextraprice = json_decode($marzban_list_get['pricecustomvolume'], true);
     $custompricevalue = $eextraprice[$user['agent']];
@@ -4087,7 +4087,7 @@ if ($text == "/start" || $datain == "start" || $text == "start") {
     deletemessage($from_id, $message_id);
     step('gettimecustomvol', $from_id);
 } elseif ($user['step'] == "gettimecustomvol") {
-    $userdate = json_decode($user['Processing_value'], true);
+    $userdate = bluebotJsonArray($user['Processing_value'] ?? '');
     $marzban_list_get = select("marzban_panel", "*", "name_panel", $userdate['name_panel'], "select");
     $mainvolume = json_decode($marzban_list_get['mainvolume'], true);
     $mainvolume = $mainvolume[$user['agent']];
@@ -4119,7 +4119,7 @@ if ($text == "/start" || $datain == "start" || $text == "start") {
     }
 } elseif ($user['step'] == "getvolumecustomusername" || preg_match('/^prodcutservices_(.*)/', $datain, $dataget)) {
     $prodcut = $dataget[1];
-    $userdate = json_decode($user['Processing_value'], true);
+    $userdate = bluebotJsonArray($user['Processing_value'] ?? '');
     if ($user['step'] == "getvolumecustomusername") {
         if (!ctype_digit($text)) {
             sendmessage($from_id, $textbotlang['common']['invalidTime'], $backuser, 'HTML');
@@ -4145,7 +4145,7 @@ if ($text == "/start" || $datain == "start" || $text == "start") {
     }
     sendmessage($from_id, $textbotlang['users']['selectusername'], $backuser, 'html');
 } elseif ($user['step'] == "endstepuser" || $user['step'] == "endstepusers" || preg_match('/prodcutservice_(.*)/', $datain, $dataget) || $user['step'] == "getvolumecustomuser") {
-    $userdate = json_decode($user['Processing_value'], true);
+    $userdate = bluebotJsonArray($user['Processing_value'] ?? '');
     if (!is_array($userdate) || empty($userdate['name_panel'])) {
         sendmessage($from_id, $textbotlang['users']['sell']['panelUnavailable'], $keyboard, 'HTML');
         step('home', $from_id);
@@ -4251,7 +4251,7 @@ if ($text == "/start" || $datain == "start" || $text == "start") {
     }
     step('payment', $from_id);
 } elseif ($user['step'] == "payment" && ($datain == "confirmandgetservice" || $datain == "confirmandgetserviceDiscount")) {
-    $userdate = json_decode($user['Processing_value'], true);
+    $userdate = bluebotJsonArray($user['Processing_value'] ?? '');
     Editmessagetext($from_id, $message_id, $text_inline, json_encode(['inline_keyboard' => []]));
     // $pats for customm service
     $parts = explode("_", $user['Processing_value_one']);
@@ -4561,7 +4561,7 @@ if ($text == "/start" || $datain == "start" || $text == "start") {
     step('getcodesellDiscount', $from_id);
     deletemessage($from_id, $message_id);
 } elseif ($user['step'] == "getcodesellDiscount") {
-    $userdate = json_decode($user['Processing_value'], true);
+    $userdate = bluebotJsonArray($user['Processing_value'] ?? '');
     if (!isset($userdate['name_panel'])) {
         sendmessage($from_id, $textbotlang['users']['sell']['restartFromStart'], $keyboard, 'HTML');
         return;
