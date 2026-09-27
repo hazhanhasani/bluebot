@@ -40,6 +40,19 @@ function wgDashboardConfigName(array $panel): string
     return rawurlencode((string) ($panel['inboundid'] ?? ''));
 }
 
+function wgDashboardInvoicePublicKey($username): ?string
+{
+    $raw = selectValue("invoice", "user_info", "username", (string) $username, null);
+    if (!is_string($raw) || trim($raw) === '') {
+        return null;
+    }
+
+    $decoded = json_decode($raw, true);
+    $publicKey = is_array($decoded) ? trim((string) ($decoded['public_key'] ?? '')) : '';
+
+    return $publicKey !== '' ? $publicKey : null;
+}
+
 function get_userwg($username, $namepanel)
 {
     $panel = select("marzban_panel", "*", "name_panel", $namepanel, "select");
@@ -242,41 +255,45 @@ function ResetUserDataUsagewg($publickey, $namepanel)
 }
 function remove_userwg($location, $username)
 {
-    allowAccessPeers($location, $username);
-    $marzban_list_get = select("marzban_panel", "*", "name_panel", $location, "select");
-    $data_user = json_decode(select("invoice", "user_info", "username", $username, "select")['user_info'], true)['public_key'];
-    $url = $marzban_list_get['url_panel'] . '/api/deletePeers/' . wgDashboardConfigName($marzban_list_get);
-    $headers = array(
-        'Accept: application/json',
-        'wg-dashboard-apikey: ' . $marzban_list_get['password_panel'],
-        'Content-Type: application/json',
+    $panel = select("marzban_panel", "*", "name_panel", $location, "select");
+    if (!is_array($panel)) {
+        return ['status' => null, 'body' => null, 'error' => 'panel not found'];
+    }
+
+    $publicKey = wgDashboardInvoicePublicKey($username);
+    if ($publicKey === null) {
+        return ['status' => null, 'body' => null, 'error' => 'peer public key not found'];
+    }
+
+    // Restricted peers must be re-enabled before WGDashboard accepts deletion.
+    $allow = allowAccessPeers($location, $username);
+    if (is_array($allow) && !empty($allow['error'])) {
+        return $allow;
+    }
+
+    return wgDashboardRequest(
+        $location,
+        'POST',
+        '/api/deletePeers/' . wgDashboardConfigName($panel),
+        ['peers' => [$publicKey]]
     );
-    $req = new CurlRequest($url);
-    $req->setHeaders($headers);
-    $response = $req->post(json_encode(array(
-        "peers" => array(
-            $data_user
-        )
-    )));
-    return $response;
 }
 function allowAccessPeers($location, $username)
 {
+    $panel = select("marzban_panel", "*", "name_panel", $location, "select");
+    if (!is_array($panel)) {
+        return ['status' => null, 'body' => null, 'error' => 'panel not found'];
+    }
 
-    $marzban_list_get = select("marzban_panel", "*", "name_panel", $location, "select");
-    $data_user = json_decode(select("invoice", "user_info", "username", $username, "select")['user_info'], true)['public_key'];
-    $url = $marzban_list_get['url_panel'] . '/api/allowAccessPeers/' . wgDashboardConfigName($marzban_list_get);
-    $headers = array(
-        'Accept: application/json',
-        'wg-dashboard-apikey: ' . $marzban_list_get['password_panel'],
-        'Content-Type: application/json',
+    $publicKey = wgDashboardInvoicePublicKey($username);
+    if ($publicKey === null) {
+        return ['status' => null, 'body' => null, 'error' => 'peer public key not found'];
+    }
+
+    return wgDashboardRequest(
+        $location,
+        'POST',
+        '/api/allowAccessPeers/' . wgDashboardConfigName($panel),
+        ['peers' => [$publicKey]]
     );
-    $req = new CurlRequest($url);
-    $req->setHeaders($headers);
-    $response = $req->post(json_encode(array(
-        "peers" => array(
-            $data_user
-        )
-    )));
-    return $response;
 }
