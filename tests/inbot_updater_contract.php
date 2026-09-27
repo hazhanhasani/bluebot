@@ -34,6 +34,10 @@ foreach ([
 $manager = @file_get_contents($root . '/src/Support/UpdateManager.php');
 foreach ([
     'bluebotUpdateLatestRelease',
+    'bluebotUpdateLatestReleaseFromRedirect',
+    'bluebotUpdateLatestReleaseFromRaw',
+    'bluebotUpdateFetchText',
+    'bluebotUpdateNormalizeDisplayVersion',
     'bluebotUpdateLatestBeta',
     'bluebotQueueUpdate',
     '/var/lib/bluebot',
@@ -83,6 +87,9 @@ foreach ([
 $worker = @file_get_contents($root . '/scripts/bluebot-update-worker.sh');
 if ($worker === false || !str_contains($worker, 'bluebotUpdateCurrentVersion')) {
     $failures[] = 'Update worker does not read the build-aware installed version.';
+}
+if ($worker === false || !str_contains($worker, 'بروزرسانی بلو پنل')) {
+    $failures[] = 'Update worker user-facing notifications must use Blue Panel branding.';
 }
 if ($worker === false || !str_contains($worker, 'INSTALLED_CHANNEL')) {
     $failures[] = 'Update worker does not preserve the resolved installed source channel.';
@@ -155,6 +162,7 @@ foreach ([
     'bluebot_update_status',
     'bluebot_update_run',
     'bluebotEnsureMiniAppMenuButton',
+    'بروزرسانی بلو پنل',
 ] as $needle) {
     if ($admin === false || !str_contains($admin, $needle)) {
         $failures[] = "Admin updater flow missing: {$needle}";
