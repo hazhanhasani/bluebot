@@ -21,9 +21,9 @@ if ($ref === '' || hash_equals((string) ($settings['update_last_notified'] ?? ''
 }
 
 $channelLabels = [
-    'release' => 'Stable',
-    'beta' => 'Beta',
-    'auto' => 'Auto',
+    'release' => 'پایدار',
+    'beta' => 'آزمایشی',
+    'auto' => 'خودکار',
 ];
 
 $label = htmlspecialchars((string) ($target['label'] ?? $ref), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
@@ -33,18 +33,18 @@ $summary = $summaryRaw !== ''
     ? "\n\n📝 " . htmlspecialchars($summaryRaw, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8')
     : '';
 
-$text = "🔔 <b>نسخه جدید BlueBot منتشر شد</b>\n\n"
-    . "📦 کانال: <b>" . ($channelLabels[$channel] ?? $channel) . "</b>\n"
-    . "🔹 نسخه نصب‌شده: <code>{$current}</code>\n"
-    . "🆕 نسخه جدید: <code>{$label}</code>"
+$text = "✨ <b>آپدیت جدید بلو پنل آماده است</b>\n\n"
+    . "📦 کانال انتشار: <b>" . ($channelLabels[$channel] ?? $channel) . "</b>\n"
+    . "📍 نسخه فعلی: <code>{$current}</code>\n"
+    . "🚀 نسخه جدید: <code>{$label}</code>"
     . $summary
-    . "\n\nبرای بروزرسانی امن، دکمه زیر را بزنید.";
+    . "\n\nنسخه تازه آماده نصب است. برای بروزرسانی امن و خودکار، دکمه «بروزرسانی» را بزنید.";
 
 $keyboard = json_encode([
     'inline_keyboard' => [
         [
-            ['text' => '🚀 بروزرسانی', 'callback_data' => 'bluebot_update_run'],
-            ['text' => '🔍 بررسی', 'callback_data' => 'bluebot_update_status'],
+            ['text' => '🚀 بروزرسانی بلو پنل', 'callback_data' => 'bluebot_update_run'],
+            ['text' => '🔍 جزئیات نسخه', 'callback_data' => 'bluebot_update_status'],
         ],
     ],
 ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
