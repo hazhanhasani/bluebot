@@ -20,75 +20,75 @@ final class BluebotSms
             'phone_verification' => [
                 'title' => 'تأیید شماره موبایل',
                 'category' => 'احراز هویت',
-                'body' => 'بلو پنل | کد ورود شما: %code%\nاین کد محرمانه است؛ آن را برای کسی ارسال نکنید.',
+                'body' => "بلو پنل\nکد ورود: %code%\nاین کد محرمانه است.",
                 'vars' => [$v('code', 'number', 6)],
                 'default' => 1,
             ],
             'service_activated' => [
                 'title' => 'فعال‌سازی سرویس',
                 'category' => 'سرویس',
-                'body' => 'بلو پنل | سرویس %service% با موفقیت فعال شد ✅\nکاربر: %username%\nاعتبار تا: %expire_date%',
+                'body' => "بلو پنل\nسرویس %service% فعال شد.\nکاربر: %username%\nاعتبار: %expire_date%",
                 'vars' => [$v('service', 'string', 40), $v('username', 'string', 40), $v('expire_date', 'string', 20)],
                 'default' => 1,
             ],
             'service_renewed' => [
                 'title' => 'تمدید سرویس',
                 'category' => 'سرویس',
-                'body' => 'بلو پنل | سرویس %username% با موفقیت تمدید شد ✨\nاعتبار جدید تا: %expire_date%',
+                'body' => "بلو پنل\nسرویس %username% تمدید شد.\nاعتبار جدید: %expire_date%",
                 'vars' => [$v('username', 'string', 40), $v('expire_date', 'string', 20)],
                 'default' => 1,
             ],
             'subscription_reminder' => [
                 'title' => 'یادآوری پایان سرویس',
                 'category' => 'سرویس',
-                'body' => 'بلو پنل | یادآوری تمدید ⏳\nفقط %days_left% روز از سرویس %username% باقی مانده.',
+                'body' => "بلو پنل\n%days_left% روز تا پایان سرویس %username% باقی مانده.\nبرای جلوگیری از قطعی، تمدید کنید.",
                 'vars' => [$v('days_left', 'number', 3), $v('username', 'string', 40)],
                 'default' => 1,
             ],
             'subscription_expired' => [
                 'title' => 'پایان زمان سرویس',
                 'category' => 'سرویس',
-                'body' => 'بلو پنل | اعتبار سرویس %username% به پایان رسید.\nبرای ادامه اتصال، سرویس را تمدید کنید.',
+                'body' => "بلو پنل\nاعتبار سرویس %username% تمام شد.\nبرای اتصال مجدد، تمدید کنید.",
                 'vars' => [$v('username', 'string', 40)],
                 'default' => 1,
             ],
             'low_remaining_volume' => [
                 'title' => 'هشدار کاهش حجم',
                 'category' => 'سرویس',
-                'body' => 'بلو پنل | حجم سرویس %username% رو به پایان است ⚠️\nباقی‌مانده: %remaining_volume% گیگابایت',
+                'body' => "بلو پنل\nحجم سرویس %username% رو به پایان است.\nباقی‌مانده: %remaining_volume% گیگ",
                 'vars' => [$v('username', 'string', 40), $v('remaining_volume', 'string', 12)],
                 'default' => 1,
             ],
             'volume_expired' => [
                 'title' => 'پایان حجم سرویس',
                 'category' => 'سرویس',
-                'body' => 'بلو پنل | حجم سرویس %username% تمام شد.\nبرای ادامه اتصال، سرویس را تمدید یا شارژ کنید.',
+                'body' => "بلو پنل\nحجم سرویس %username% تمام شد.\nبرای ادامه، سرویس را تمدید کنید.",
                 'vars' => [$v('username', 'string', 40)],
                 'default' => 1,
             ],
             'payment_success' => [
                 'title' => 'پرداخت موفق',
                 'category' => 'پرداخت',
-                'body' => 'بلو پنل | پرداخت شما با موفقیت انجام شد ✅\nمبلغ: %amount% تومان\nسفارش: %order_id%',
+                'body' => "بلو پنل\nپرداخت %amount% تومان موفق بود.\nکد سفارش: %order_id%",
                 'vars' => [$v('amount', 'number', 12), $v('order_id', 'string', 40)],
                 'default' => 1,
             ],
             'payment_failed' => [
                 'title' => 'پرداخت ناموفق',
                 'category' => 'پرداخت',
-                'body' => 'بلو پنل | پرداخت سفارش %order_id% کامل نشد.\nلطفاً دوباره تلاش کنید.',
+                'body' => "بلو پنل\nپرداخت سفارش %order_id% ناموفق بود.\nلطفاً دوباره تلاش کنید.",
                 'vars' => [$v('order_id', 'string', 40)],
             ],
             'wallet_charged' => [
                 'title' => 'شارژ کیف پول',
                 'category' => 'کیف پول',
-                'body' => 'بلو پنل | کیف پول شارژ شد ✅\nمبلغ شارژ: %amount% تومان\nموجودی: %balance% تومان',
+                'body' => "بلو پنل\n%amount% تومان به کیف پول اضافه شد.\nموجودی: %balance% تومان",
                 'vars' => [$v('amount', 'number', 12), $v('balance', 'number', 12)],
             ],
             'admin_announcement' => [
                 'title' => 'اطلاعیه عمومی',
                 'category' => 'اطلاع‌رسانی',
-                'body' => 'بلو پنل | %message%',
+                'body' => "بلو پنل\n%message%",
                 'vars' => [$v('message', 'string', 120)],
                 'broadcast' => 1,
             ],
@@ -797,7 +797,7 @@ final class BluebotSms
 
             foreach ($raw as $itemKey => $item) {
                 $name = '';
-                $type = 'string';
+                $type = 'unknown';
                 $length = 160;
 
                 if (is_string($item)) {
@@ -805,7 +805,7 @@ final class BluebotSms
                 } elseif (is_array($item)) {
                     $name = (string) ($item['var'] ?? $item['name'] ?? $item['key'] ?? $item['attribute'] ?? (is_string($itemKey) ? $itemKey : ''));
                     $rawType = strtolower((string) ($item['type'] ?? $item['data_type'] ?? $item['variable_type'] ?? ''));
-                    $type = self::normalizeVariableType($rawType);
+                    $type = $rawType !== '' ? self::normalizeVariableType($rawType) : 'unknown';
                     foreach (['length','max_length','maxLength','limit'] as $lengthKey) {
                         if (isset($item[$lengthKey]) && is_numeric($item[$lengthKey])) {
                             $length = max(1, min(500, (int) $item[$lengthKey]));
@@ -831,7 +831,7 @@ final class BluebotSms
                     $vars[] = $name;
                 }
                 if (!isset($specs[$name])) {
-                    $specs[$name] = ['name' => $name, 'type' => 'string', 'length' => 160];
+                    $specs[$name] = ['name' => $name, 'type' => 'unknown', 'length' => 160];
                 }
             }
         }
@@ -926,12 +926,15 @@ final class BluebotSms
         $provided = [];
         foreach ((array) ($pattern['variable_specs'] ?? []) as $var) {
             if (is_array($var) && !empty($var['name'])) {
-                $provided[(string) $var['name']] = self::normalizeVariableType((string) ($var['type'] ?? 'string'));
+                $rawType = strtolower(trim((string) ($var['type'] ?? 'unknown')));
+                $provided[(string) $var['name']] = $rawType === '' || $rawType === 'unknown'
+                    ? 'unknown'
+                    : self::normalizeVariableType($rawType);
             }
         }
         if ($provided === []) {
             foreach ((array) ($pattern['variables'] ?? []) as $name) {
-                $provided[(string) $name] = 'string';
+                $provided[(string) $name] = 'unknown';
             }
         }
 
@@ -946,7 +949,8 @@ final class BluebotSms
         }
 
         foreach ($expected as $name => $type) {
-            if ($type === 'number' && self::normalizeVariableType((string) ($provided[$name] ?? 'string')) !== 'number') {
+            $providerType = (string) ($provided[$name] ?? 'unknown');
+            if ($type === 'number' && !in_array($providerType, ['number', 'unknown'], true)) {
                 return false;
             }
         }
