@@ -90,6 +90,9 @@ jobs:
       - name: Installed build version tests
         run: php tests/installed_build_version_test.php
 
+      - name: Security hardening contract
+        run: php tests/security_hardening_contract.php
+
       - name: Trusted proxy webhook tests
         run: php tests/trusted_proxy_test.php
 
