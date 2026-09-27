@@ -104,8 +104,8 @@ notify() {
     fi
 }
 
-write_status "running" "BlueBot update is running."
-notify "🚀 بروزرسانی BlueBot شروع شد. تا پایان عملیات از تغییر فایل‌های سرور خودداری کنید."
+write_status "running" "Blue Panel update is running."
+notify "🚀 بروزرسانی بلو پنل شروع شد. تا پایان عملیات از تغییر فایل‌های سرور خودداری کنید."
 
 : > "$LOG_FILE"
 export TERM="${TERM:-xterm}"
@@ -129,13 +129,13 @@ if /usr/local/bin/bluebot "${UPDATE_ARGS[@]}" >>"$LOG_FILE" 2>&1; then
         NEW_VERSION="$(tr -d '\r\n' < "$BOT_DIR/version")"
     fi
 
-    write_status "success" "BlueBot update completed successfully."
-    notify "✅ بروزرسانی BlueBot با موفقیت انجام شد. نسخه فعلی: ${NEW_VERSION:-unknown}"
+    write_status "success" "Blue Panel update completed successfully."
+    notify "✅ بروزرسانی بلو پنل با موفقیت انجام شد. نسخه فعلی: ${NEW_VERSION:-unknown}"
     rm -f "$RUNNING_FILE"
     exit 0
 fi
 
-write_status "failed" "BlueBot update failed. See /var/log/bluebot-update.log"
-notify "❌ بروزرسانی BlueBot ناموفق بود. برای تلاش دوباره دکمه زیر را بزنید." 1
+write_status "failed" "Blue Panel update failed. See /var/log/bluebot-update.log"
+notify "❌ بروزرسانی بلو پنل ناموفق بود. برای تلاش دوباره دکمه زیر را بزنید." 1
 rm -f "$RUNNING_FILE"
 exit 1
