@@ -531,7 +531,7 @@ if ($text === "/debug") {
     $stmt->bindParam(':requestedDate', $desired_date_time_start);
     $stmt->bindParam(':requestedDateend', $time_current);
     $stmt->execute();
-    $count_test = $stmt->fetch(PDO::FETCH_ASSOC)['count'];
+    $count_test = (int) $stmt->fetchColumn();
     $sql = "SELECT COUNT(*) AS count,SUM(price) as sum FROM service_other WHERE  time  >= NOW() - INTERVAL 1 HOUR AND type = 'extend_user' AND status != 'unpaid'";
     $stmt = $pdo->prepare($sql);
     $stmt->execute();
@@ -647,7 +647,7 @@ if ($text === "/debug") {
     $stmt->bindParam(':requestedDate', $start_time_timestamp);
     $stmt->bindParam(':requestedDateend', $end_time_timestamp);
     $stmt->execute();
-    $count_test = $stmt->fetch(PDO::FETCH_ASSOC)['count'];
+    $count_test = (int) $stmt->fetchColumn();
     $sql = "SELECT COUNT(*) AS count,SUM(price) as sum FROM service_other WHERE  (time BETWEEN :requestedDate AND :requestedDateend) AND type = 'extend_user' AND status != 'unpaid'";
     $stmt = $pdo->prepare($sql);
     $stmt->bindParam(':requestedDate', $start_time);
@@ -707,7 +707,7 @@ if ($text === "/debug") {
     $stmt->bindParam(':requestedDate', $start_time_timestamp);
     $stmt->bindParam(':requestedDateend', $end_time_timestamp);
     $stmt->execute();
-    $count_test = $stmt->fetch(PDO::FETCH_ASSOC)['count'];
+    $count_test = (int) $stmt->fetchColumn();
     $sql = "SELECT COUNT(*) AS count,SUM(price) as sum FROM service_other WHERE  (time BETWEEN :requestedDate AND :requestedDateend) AND type = 'extend_user' AND status != 'unpaid'";
     $stmt = $pdo->prepare($sql);
     $stmt->bindParam(':requestedDate', $start_time);
@@ -767,7 +767,7 @@ if ($text === "/debug") {
     $stmt->bindParam(':requestedDate', $start_time_timestamp);
     $stmt->bindParam(':requestedDateend', $end_time_timestamp);
     $stmt->execute();
-    $count_test = $stmt->fetch(PDO::FETCH_ASSOC)['count'];
+    $count_test = (int) $stmt->fetchColumn();
     $sql = "SELECT COUNT(*) AS count,SUM(price) as sum FROM service_other WHERE  (time BETWEEN :requestedDate AND :requestedDateend) AND type = 'extend_user' AND status != 'unpaid'";
     $stmt = $pdo->prepare($sql);
     $stmt->bindParam(':requestedDate', $start_time);
@@ -862,7 +862,7 @@ if ($text === "/debug") {
     $stmt->bindParam(':requestedDate', $start_time_timestamp);
     $stmt->bindParam(':requestedDateend', $end_time_timestamp);
     $stmt->execute();
-    $count_test = $stmt->fetch(PDO::FETCH_ASSOC)['count'];
+    $count_test = (int) $stmt->fetchColumn();
     $sql = "SELECT COUNT(*) AS count,SUM(price) as sum FROM service_other WHERE  (time BETWEEN :requestedDate AND :requestedDateend) AND type = 'extend_user' AND status != 'unpaid'";
     $stmt = $pdo->prepare($sql);
     $stmt->bindParam(':requestedDate', $start_time);
@@ -2945,12 +2945,12 @@ elseif ($datain == "systemsms") {
             $__q41->bindValue(1, $marzban_list_get['name_panel'], PDO::PARAM_STR);
             $__q41->bindValue(2, $textbotlang['common']['labels']['testServiceName'], PDO::PARAM_STR);
             $__q41->execute();
-            $ListSell = number_format($__q41->fetch(PDO::FETCH_ASSOC)['COUNT(*)'] ?? 0);
+            $ListSell = number_format((float) $__q41->fetchColumn());
             $__q42 = $pdo->prepare("SELECT SUM(price_product) FROM invoice WHERE (status = 'active' OR status = 'end_of_time'  OR status = 'end_of_volume' OR status = 'sendedwarn' OR Status = 'send_on_hold') AND Service_location = ? AND name_product != ?");
             $__q42->bindValue(1, $marzban_list_get['name_panel'], PDO::PARAM_STR);
             $__q42->bindValue(2, $textbotlang['common']['labels']['testServiceName'], PDO::PARAM_STR);
             $__q42->execute();
-            $ListSellSUM = number_format($__q42->fetch(PDO::FETCH_ASSOC)['SUM(price_product)'] ?? 0);
+            $ListSellSUM = number_format((float) ($__q42->fetchColumn() ?: 0));
 
             $Condition_marzban = "";
             $text_marzban = sprintf($textbotlang['Admin']['stats']['panelMarzban'], $total_user, $active_users, $System_Stats['version'], $mem_total, $mem_used, $bandwidth, $ListSell, $ListSellSUM, $marzban_list_get['agent']);
@@ -3086,12 +3086,12 @@ elseif ($datain == "systemsms") {
             $__q43->bindValue(1, $marzban_list_get['name_panel'], PDO::PARAM_STR);
             $__q43->bindValue(2, $textbotlang['common']['labels']['testServiceName'], PDO::PARAM_STR);
             $__q43->execute();
-            $ListSell = number_format($__q43->fetch(PDO::FETCH_ASSOC)['COUNT(*)'] ?? 0);
+            $ListSell = number_format((float) $__q43->fetchColumn());
             $__q44 = $pdo->prepare("SELECT SUM(price_product) FROM invoice WHERE (status = 'active' OR status = 'end_of_time'  OR status = 'end_of_volume' OR status = 'sendedwarn' OR Status = 'send_on_hold') AND Service_location = ? AND name_product != ?");
             $__q44->bindValue(1, $marzban_list_get['name_panel'], PDO::PARAM_STR);
             $__q44->bindValue(2, $textbotlang['common']['labels']['testServiceName'], PDO::PARAM_STR);
             $__q44->execute();
-            $ListSellSUM = number_format($__q44->fetch(PDO::FETCH_ASSOC)['SUM(price_product)'] ?? 0);
+            $ListSellSUM = number_format((float) ($__q44->fetchColumn() ?: 0));
             $Condition_marzban = "";
             $text_marzban = sprintf($textbotlang['Admin']['stats']['panelMarzban2'], $total_user, $active_users, $ListSell, $ListSellSUM, $marzban_list_get['agent']);
             sendmessage($from_id, $text_marzban, $optionmarzneshin, 'HTML');
@@ -3131,12 +3131,12 @@ elseif ($datain == "systemsms") {
             $ListSell->bindValue(1, $marzban_list_get['name_panel'], PDO::PARAM_STR);
             $ListSell->bindValue(2, $textbotlang['common']['labels']['testServiceName'], PDO::PARAM_STR);
             $ListSell->execute();
-            $ListSell = number_format($ListSell->fetch(PDO::FETCH_ASSOC)['COUNT(*)'] ?? 0);
+            $ListSell = number_format((float) $ListSell->fetchColumn());
             $ListSellSum = $pdo->prepare("SELECT SUM(price_product) FROM invoice WHERE (status = 'active' OR status = 'end_of_time'  OR status = 'end_of_volume' OR status = 'sendedwarn' OR Status = 'send_on_hold') AND Service_location = ? AND name_product != ?");
             $ListSellSum->bindValue(1, $marzban_list_get['name_panel'], PDO::PARAM_STR);
             $ListSellSum->bindValue(2, $textbotlang['common']['labels']['testServiceName'], PDO::PARAM_STR);
             $ListSellSum->execute();
-            $ListSellSUM = number_format($ListSellSum->fetch(PDO::FETCH_ASSOC)['SUM(price_product)'] ?? 0);
+            $ListSellSUM = number_format((float) ($ListSellSum->fetchColumn() ?: 0));
             $text_marzban = sprintf($textbotlang['Admin']['stats']['panelSales'], $ListSell, $ListSellSUM, $marzban_list_get['agent']);
             sendmessage($from_id, $text_marzban, $optionrebecca, 'HTML');
         } elseif (!empty($Check_connection['status']) && $Check_connection['status'] == 401) {
@@ -4526,7 +4526,6 @@ elseif ($datain == "systemsms") {
     }
     step('home', $from_id);
 } elseif ($datain == "mainbalanceaccount" && $adminrulecheck['rule'] == "administrator") {
-    $PaySetting = json_decode(select("PaySetting", "ValuePay", "NamePay", "minbalance", "select")[$user['agent']], true);
     $textmin = $textbotlang['Admin']['Balance']['askMinCharge'];
     sendmessage($from_id, $textmin, $backadmin, 'HTML');
     step('minbalance', $from_id);
@@ -5780,7 +5779,19 @@ if ($datain == "settimecornremove" && $adminrulecheck['rule'] == "administrator"
         sendmessage($from_id, $textbotlang['Admin']['managepanel']['Inbound']['invalidProtocol'], null, 'HTML');
         return;
     }
-    $getinbounds = getinbounds($user['Processing_value'])[$text];
+    $allInbounds = getinbounds((string) ($user['Processing_value'] ?? ''));
+    $getinbounds = is_array($allInbounds)
+        && isset($allInbounds[$text])
+        && is_array($allInbounds[$text])
+        ? $allInbounds[$text]
+        : [];
+
+    if ($getinbounds === []) {
+        sendmessage($from_id, $textbotlang['common']['invalidInput'], $backadmin, 'HTML');
+        step('home', $from_id);
+        return;
+    }
+
     $list_marzban_panel_inbounds = [
         'keyboard' => [],
         'resize_keyboard' => true,
@@ -8148,8 +8159,14 @@ elseif ($text == $textbotlang['keyboard']['hidePanelForUser'] && $adminrulecheck
     sendmessage($from_id, $textbotlang['Admin']['Product']['updated'], $shopkeyboard, 'HTML');
     step('home', $from_id);
 } elseif (preg_match('/extendadmin_(\w+)/', $datain, $dataget) || strpos($text, "/extend ") !== false) {
-    if ($text[0] == "/") {
-        $usernameconfig = explode(" ", $text)[1];
+    if (!empty($text) && $text[0] == "/") {
+        $commandParts = preg_split('/\s+/', trim((string) $text), 2);
+        $usernameconfig = trim((string) ($commandParts[1] ?? ''));
+        if ($usernameconfig === '') {
+            sendmessage($from_id, $textbotlang['Admin']['manageUser']['notFound'], null, 'HTML');
+            return;
+        }
+
         $id_invoice = select("invoice", "id_invoice", "username", $usernameconfig, 'select');
         if ($id_invoice == false) {
             sendmessage($from_id, $textbotlang['Admin']['manageUser']['notFound'], null, 'HTML');
