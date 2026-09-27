@@ -54,8 +54,8 @@ $checks = [
     [$panel, "refresh_lines", 'Sender-line refresh action is missing from the panel.'],
     [$panel, 'name="otp_active"', 'OTP enable control is missing from the SMS panel.'],
     [$panel, "متن دقیق برای ثبت در فراز SMS", 'FarazSMS pattern registration guidance is missing from the panel.'],
-    [$panel, "BlueVPN | بلو پنل", 'Mandatory BlueVPN sender branding guidance is missing from the SMS panel.'],
-    [$farazDocs, "BlueVPN | بلو پنل", 'FarazSMS pattern docs must include explicit BlueVPN sender branding.'],
+    [$panel, "بلو پنل | bot.bluepanel.ir", 'Mandatory BlueVPN sender branding guidance is missing from the SMS panel.'],
+    [$farazDocs, "بلو پنل | bot.bluepanel.ir", 'FarazSMS pattern docs must include explicit BlueVPN sender branding.'],
     [$panel, "broadcast", 'Broadcast SMS action is missing from the panel.'],
     [$layout, 'href="sms.php"', 'SMS center is not linked from the web panel sidebar.'],
     [$jobs, "['job' => 'sms'", 'SMS cron worker is not scheduled.'],
@@ -110,7 +110,7 @@ if (BluebotSms::normalizePhone('not-a-phone') !== '') {
 $catalog = BluebotSms::catalog();
 foreach ($catalog as $eventKey => $eventSpec) {
     $body = (string) ($eventSpec['body'] ?? '');
-    if (!str_starts_with($body, "BlueVPN | بلو پنل\n")) {
+    if (!str_starts_with($body, "بلو پنل | bot.bluepanel.ir\n")) {
         $failures[] = "SMS body must start with explicit BlueVPN sender branding and a real newline: {$eventKey}";
     }
     if (str_contains($body, '\\n')) {
