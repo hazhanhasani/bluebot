@@ -248,10 +248,12 @@ class ManagePanel
                     'msg' => $data_Output['status']
                 );
             } else {
-                $data_Output = json_decode($data_Output['body'], true);
-                if (!$data_Output['success']) {
+                $data_Output = json_decode((string) ($data_Output['body'] ?? ''), true);
+                if (!is_array($data_Output) || empty($data_Output['success'])) {
                     $Output['status'] = 'Unsuccessful';
-                    $Output['msg'] = $data_Output['msg'];
+                    $Output['msg'] = is_array($data_Output)
+                        ? (string) ($data_Output['msg'] ?? 'Invalid panel response')
+                        : 'Invalid panel response';
                 } else {
                     $links_user = outputlink($Get_Data_Panel['linksubx'] . "/{$subId}");
                     if (isBase64($links_user)) {
@@ -331,13 +333,25 @@ class ManagePanel
                     'msg' => $data_Output['status']
                 );
             }
-            $data_Output = json_decode($data_Output['body'], true);
-            if (isset($data_Output['message']) && $data_Output['message']) {
+            $data_Output = json_decode((string) ($data_Output['body'] ?? ''), true);
+            if (!is_array($data_Output)) {
+                return [
+                    'status' => 'Unsuccessful',
+                    'msg' => 'Invalid panel response',
+                ];
+            }
+            if (!empty($data_Output['message'])) {
                 $Output['status'] = 'Unsuccessful';
                 $Output['msg'] = $data_Output['message'];
             } else {
                 $Output['status'] = 'successful';
                 $Output['username'] = $usernameC;
+                if (empty($data_Output['uuid'])) {
+                    return [
+                        'status' => 'Unsuccessful',
+                        'msg' => 'Panel response is missing user UUID',
+                    ];
+                }
                 $Output['subscription_url'] = "{$Get_Data_Panel['linksubx']}/{$data_Output['uuid']}/";
                 $Output['configs'] = [];
                 if ($invoice != false) {
@@ -350,6 +364,13 @@ class ManagePanel
             $statement->bindParam(":code_product", $code_product);
             $statement->execute();
             $configman = $statement->fetch(PDO::FETCH_ASSOC);
+            if (!is_array($configman) || empty($configman['id']) || empty($configman['contentrecord'])) {
+                return [
+                    'status' => 'Unsuccessful',
+                    'msg' => 'No available manual configuration',
+                ];
+            }
+
             $Output['status'] = 'successful';
             $Output['username'] = $usernameC;
             $Output['subscription_url'] = $configman['contentrecord'];
@@ -371,8 +392,22 @@ class ManagePanel
                     'msg' => $data_Output['error']
                 );
             }
-            $data_Output = $data_Output['body'];
-            $response = json_decode($data_Output['response'], true);
+            $data_Output = $data_Output['body'] ?? null;
+            if (!is_array($data_Output) || empty($data_Output['public_key'])) {
+                return [
+                    'status' => 'Unsuccessful',
+                    'msg' => 'Invalid WGDashboard response',
+                ];
+            }
+
+            $response = json_decode((string) ($data_Output['response'] ?? ''), true);
+            if (!is_array($response)) {
+                return [
+                    'status' => 'Unsuccessful',
+                    'msg' => 'Invalid WGDashboard response',
+                ];
+            }
+
             if ($data_limit != 0) {
                 setjob($Get_Data_Panel['name_panel'], "total_data", $data_limit, $data_Output['public_key']);
             }
@@ -380,9 +415,9 @@ class ManagePanel
                 setjob($Get_Data_Panel['name_panel'], "date", date('Y-m-d H:i:s', $expire), $data_Output['public_key']);
             }
             update("invoice", "user_info", json_encode($data_Output), "username", $usernameC);
-            if (!$response['status']) {
+            if (empty($response['status'])) {
                 $Output['status'] = 'Unsuccessful';
-                $Output['msg'] = $data_Output['msg'];
+                $Output['msg'] = (string) ($data_Output['msg'] ?? 'WGDashboard request failed');
             } else {
                 $download_config = downloadconfig($Get_Data_Panel['name_panel'], $data_Output['public_key']);
                 if (!empty($download_config['status']) && $download_config['status'] != 200) {
@@ -397,7 +432,17 @@ class ManagePanel
                         'msg' => $download_config['error']
                     );
                 }
-                $download_config = json_decode($download_config['body'], true)['data'];
+                $downloadResponse = json_decode((string) ($download_config['body'] ?? ''), true);
+                $download_config = is_array($downloadResponse['data'] ?? null)
+                    ? $downloadResponse['data']
+                    : null;
+                if (!is_array($download_config) || empty($download_config['file'])) {
+                    return [
+                        'status' => 'Unsuccessful',
+                        'msg' => 'WGDashboard configuration download failed',
+                    ];
+                }
+
                 $Output['status'] = 'successful';
                 $Output['username'] = $usernameC;
                 $Output['subscription_url'] = strval($download_config['file']);
@@ -407,10 +452,19 @@ class ManagePanel
             if ($Get_Data_Product['inbounds'] != null) {
                 $Get_Data_Panel['inbounds'] = $Get_Data_Product['inbounds'];
             }
-            $data_Output = addClientS_ui($Get_Data_Panel['name_panel'], $usernameC, $expire, $data_limit, json_decode($Get_Data_Panel['proxies']), $note);
-            if (!$data_Output['success']) {
+            $data_Output = addClientS_ui(
+                $Get_Data_Panel['name_panel'],
+                $usernameC,
+                $expire,
+                $data_limit,
+                json_decode((string) ($Get_Data_Panel['proxies'] ?? '[]')),
+                $note
+            );
+            if (!is_array($data_Output) || empty($data_Output['success'])) {
                 $Output['status'] = 'Unsuccessful';
-                $Output['msg'] = $data_Output['msg'];
+                $Output['msg'] = is_array($data_Output)
+                    ? (string) ($data_Output['msg'] ?? 'S-UI create failed')
+                    : 'S-UI create failed';
             } else {
                 $setting_app = get_settig($Get_Data_Panel['name_panel']);
                 $url = explode(":", $Get_Data_Panel['url_panel']);
@@ -471,10 +525,10 @@ class ManagePanel
                     'msg' => $ConnectToPanel['error']
                 );
             }
-            $data_Output = json_decode($ConnectToPanel['body'], true);
-            if (!$data_Output['status']) {
+            $data_Output = json_decode((string) ($ConnectToPanel['body'] ?? ''), true);
+            if (!is_array($data_Output) || empty($data_Output['status'])) {
                 $Output['status'] = 'Unsuccessful';
-                if ($data_Output['msg']) {
+                if (is_array($data_Output) && !empty($data_Output['msg'])) {
                     $Output['msg'] = $data_Output['msg'];
                 } else {
                     $Output['msg'] = '';
@@ -483,11 +537,20 @@ class ManagePanel
                 if ($invoice != false) {
                     $data_Output['subscription_url'] = "https://$domainhosts/sub/" . $invoice['id_invoice'];
                 }
-                $data_Output = $data_Output['obj'];
+                $data_Output = is_array($data_Output['obj'] ?? null)
+                    ? $data_Output['obj']
+                    : null;
+                if (!is_array($data_Output) || empty($data_Output['username'])) {
+                    return [
+                        'status' => 'Unsuccessful',
+                        'msg' => 'Invalid Mirza Agent response',
+                    ];
+                }
+
                 $Output['status'] = 'successful';
                 $Output['username'] = $data_Output['username'];
-                $Output['subscription_url'] = $data_Output['subscription_url'];
-                $Output['configs'] = $data_Output['links'];
+                $Output['subscription_url'] = (string) ($data_Output['subscription_url'] ?? '');
+                $Output['configs'] = is_array($data_Output['links'] ?? null) ? $data_Output['links'] : [];
             }
         } elseif ($Get_Data_Panel['type'] == "rebecca") {
             //create user
