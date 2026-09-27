@@ -445,7 +445,7 @@ if ($text == "/start" || $datain == "start" || $text == "start") {
             $otpKeyboard = json_encode([
                 'inline_keyboard' => [
                     [
-                        ['text' => 'ارسال مجدد کد', 'callback_data' => 'resend_phone_otp'],
+                        ['text' => '🔄 دریافت کد جدید', 'callback_data' => 'resend_phone_otp'],
                     ],
                     [
                         ['text' => $textbotlang['users']['backbtn'], 'callback_data' => 'backuser'],
@@ -454,14 +454,13 @@ if ($text == "/start" || $datain == "start" || $text == "start") {
             ], JSON_UNESCAPED_UNICODE);
             sendmessage(
                 $from_id,
-                'شماره دریافت شد؛ برای تکمیل تأیید، کد پیامکی را وارد کنید.',
+                '✅ شماره موبایل دریافت شد.',
                 json_encode(['remove_keyboard' => true]),
                 'html'
             );
             sendmessage(
                 $from_id,
-                'یک کد تأیید ۶ رقمی با فراز اس‌ام‌اس برای شماره شما ارسال شد. کد را همین‌جا وارد کنید.' .
-                "\n\nاعتبار کد: " . (int) ($otp['expires_in'] ?? 120) . ' ثانیه',
+                "🔐 <b>تأیید شماره موبایل</b>\n\n📩 کد ۶ رقمی برای شماره شما ارسال شد.\nکد را همین‌جا وارد کنید.\n\n⏱ <b>اعتبار کد:</b> " . (int) ($otp['expires_in'] ?? 120) . " ثانیه\n🛡️ کد را با هیچ‌کس به اشتراک نگذارید.",
                 $otpKeyboard,
                 'html'
             );
@@ -473,7 +472,7 @@ if ($text == "/start" || $datain == "start" || $text == "start") {
             ]);
             sendmessage(
                 $from_id,
-                'ارسال کد تأیید انجام نشد: ' . htmlspecialchars($otpError->getMessage(), ENT_QUOTES, 'UTF-8'),
+                "⚠️ <b>ارسال کد انجام نشد</b>\n\nچند لحظه بعد دوباره تلاش کنید. اگر مشکل ادامه داشت، با پشتیبانی در ارتباط باشید.",
                 $request_contact,
                 'html'
             );
@@ -489,7 +488,7 @@ if ($text == "/start" || $datain == "start" || $text == "start") {
     $otpKeyboard = json_encode([
         'inline_keyboard' => [
             [
-                ['text' => 'ارسال مجدد کد', 'callback_data' => 'resend_phone_otp'],
+                ['text' => '🔄 دریافت کد جدید', 'callback_data' => 'resend_phone_otp'],
             ],
             [
                 ['text' => $textbotlang['users']['backbtn'], 'callback_data' => 'backuser'],
@@ -503,15 +502,14 @@ if ($text == "/start" || $datain == "start" || $text == "start") {
             if ($callback_query_id) {
                 telegram('answerCallbackQuery', [
                     'callback_query_id' => $callback_query_id,
-                    'text' => 'کد جدید ارسال شد.',
+                    'text' => '✅ کد جدید ارسال شد',
                     'show_alert' => false,
                 ]);
             }
             Editmessagetext(
                 $from_id,
                 $message_id,
-                'کد تأیید جدید ارسال شد. کد ۶ رقمی را وارد کنید.' .
-                "\n\nاعتبار کد: " . (int) ($otp['expires_in'] ?? 120) . ' ثانیه',
+                "✅ <b>کد جدید ارسال شد</b>\n\n📩 کد ۶ رقمی جدید برای شماره شما ارسال شد.\nکد را همین‌جا وارد کنید.\n\n⏱ <b>اعتبار کد:</b> " . (int) ($otp['expires_in'] ?? 120) . " ثانیه\n🛡️ فقط آخرین کد ارسال‌شده معتبر است.",
                 $otpKeyboard
             );
         } catch (Throwable $otpError) {
@@ -530,7 +528,7 @@ if ($text == "/start" || $datain == "start" || $text == "start") {
 
     $otpCode = preg_replace('/\D+/', '', convertPersianNumbersToEnglish((string) $text)) ?: '';
     if (strlen($otpCode) !== 6) {
-        sendmessage($from_id, 'کد تأیید ۶ رقمی را وارد کنید.', $otpKeyboard, 'html');
+        sendmessage($from_id, "⚠️ <b>کد نامعتبر است</b>\nکد تأیید باید دقیقاً ۶ رقم باشد.\n\nمثال: <code>123456</code>", $otpKeyboard, 'html');
         return;
     }
 
