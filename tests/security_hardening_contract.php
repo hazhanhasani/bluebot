@@ -22,8 +22,9 @@ $vpnUpdateAdmin = $read('vpnbot/update/admin.php');
 
 $checks = [
     [$botapi, 'curl_close($ch);', 'Main Telegram client must close cURL handles.'],
-    [$functions, 'CURLOPT_SSL_VERIFYHOST, 2', 'Subscription fetcher must verify TLS hostnames.'],
-    [$functions, 'CURLOPT_SSL_VERIFYPEER, true', 'Subscription fetcher must verify TLS peers.'],
+    [$functions, "function_exists('bluebotVerifyPanelTls')", 'Subscription fetcher must follow the panel TLS policy.'],
+    [$functions, 'CURLOPT_SSL_VERIFYHOST, $verifyTls ? 2 : 0', 'Subscription fetcher TLS hostname policy is missing.'],
+    [$functions, 'CURLOPT_SSL_VERIFYPEER, $verifyTls', 'Subscription fetcher TLS peer policy is missing.'],
     [$functions, "'url' => \"https://\$host/index.php\"", 'Main webhook URL must not expose the secret in the query string.'],
     [$functions, 'function webhookHeaderSecretMatches', 'Header-only Telegram webhook verification helper is missing.'],
     [$index, '$telegramHeaderSecretAllowed', 'Main webhook migration must distinguish header authentication.'],
@@ -50,10 +51,9 @@ if (str_contains($functions, '"https://$host/index.php?secret=$secret"')) {
 
 if (preg_match('/function\s+outputlink\s*\([^)]*\)\s*\{(?<body>.*?)\n\}/s', $functions, $match)) {
     $body = (string) ($match['body'] ?? '');
-    if (str_contains($body, 'CURLOPT_SSL_VERIFYPEER, false')
-        || str_contains($body, 'CURLOPT_SSL_VERIFYHOST, false')
-        || str_contains($body, 'CURLOPT_SSL_VERIFYHOST, 0')) {
-        $failures[] = 'outputlink() must not disable TLS verification.';
+    if (!str_contains($body, "getenv('BLUEBOT_VERIFY_PANEL_TLS') === '1'")
+        || !str_contains($body, 'CURLOPT_SSL_VERIFYPEER, $verifyTls')) {
+        $failures[] = 'outputlink() must use the explicit panel TLS compatibility policy.';
     }
 } else {
     $failures[] = 'outputlink() could not be inspected.';
