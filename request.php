@@ -57,11 +57,25 @@ class CurlRequest {
             ];
         }
         $ch = curl_init();
+        if ($ch === false) {
+            bluebotLog('warning', 'Unable to initialise panel HTTP request', [
+                'method' => strtoupper((string) $method),
+                'url' => $this->url,
+            ]);
+            return [
+                'status' => null,
+                'body' => null,
+                'error' => 'Unable to initialise HTTP request.',
+            ];
+        }
+
         curl_setopt($ch, CURLOPT_URL, $this->url);
         curl_setopt($ch, CURLOPT_CUSTOMREQUEST, strtoupper($method));
         curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
         curl_setopt($ch, CURLOPT_TIMEOUT_MS, $this->timeout);
         curl_setopt($ch, CURLOPT_CONNECTTIMEOUT_MS, min((int) $this->timeout, 5000));
+        curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
+        curl_setopt($ch, CURLOPT_MAXREDIRS, 5);
         curl_setopt($ch, CURLOPT_PROTOCOLS, CURLPROTO_HTTP | CURLPROTO_HTTPS);
         if (defined('CURLOPT_REDIR_PROTOCOLS')) {
             curl_setopt($ch, CURLOPT_REDIR_PROTOCOLS, CURLPROTO_HTTP | CURLPROTO_HTTPS);
