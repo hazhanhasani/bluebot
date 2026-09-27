@@ -1574,34 +1574,64 @@ function DirectPayment($order_id, $image = null)
             (float) selectValue("user", "Balance", "id", $Balance_id['id'], 0),
             0
         );
-        $partsdic = explode("%", $steppay[1]);
-        $usernamepanel = $partsdic[0];
-        $sql = "SELECT * FROM service_other WHERE username = :username  AND value  LIKE CONCAT('%', :value, '%') AND id_user = :id_user ";
-        $stmt = $pdo->prepare($sql);
-        $stmt->bindParam(':username', $usernamepanel, PDO::PARAM_STR);
-        $stmt->bindParam(':value', $partsdic[1], PDO::PARAM_STR);
-        $stmt->bindParam(':id_user', $Balance_id['id']);
-        $stmt->execute();
-        $data_order = $stmt->fetch(PDO::FETCH_ASSOC);
-        $service_other = $data_order;
-        if ($service_other == false) {
-            sendmessage($Balance_id['id'], $textbotlang['users']['extend']['genericError'], $keyboard, 'HTML');
-            return;
+
+        $renewPayload = explode("%", (string) ($steppay[1] ?? ''), 2);
+        if (count($renewPayload) !== 2 || trim($renewPayload[0]) === '' || trim($renewPayload[1]) === '') {
+            throw new RuntimeException('Invalid renewal delivery state for order ' . $order_id);
         }
-        $service_other = json_decode($service_other['value'], true);
-        $codeproduct = $service_other['code_product'];
+
+        [$usernamepanel, $renewLookup] = $renewPayload;
+        $sql = "SELECT * FROM service_other WHERE username = :username AND value LIKE CONCAT('%', :value, '%') AND id_user = :id_user LIMIT 1";
+        $stmt = $pdo->prepare($sql);
+        $stmt->bindValue(':username', $usernamepanel, PDO::PARAM_STR);
+        $stmt->bindValue(':value', $renewLookup, PDO::PARAM_STR);
+        $stmt->bindValue(':id_user', (string) $Balance_id['id'], PDO::PARAM_STR);
+        $stmt->execute();
+
+        $data_order = $stmt->fetch(PDO::FETCH_ASSOC);
+        if (!is_array($data_order)) {
+            throw new RuntimeException('Renewal order state not found for payment ' . $order_id);
+        }
+
+        $service_other = json_decode((string) ($data_order['value'] ?? ''), true);
+        if (!is_array($service_other) || empty($service_other['code_product'])) {
+            throw new RuntimeException('Renewal order state is invalid for payment ' . $order_id);
+        }
+
+        $codeproduct = (string) $service_other['code_product'];
         $nameloc = select("invoice", "*", "username", $usernamepanel, "select");
+        if (!is_array($nameloc) || empty($nameloc['Service_location']) || empty($nameloc['id_invoice'])) {
+            throw new RuntimeException('Renewal invoice not found for payment ' . $order_id);
+        }
+
         $marzban_list_get = select("marzban_panel", "*", "name_panel", $nameloc['Service_location'], "select");
+        if (!is_array($marzban_list_get) || empty($marzban_list_get['code_panel'])) {
+            throw new RuntimeException('Renewal panel not found for payment ' . $order_id);
+        }
+
         if ($codeproduct == "custom_volume") {
-            $prodcut['code_product'] = "custom_volume";
-            $prodcut['name_product'] = $nameloc['name_product'];
-            $prodcut['price_product'] = $data_order['price'];
-            $prodcut['Service_time'] = $service_other['Service_time'];
-            $prodcut['Volume_constraint'] = $service_other['volumebuy'];
+            if (!isset($service_other['Service_time'], $service_other['volumebuy'])) {
+                throw new RuntimeException('Custom renewal state is incomplete for payment ' . $order_id);
+            }
+
+            $prodcut = [
+                'code_product' => "custom_volume",
+                'name_product' => (string) ($nameloc['name_product'] ?? ''),
+                'price_product' => (float) ($data_order['price'] ?? 0),
+                'Service_time' => $service_other['Service_time'],
+                'Volume_constraint' => $service_other['volumebuy'],
+            ];
         } else {
-            $stmt = $pdo->prepare("SELECT * FROM product WHERE (Location = :mp2 OR Location = '/all') AND agent= :mp3 AND code_product = :mp4");
-            $stmt->execute([':mp2' => $nameloc['Service_location'], ':mp3' => $Balance_id['agent'], ':mp4' => $codeproduct]);
+            $stmt = $pdo->prepare("SELECT * FROM product WHERE (Location = :mp2 OR Location = '/all') AND agent = :mp3 AND code_product = :mp4 LIMIT 1");
+            $stmt->execute([
+                ':mp2' => $nameloc['Service_location'],
+                ':mp3' => (string) ($Balance_id['agent'] ?? 'f'),
+                ':mp4' => $codeproduct,
+            ]);
             $prodcut = $stmt->fetch(PDO::FETCH_ASSOC);
+            if (!is_array($prodcut)) {
+                throw new RuntimeException('Renewal product not found for payment ' . $order_id);
+            }
         }
         if ($nameloc['name_product'] == $textbotlang['common']['labels']['testServiceFn']) {
             update("invoice", "name_product", $prodcut['name_product'], "id_invoice", $nameloc['id_invoice']);
@@ -1609,16 +1639,34 @@ function DirectPayment($order_id, $image = null)
         }
         $dateacc = date('Y/m/d H:i:s');
         $DataUserOut = $ManagePanel->DataUser($nameloc['Service_location'], $nameloc['username']);
+        if (!is_array($DataUserOut)) {
+            throw new RuntimeException('Unable to read renewal service state for payment ' . $order_id);
+        }
+
         $Balance_Low_user = 0;
         update("user", "Balance", $Balance_Low_user, "id", $Balance_id['id']);
-        $extend = $ManagePanel->extend($marzban_list_get['Methodextend'], $prodcut['Volume_constraint'], $prodcut['Service_time'], $nameloc['username'], $prodcut['code_product'], $marzban_list_get['code_panel']);
-        if ($extend['status'] == false) {
+
+        $extend = $ManagePanel->extend(
+            $marzban_list_get['Methodextend'] ?? null,
+            $prodcut['Volume_constraint'] ?? 0,
+            $prodcut['Service_time'] ?? 0,
+            $nameloc['username'],
+            $prodcut['code_product'],
+            $marzban_list_get['code_panel']
+        );
+        if (!is_array($extend) || empty($extend['status'])) {
             $balance = $Balance_id['Balance'] + $Payment_report['price'];
             update("user", "Balance", $balance, "id", $Balance_id['id']);
             sendmessage($Balance_id['id'], $textbotlang['users']['sell']['errorConfig'], $keyboard, 'HTML');
             sendmessage($Balance_id['id'], sprintf($textbotlang['users']['Balance']['refundRenewFailed'], $balance), $keyboard, 'HTML');
-            $extend['msg'] = json_encode($extend['msg']);
-            $textreports = sprintf($textbotlang['Admin']['reportgroup']['errorRenewServiceFn'], $marzban_list_get['name_panel'], $nameloc['username'], $extend['msg']);
+            $extendError = is_array($extend) ? ($extend['msg'] ?? $extend) : $extend;
+            $extendError = json_encode($extendError, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+            $textreports = sprintf(
+                $textbotlang['Admin']['reportgroup']['errorRenewServiceFn'],
+                $marzban_list_get['name_panel'],
+                $nameloc['username'],
+                $extendError !== false ? $extendError : 'unknown error'
+            );
             sendmessage($nameloc['id_user'], $textbotlang['users']['extend']['errorSupport'], null, 'HTML');
             if (strlen($setting['Channel_Report']) > 0) {
                 telegram('sendmessage', [
@@ -1724,13 +1772,28 @@ function DirectPayment($order_id, $image = null)
             }
         }
     } elseif ($steppay[0] == "getextravolumeuser") {
-        $steppay = explode("%", $steppay[1]);
-        $volume = $steppay[1];
-        $nameloc = select("invoice", "*", "username", $steppay[0], "select");
+        $extraPayload = explode("%", (string) ($steppay[1] ?? ''), 2);
+        if (count($extraPayload) !== 2 || trim($extraPayload[0]) === '' || !is_numeric($extraPayload[1]) || (float) $extraPayload[1] <= 0) {
+            throw new RuntimeException('Invalid extra-volume delivery state for order ' . $order_id);
+        }
+
+        [$serviceUsername, $volume] = $extraPayload;
+        $nameloc = select("invoice", "*", "username", $serviceUsername, "select");
+        if (!is_array($nameloc) || empty($nameloc['Service_location']) || empty($nameloc['id_invoice'])) {
+            throw new RuntimeException('Extra-volume invoice not found for payment ' . $order_id);
+        }
+
         $marzban_list_get = select("marzban_panel", "*", "name_panel", $nameloc['Service_location'], "select");
+        if (!is_array($marzban_list_get) || empty($marzban_list_get['code_panel'])) {
+            throw new RuntimeException('Extra-volume panel not found for payment ' . $order_id);
+        }
+
         $Balance_Low_user = 0;
         update("user", "Balance", $Balance_Low_user, "id", $Balance_id['id']);
-        $DataUserOut = $ManagePanel->DataUser($nameloc['Service_location'], $steppay[0]);
+        $DataUserOut = $ManagePanel->DataUser($nameloc['Service_location'], $serviceUsername);
+        if (!is_array($DataUserOut)) {
+            throw new RuntimeException('Unable to read extra-volume service state for payment ' . $order_id);
+        }
         $data_for_database = json_encode(array(
             'volume_value' => $volume,
             'old_volume' => $DataUserOut['data_limit'],
@@ -1759,7 +1822,7 @@ function DirectPayment($order_id, $image = null)
         }
         $stmt = $pdo->prepare("INSERT IGNORE INTO service_other (id_user, username,value,type,time,price,output) VALUES (:id_user,:username,:value,:type,:time,:price,:output)");
         $stmt->bindParam(':id_user', $Balance_id['id']);
-        $stmt->bindParam(':username', $steppay[0]);
+        $stmt->bindValue(':username', $serviceUsername, PDO::PARAM_STR);
         $stmt->bindParam(':value', $data_for_database);
         $stmt->bindParam(':type', $type);
         $stmt->bindParam(':time', $dateacc);
@@ -1780,17 +1843,17 @@ function DirectPayment($order_id, $image = null)
             $scorenew = $Balance_id['score'] + 1;
             update("user", "score", $scorenew, "id", $Balance_id['id']);
         }
-        $textvolume = sprintf($textbotlang['users']['extraVolume']['successFn'], $steppay[0], $volume, $volumesformat);
+        $textvolume = sprintf($textbotlang['users']['extraVolume']['successFn'], $serviceUsername, $volume, $volumesformat);
         sendmessage($Balance_id['id'], $textvolume, $keyboardextrafnished, 'HTML');
         $volumes = $volume;
         if ($Payment_report['Payment_Method'] == "cart to cart") {
-            $textconfrom = sprintf($textbotlang['Admin']['reportgroup']['paymentConfirmedExtraVolume'], $volumes, $steppay[0], $Balance_id['id'], $Payment_report['id_order'], $Balance_id['username'], $Balance_id['Balance'], $format_price_cart);
+            $textconfrom = sprintf($textbotlang['Admin']['reportgroup']['paymentConfirmedExtraVolume'], $volumes, $serviceUsername, $Balance_id['id'], $Payment_report['id_order'], $Balance_id['username'], $Balance_id['Balance'], $format_price_cart);
             if (!isTelegramChatIdEmpty($from_id) && intval($message_id) != 0) {
                 Editmessagetext($from_id, $message_id, $textconfrom, $Confirm_pay);
             }
         }
         update("invoice", "Status", "active", "id_invoice", $nameloc['id_invoice']);
-        $text_report = sprintf($textbotlang['Admin']['reportgroup']['extraVolumeFn'], $Balance_id['id'], $volumes, $Payment_report['price'], $steppay[0], $Balance_id['Balance']);
+        $text_report = sprintf($textbotlang['Admin']['reportgroup']['extraVolumeFn'], $Balance_id['id'], $volumes, $Payment_report['price'], $serviceUsername, $Balance_id['Balance']);
         if (strlen($setting['Channel_Report']) > 0) {
             telegram('sendmessage', [
                 'chat_id' => $setting['Channel_Report'],
@@ -1800,13 +1863,28 @@ function DirectPayment($order_id, $image = null)
             ]);
         }
     } elseif ($steppay[0] == "getextratimeuser") {
-        $steppay = explode("%", $steppay[1]);
-        $tmieextra = $steppay[1];
-        $nameloc = select("invoice", "*", "username", $steppay[0], "select");
+        $extraTimePayload = explode("%", (string) ($steppay[1] ?? ''), 2);
+        if (count($extraTimePayload) !== 2 || trim($extraTimePayload[0]) === '' || !is_numeric($extraTimePayload[1]) || (int) $extraTimePayload[1] <= 0) {
+            throw new RuntimeException('Invalid extra-time delivery state for order ' . $order_id);
+        }
+
+        [$serviceUsername, $tmieextra] = $extraTimePayload;
+        $nameloc = select("invoice", "*", "username", $serviceUsername, "select");
+        if (!is_array($nameloc) || empty($nameloc['Service_location']) || empty($nameloc['id_invoice'])) {
+            throw new RuntimeException('Extra-time invoice not found for payment ' . $order_id);
+        }
+
         $marzban_list_get = select("marzban_panel", "*", "name_panel", $nameloc['Service_location'], "select");
+        if (!is_array($marzban_list_get) || empty($marzban_list_get['code_panel'])) {
+            throw new RuntimeException('Extra-time panel not found for payment ' . $order_id);
+        }
+
         $Balance_Low_user = 0;
         update("user", "Balance", $Balance_Low_user, "id", $nameloc['id_user']);
-        $DataUserOut = $ManagePanel->DataUser($nameloc['Service_location'], $steppay[0]);
+        $DataUserOut = $ManagePanel->DataUser($nameloc['Service_location'], $serviceUsername);
+        if (!is_array($DataUserOut)) {
+            throw new RuntimeException('Unable to read extra-time service state for payment ' . $order_id);
+        }
         $data_for_database = json_encode(array(
             'day' => $tmieextra,
             'old_volume' => $DataUserOut['data_limit'],
@@ -1835,7 +1913,7 @@ function DirectPayment($order_id, $image = null)
         }
         $stmt = $pdo->prepare("INSERT IGNORE INTO service_other (id_user, username,value,type,time,price,output) VALUES (:id_user,:username,:value,:type,:time,:price,:output)");
         $stmt->bindParam(':id_user', $Balance_id['id']);
-        $stmt->bindParam(':username', $steppay[0]);
+        $stmt->bindValue(':username', $serviceUsername, PDO::PARAM_STR);
         $stmt->bindParam(':value', $data_for_database);
         $stmt->bindParam(':type', $type);
         $stmt->bindParam(':time', $dateacc);
@@ -1856,17 +1934,17 @@ function DirectPayment($order_id, $image = null)
             $scorenew = $Balance_id['score'] + 1;
             update("user", "score", $scorenew, "id", $Balance_id['id']);
         }
-        $textextratime = sprintf($textbotlang['users']['extraTime']['successFn'], $steppay[0], $tmieextra, $volumesformat);
+        $textextratime = sprintf($textbotlang['users']['extraTime']['successFn'], $serviceUsername, $tmieextra, $volumesformat);
         sendmessage($Balance_id['id'], $textextratime, $keyboardextrafnished, 'HTML');
         $volumes = $tmieextra;
         if ($Payment_report['Payment_Method'] == "cart to cart") {
-            $textconfrom = sprintf($textbotlang['Admin']['reportgroup']['paymentConfirmedExtraTime'], $volumes, $steppay[0], $Balance_id['id'], $Payment_report['id_order'], $Balance_id['username'], $Balance_id['Balance'], $format_price_cart);
+            $textconfrom = sprintf($textbotlang['Admin']['reportgroup']['paymentConfirmedExtraTime'], $volumes, $serviceUsername, $Balance_id['id'], $Payment_report['id_order'], $Balance_id['username'], $Balance_id['Balance'], $format_price_cart);
             if (!isTelegramChatIdEmpty($from_id) && intval($message_id) != 0) {
                 Editmessagetext($from_id, $message_id, $textconfrom, $Confirm_pay);
             }
         }
         update("invoice", "Status", "active", "id_invoice", $nameloc['id_invoice']);
-        $text_report = sprintf($textbotlang['Admin']['reportgroup']['extraTimeFn'], $Balance_id['id'], $volumes, $Payment_report['price'], $steppay[0]);
+        $text_report = sprintf($textbotlang['Admin']['reportgroup']['extraTimeFn'], $Balance_id['id'], $volumes, $Payment_report['price'], $serviceUsername);
         if (strlen($setting['Channel_Report']) > 0) {
             telegram('sendmessage', [
                 'chat_id' => $setting['Channel_Report'],
