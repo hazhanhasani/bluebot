@@ -1030,21 +1030,59 @@ function generateUsername($from_id, $Metode, $username, $randomString, $text, $n
 }
 function outputlink($text)
 {
+    $url = trim((string) $text);
+    if ($url === '' || filter_var($url, FILTER_VALIDATE_URL) === false) {
+        return null;
+    }
+
+    $scheme = strtolower((string) (parse_url($url, PHP_URL_SCHEME) ?? ''));
+    if (!in_array($scheme, ['http', 'https'], true)) {
+        return null;
+    }
+
     $ch = curl_init();
-    curl_setopt($ch, CURLOPT_URL, $text);
+    if ($ch === false) {
+        return null;
+    }
+
+    curl_setopt($ch, CURLOPT_URL, $url);
     curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+    curl_setopt($ch, CURLOPT_CONNECTTIMEOUT_MS, 4000);
     curl_setopt($ch, CURLOPT_TIMEOUT_MS, ($GLOBALS['request_exec_timeout'] ?? null) ?: 10000);
     curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
-    curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, false);
-    curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
+    curl_setopt($ch, CURLOPT_MAXREDIRS, 5);
+    if (defined('CURLOPT_PROTOCOLS') && defined('CURLPROTO_HTTP') && defined('CURLPROTO_HTTPS')) {
+        curl_setopt($ch, CURLOPT_PROTOCOLS, CURLPROTO_HTTP | CURLPROTO_HTTPS);
+    }
+    if (defined('CURLOPT_REDIR_PROTOCOLS') && defined('CURLPROTO_HTTP') && defined('CURLPROTO_HTTPS')) {
+        curl_setopt($ch, CURLOPT_REDIR_PROTOCOLS, CURLPROTO_HTTP | CURLPROTO_HTTPS);
+    }
+    if ($scheme === 'https') {
+        curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, 2);
+        curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, true);
+    }
+
     $userAgent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36';
     curl_setopt($ch, CURLOPT_USERAGENT, $userAgent);
+
     $response = curl_exec($ch);
     if ($response === false) {
+        $error = curl_error($ch);
+        if ($error !== '') {
+            error_log('outputlink request failed: ' . $error);
+        }
+        curl_close($ch);
         return null;
-    } else {
-        return $response;
     }
+
+    $status = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    curl_close($ch);
+
+    if ($status >= 400) {
+        return null;
+    }
+
+    return $response;
 }
 
 function deductBalance($user, $amount)
