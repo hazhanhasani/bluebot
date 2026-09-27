@@ -4652,7 +4652,8 @@ elseif ($datain == "systemsms") {
         $stmt->bindParam(':username', $usernameconfig, PDO::PARAM_STR);
         $stmt->bindParam(':notes', $usernameconfig, PDO::PARAM_STR);
     } elseif (isset($text[0]) && $text[0] == "/") {
-        $usernameconfig = explode(" ", $text)[1] ?? '';
+        $commandParts = preg_split('/\s+/', trim((string) $text), 2);
+        $usernameconfig = trim((string) ($commandParts[1] ?? ''));
         if ($usernameconfig === '') {
             return;
         }
@@ -8724,16 +8725,25 @@ if (isset($update["inline_query"])) {
     $texbot = sprintf($textbotlang['Admin']['agentbot']['created'], $userdate['username'], $userdate['token']);
     sendmessage($from_id, $texbot, $keyboardadmin, 'HTML');
 } elseif (preg_match('/removebotsell_(\w+)/', $datain, $datagetr)) {
-    $id_user = $datagetr[1];
+    $id_user = trim((string) ($datagetr[1] ?? ''));
     $contentbto = select("botsaz", "*", "id_user", $id_user, "select");
+    if (!is_array($contentbto)) {
+        sendmessage($from_id, $textbotlang['Admin']['notUser'], $keyboardadmin, 'HTML');
+        return;
+    }
+
     $destination = getcwd();
-    $dirsource = "$destination/vpnbot/$id_user{$contentbto['username']}";
+    $usernamePart = preg_replace('/[^A-Za-z0-9_.-]/', '', (string) ($contentbto['username'] ?? ''));
+    $dirsource = rtrim((string) $destination, '/\\') . "/vpnbot/" . $id_user . $usernamePart;
     if (is_dir($dirsource) && !deleteDirectory($dirsource)) {
         error_log('Failed to remove bot directory: ' . $dirsource);
     }
-    if (!empty($contentbto['bot_token'])) {
-        file_get_contents("https://api.telegram.org/bot{$contentbto['bot_token']}/deletewebhook");
+
+    $botToken = trim((string) ($contentbto['bot_token'] ?? ''));
+    if ($botToken !== '') {
+        telegram('deleteWebhook', [], $botToken);
     }
+
     $stmt = $pdo->prepare("DELETE FROM botsaz WHERE id_user = :id_user");
     $stmt->bindParam(':id_user', $id_user, PDO::PARAM_STR);
     $stmt->execute();
@@ -8750,9 +8760,15 @@ if (isset($update["inline_query"])) {
     }
     step("home", $from_id);
     $userdate = bluebotJsonArray($user['Processing_value'] ?? '');
-    $botinfo = bluebotJsonArray(selectValue("botsaz", "setting", "id_user", $userdate['id_user'], '{}'));
+    $targetUserId = trim((string) ($userdate['id_user'] ?? ''));
+    if ($targetUserId === '') {
+        sendmessage($from_id, $textbotlang['common']['invalidInput'], $keyboardadmin, 'HTML');
+        return;
+    }
+
+    $botinfo = bluebotJsonArray(selectValue("botsaz", "setting", "id_user", $targetUserId, '{}'));
     $botinfo['minpricevolume'] = $text;
-    update("botsaz", "setting", json_encode($botinfo), "id_user", $userdate['id_user']);
+    update("botsaz", "setting", json_encode($botinfo), "id_user", $targetUserId);
     sendmessage($from_id, $textbotlang['Admin']['price']['saved'], $keyboardadmin, 'HTML');
 } elseif (preg_match('/settimepricesrc_(\w+)/', $datain, $datagetr)) {
     $id_user = $datagetr[1];
@@ -8766,9 +8782,15 @@ if (isset($update["inline_query"])) {
     }
     step("home", $from_id);
     $userdate = bluebotJsonArray($user['Processing_value'] ?? '');
-    $botinfo = json_decode((string) selectValue("botsaz", "setting", "id_user", $userdate['id_user'], '{}'), true);
+    $targetUserId = trim((string) ($userdate['id_user'] ?? ''));
+    if ($targetUserId === '') {
+        sendmessage($from_id, $textbotlang['common']['invalidInput'], $keyboardadmin, 'HTML');
+        return;
+    }
+
+    $botinfo = bluebotJsonArray(selectValue("botsaz", "setting", "id_user", $targetUserId, '{}'));
     $botinfo['minpricetime'] = $text;
-    update("botsaz", "setting", json_encode($botinfo), "id_user", $userdate['id_user']);
+    update("botsaz", "setting", json_encode($botinfo), "id_user", $targetUserId);
     sendmessage($from_id, $textbotlang['Admin']['price']['saved'], $keyboardadmin, 'HTML');
 }
 if ($datain == "settimecornday" && $adminrulecheck['rule'] == "administrator") {
@@ -9343,24 +9365,34 @@ if ($datain == "settimecornday" && $adminrulecheck['rule'] == "administrator") {
     sendmessage($from_id, $textbotlang['Admin']['changeLocation']['askLimitType'], $keyboardchangelimit, 'HTML');
 } elseif ($text == $textbotlang['keyboard']['generalLimit']) {
     $limitnumber = bluebotJsonArray($setting['limitnumber'] ?? '{}');
-    sendmessage($from_id, sprintf($textbotlang['Admin']['changeLocation']['askTotalLimit'], $limitnumber['all']), $backadmin, 'HTML');
+    sendmessage($from_id, sprintf($textbotlang['Admin']['changeLocation']['askTotalLimit'], (int) ($limitnumber['all'] ?? 0)), $backadmin, 'HTML');
     step("limitchangeall", $from_id);
 } elseif ($user['step'] == "limitchangeall") {
+    if (!ctype_digit((string) $text)) {
+        sendmessage($from_id, $textbotlang['common']['invalidInput'], $backadmin, 'HTML');
+        return;
+    }
+
+    $value = bluebotJsonArray($setting['limitnumber'] ?? '{}');
+    $value['all'] = (int) $text;
+    update("setting", "limitnumber", json_encode($value), null, null);
     sendmessage($from_id, $textbotlang['Admin']['changeLocation']['limitSaved'], $keyboardchangelimit, 'HTML');
     step("home", $from_id);
-    $value = json_decode($setting['limitnumber'], true);
-    $value['all'] = intval($text);
-    update("setting", "limitnumber", json_encode($value), null, null);
 } elseif ($text == $textbotlang['keyboard']['freeLimit']) {
-    $limitnumber = json_decode($setting['limitnumber'], true);
-    sendmessage($from_id, sprintf($textbotlang['Admin']['changeLocation']['askFreeLimit'], $limitnumber['free']), $backadmin, 'HTML');
+    $limitnumber = bluebotJsonArray($setting['limitnumber'] ?? '{}');
+    sendmessage($from_id, sprintf($textbotlang['Admin']['changeLocation']['askFreeLimit'], (int) ($limitnumber['free'] ?? 0)), $backadmin, 'HTML');
     step("limitfreechangefree", $from_id);
 } elseif ($user['step'] == "limitfreechangefree") {
+    if (!ctype_digit((string) $text)) {
+        sendmessage($from_id, $textbotlang['common']['invalidInput'], $backadmin, 'HTML');
+        return;
+    }
+
+    $value = bluebotJsonArray($setting['limitnumber'] ?? '{}');
+    $value['free'] = (int) $text;
+    update("setting", "limitnumber", json_encode($value), null, null);
     sendmessage($from_id, $textbotlang['Admin']['changeLocation']['limitSaved'], $keyboardchangelimit, 'HTML');
     step("home", $from_id);
-    $value = json_decode($setting['limitnumber'], true);
-    $value['free'] = intval($text);
-    update("setting", "limitnumber", json_encode($value), null, null);
 } elseif ($text == $textbotlang['keyboard']['resetAllUsersLimit']) {
     $keyboarddata = json_encode([
         'inline_keyboard' => [
