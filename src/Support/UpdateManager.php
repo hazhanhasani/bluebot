@@ -136,6 +136,110 @@ function bluebotUpdateSetChannel(string $channel): string
     return $channel;
 }
 
+function bluebotUpdateSourceCachePath(string $channel): string
+{
+    $channel = bluebotUpdateNormalizeChannel($channel);
+    return dirname(__DIR__, 2) . '/storage/update/source-' . $channel . '.json';
+}
+
+function bluebotUpdateSourceState(string $channel): array
+{
+    $path = bluebotUpdateSourceCachePath($channel);
+    if (!is_file($path) || !is_readable($path)) {
+        return [];
+    }
+
+    $decoded = json_decode((string) @file_get_contents($path), true);
+    return is_array($decoded) ? $decoded : [];
+}
+
+function bluebotUpdateSourceCachedTarget(string $channel, int $maxAge): ?array
+{
+    $state = bluebotUpdateSourceState($channel);
+    $checkedAt = (int) ($state['checked_ts'] ?? 0);
+    if ($checkedAt <= 0 || time() - $checkedAt > max(1, $maxAge)) {
+        return null;
+    }
+
+    $target = $state['target'] ?? null;
+    return !empty($state['ok']) && is_array($target) ? $target : null;
+}
+
+function bluebotUpdateSourceCacheIsFreshFailure(string $channel, int $maxAge = 60): bool
+{
+    $state = bluebotUpdateSourceState($channel);
+    $checkedAt = (int) ($state['checked_ts'] ?? 0);
+
+    return $checkedAt > 0
+        && time() - $checkedAt <= max(1, $maxAge)
+        && empty($state['ok']);
+}
+
+function bluebotUpdateStoreSourceState(string $channel, ?array $target, string $error = ''): void
+{
+    $channel = bluebotUpdateNormalizeChannel($channel);
+    $path = bluebotUpdateSourceCachePath($channel);
+    $previous = bluebotUpdateSourceState($channel);
+    $directory = dirname($path);
+
+    if (!is_dir($directory) && !@mkdir($directory, 0775, true) && !is_dir($directory)) {
+        return;
+    }
+
+    $failures = $target !== null ? 0 : ((int) ($previous['failures'] ?? 0) + 1);
+    $payload = [
+        'channel' => $channel,
+        'ok' => $target !== null,
+        'checked_at' => gmdate(DATE_ATOM),
+        'checked_ts' => time(),
+        'failures' => $failures,
+        'last_alert_ts' => (int) ($previous['last_alert_ts'] ?? 0),
+        'error' => $target !== null ? '' : mb_substr(trim($error), 0, 300),
+        'target' => $target,
+    ];
+
+    $encoded = json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT);
+    if ($encoded === false) {
+        return;
+    }
+
+    $tmp = $path . '.tmp.' . bin2hex(random_bytes(4));
+    if (@file_put_contents($tmp, $encoded . PHP_EOL, LOCK_EX) === false) {
+        @unlink($tmp);
+        return;
+    }
+
+    @chmod($tmp, 0660);
+    if (!@rename($tmp, $path)) {
+        @unlink($tmp);
+    }
+}
+
+function bluebotUpdateSourceFailureShouldNotify(string $channel): bool
+{
+    $state = bluebotUpdateSourceState($channel);
+    if ((int) ($state['failures'] ?? 0) < 3) {
+        return false;
+    }
+
+    return time() - (int) ($state['last_alert_ts'] ?? 0) >= 3600;
+}
+
+function bluebotUpdateMarkSourceFailureNotified(string $channel): void
+{
+    $state = bluebotUpdateSourceState($channel);
+    if ($state === []) {
+        return;
+    }
+
+    $state['last_alert_ts'] = time();
+    $path = bluebotUpdateSourceCachePath($channel);
+    $encoded = json_encode($state, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT);
+    if ($encoded !== false) {
+        @file_put_contents($path, $encoded . PHP_EOL, LOCK_EX);
+    }
+}
+
 function bluebotUpdateFetchJson(string $url): ?array
 {
     $parts = parse_url($url);
@@ -311,6 +415,19 @@ function bluebotUpdateLatestReleaseFromRaw(): ?array
 function bluebotUpdateLatestRelease(): ?array
 {
     $repo = bluebotUpdateRepository();
+
+    // Stable checks run every minute. Prefer raw GitHub files so the notifier
+    // does not consume the unauthenticated api.github.com hourly quota.
+    $rawRelease = bluebotUpdateLatestReleaseFromRaw();
+    if ($rawRelease !== null) {
+        return $rawRelease;
+    }
+
+    $redirectRelease = bluebotUpdateLatestReleaseFromRedirect();
+    if ($redirectRelease !== null) {
+        return $redirectRelease;
+    }
+
     $release = bluebotUpdateFetchJson("https://api.github.com/repos/{$repo}/releases/latest");
 
     if (is_array($release) && !empty($release['tag_name'])) {
@@ -352,12 +469,7 @@ function bluebotUpdateLatestRelease(): ?array
         }
     }
 
-    $redirectRelease = bluebotUpdateLatestReleaseFromRedirect();
-    if ($redirectRelease !== null) {
-        return $redirectRelease;
-    }
-
-    return bluebotUpdateLatestReleaseFromRaw();
+    return null;
 }
 
 function bluebotUpdateLatestBeta(): ?array
@@ -383,31 +495,45 @@ function bluebotUpdateLatestBeta(): ?array
     ];
 }
 
-function bluebotUpdateLatest(?string $channel = null): ?array
+function bluebotUpdateLatest(?string $channel = null, bool $force = false): ?array
 {
     $channel = bluebotUpdateNormalizeChannel($channel ?? bluebotUpdateChannel());
+    $successTtl = $channel === 'beta' ? 300 : 55;
 
+    if (!$force) {
+        $cached = bluebotUpdateSourceCachedTarget($channel, $successTtl);
+        if ($cached !== null) {
+            return $cached;
+        }
+        if (bluebotUpdateSourceCacheIsFreshFailure($channel, 55)) {
+            return null;
+        }
+    }
+
+    $target = null;
     if ($channel === 'beta') {
-        return bluebotUpdateLatestBeta();
-    }
-
-    $release = bluebotUpdateLatestRelease();
-    if ($release !== null) {
-        if ($channel === 'auto') {
-            $release['channel'] = 'auto';
+        $target = bluebotUpdateLatestBeta();
+    } else {
+        $target = bluebotUpdateLatestRelease();
+        if ($target !== null && $channel === 'auto') {
+            $target['channel'] = 'auto';
         }
-        return $release;
-    }
 
-    if ($channel === 'auto') {
-        $beta = bluebotUpdateLatestBeta();
-        if ($beta !== null) {
-            $beta['channel'] = 'auto';
+        if ($target === null && $channel === 'auto') {
+            $target = bluebotUpdateLatestBeta();
+            if ($target !== null) {
+                $target['channel'] = 'auto';
+            }
         }
-        return $beta;
     }
 
-    return null;
+    bluebotUpdateStoreSourceState(
+        $channel,
+        $target,
+        $target === null ? 'All configured update sources were unavailable.' : ''
+    );
+
+    return $target;
 }
 
 function bluebotUpdateAvailable(array $target, ?array $settings = null): bool
@@ -499,7 +625,15 @@ function bluebotQueueUpdate($adminId): array
 
     $settings = bluebotUpdateSettings();
     $channel = bluebotUpdateChannel($settings);
-    $target = bluebotUpdateLatest($channel);
+    $target = bluebotUpdateLatest($channel, true);
+    if ($target === null) {
+        // A short network outage must not invalidate a previously verified
+        // target. A cached target is safe because release refs and beta SHAs
+        // are immutable identifiers.
+        $state = bluebotUpdateSourceState($channel);
+        $cachedTarget = $state['target'] ?? null;
+        $target = is_array($cachedTarget) ? $cachedTarget : null;
+    }
     if ($target === null) {
         return ['ok' => false, 'message' => 'unable to resolve update source'];
     }
