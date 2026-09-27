@@ -10,8 +10,34 @@ require_once dirname(__DIR__) . '/src/Support/UpdateManager.php';
 $settings = bluebotUpdateSettings();
 $channel = bluebotUpdateChannel($settings);
 $target = bluebotUpdateLatest($channel);
+$adminIds = select('admin', 'id_admin', null, null, 'FETCH_COLUMN', ['cache' => false]);
 
-if ($target === null || !bluebotUpdateAvailable($target, $settings)) {
+if ($target === null) {
+    if (bluebotUpdateSourceFailureShouldNotify($channel)) {
+        $warning = "⚠️ <b>بررسی بروزرسانی بلو پنل ناموفق است</b>\n\n"
+            . "منابع انتشار چند بار پیاپی در دسترس نبودند. "
+            . "Cron همچنان هر دقیقه بررسی می‌کند و پس از برقراری ارتباط، اعلان نسخه جدید خودکار ارسال می‌شود.";
+
+        $warningSent = false;
+        foreach ((array) $adminIds as $adminId) {
+            if (!is_numeric($adminId)) {
+                continue;
+            }
+
+            $response = sendmessage((string) $adminId, $warning, null, 'HTML');
+            if (is_array($response) && !empty($response['ok'])) {
+                $warningSent = true;
+            }
+        }
+
+        if ($warningSent) {
+            bluebotUpdateMarkSourceFailureNotified($channel);
+        }
+    }
+    return;
+}
+
+if (!bluebotUpdateAvailable($target, $settings)) {
     return;
 }
 
@@ -49,7 +75,6 @@ $keyboard = json_encode([
     ],
 ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
 
-$adminIds = select('admin', 'id_admin', null, null, 'FETCH_COLUMN', ['cache' => false]);
 $sent = false;
 
 foreach ((array) $adminIds as $adminId) {
