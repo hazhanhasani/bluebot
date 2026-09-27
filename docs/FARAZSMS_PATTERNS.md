@@ -16,22 +16,23 @@ Create the following patterns in FarazSMS. Variable names are case-sensitive and
 
 | Event | Suggested category | Exact pattern text | Variables |
 | --- | --- | --- | --- |
-| `phone_verification` | OTP | `کد تأیید BlueBot: %code%\nاین کد را در اختیار دیگران قرار ندهید.` | `code`: int, max 6 |
-| `service_activated` | Others | `سرویس %service% با نام کاربری %username% فعال شد. اعتبار تا %expire_date%` | `service`: str, max 40; `username`: str, max 40; `expire_date`: str, max 20 |
-| `service_renewed` | Others | `سرویس %username% تمدید شد. اعتبار جدید تا %expire_date%` | `username`: str, max 40; `expire_date`: str, max 20 |
-| `subscription_reminder` | Others | `تنها %days_left% روز از سرویس %username% باقی مانده است.` | `days_left`: int, max 3; `username`: str, max 40 |
-| `subscription_expired` | Others | `زمان سرویس %username% به پایان رسید.` | `username`: str, max 40 |
-| `low_remaining_volume` | Others | `حجم باقی‌مانده سرویس %username% حدود %remaining_volume% گیگابایت است.` | `username`: str, max 40; `remaining_volume`: str, max 12 |
-| `volume_expired` | Others | `حجم سرویس %username% به پایان رسید.` | `username`: str, max 40 |
-| `payment_success` | Order | `پرداخت %amount% تومان با موفقیت انجام شد. شماره سفارش: %order_id%` | `amount`: int, max 12; `order_id`: str, max 40 |
-| `payment_failed` | Order | `پرداخت سفارش %order_id% ناموفق بود.` | `order_id`: str, max 40 |
-| `wallet_charged` | Others | `کیف پول شما %amount% تومان شارژ شد. موجودی: %balance% تومان` | `amount`: int, max 12; `balance`: int, max 12 |
-| `admin_announcement` | Others | `اطلاعیه BlueBot: %message%` | `message`: str, max 120 |
+| `phone_verification` | OTP | `کد تأیید BlueBot: %code%\nاین کد را در اختیار دیگران قرار ندهید.` | `code`: number, max 6 |
+| `service_activated` | Others | `سرویس %service% با نام کاربری %username% فعال شد. اعتبار تا %expire_date%` | `service`: string, max 40; `username`: string, max 40; `expire_date`: string, max 20 |
+| `service_renewed` | Others | `سرویس %username% تمدید شد. اعتبار جدید تا %expire_date%` | `username`: string, max 40; `expire_date`: string, max 20 |
+| `subscription_reminder` | Others | `تنها %days_left% روز از سرویس %username% باقی مانده است.` | `days_left`: number, max 3; `username`: string, max 40 |
+| `subscription_expired` | Others | `زمان سرویس %username% به پایان رسید.` | `username`: string, max 40 |
+| `low_remaining_volume` | Others | `حجم باقی‌مانده سرویس %username% حدود %remaining_volume% گیگابایت است.` | `username`: string, max 40; `remaining_volume`: string, max 12 |
+| `volume_expired` | Others | `حجم سرویس %username% به پایان رسید.` | `username`: string, max 40 |
+| `payment_success` | Order | `پرداخت %amount% تومان با موفقیت انجام شد. شماره سفارش: %order_id%` | `amount`: number, max 12; `order_id`: string, max 40 |
+| `payment_failed` | Order | `پرداخت سفارش %order_id% ناموفق بود.` | `order_id`: string, max 40 |
+| `wallet_charged` | Others | `کیف پول شما %amount% تومان شارژ شد. موجودی: %balance% تومان` | `amount`: number, max 12; `balance`: number, max 12 |
+| `admin_announcement` | Others | `اطلاعیه BlueBot: %message%` | `message`: string, max 120 |
 
 ### Variable rules
 
-- Use **int / عددی** for variables marked `int`.
-- Use **str / متنی** for variables marked `str`.
+- Use **number / عدد** for numeric variables.
+- Use **string / رشته** for every non-numeric variable.
+- BlueBot exposes and stores only these two canonical variable types: `number` and `string`.
 - Do not rename variables. For example, `%code%` in FarazSMS must remain exactly `code`.
 - `remaining_volume` is text because values may contain decimals such as `1.5`.
 - `order_id` is text because payment providers may use non-numeric identifiers.
@@ -62,7 +63,7 @@ BlueBot requests pattern pages until the provider reports the last page, returns
 For each SMS event, BlueBot validates:
 
 1. exact variable names;
-2. numeric vs text variable types;
+2. `number` vs `string` variable types;
 3. semantic similarity of the FarazSMS pattern text/description.
 
 If an assigned pattern becomes inactive or incompatible, BlueBot attempts automatic rediscovery before queuing and again before dispatch.
