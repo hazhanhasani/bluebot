@@ -200,7 +200,7 @@ if (in_array($bluePanelRequestMethod, ['GET', 'HEAD'], true)) {
                 <div class="brand-domain">{{HOST}}</div>
             </div>
         </div>
-        <div class="live">سامانه فعال</div>
+        <div class="live">سامانه فعال و قابل بررسی است</div>
     </header>
 
     <main>
