@@ -28,6 +28,10 @@ $checks = [
     [$functions, "'url' => \"https://\$host/index.php\"", 'Main webhook URL must not expose the secret in the query string.'],
     [$functions, 'function webhookHeaderSecretMatches', 'Header-only Telegram webhook verification helper is missing.'],
     [$index, '$telegramHeaderSecretAllowed', 'Main webhook migration must distinguish header authentication.'],
+    [$functions, 'function resolveInvitationOwnerId', 'Referral payload resolver is missing.'],
+    [$functions, 'function isValidInvitationCode($setting, $fromId, $verifyStatus, ?string $inviterId = null): bool', 'Referral verification must require a resolved inviter.'],
+    [$index, '$affiliatesid = resolveInvitationOwnerId($affiliatesPayload);', 'Referral payload must be resolved before verification.'],
+    [$index, 'isValidInvitationCode($setting, $from_id, $user[\'verify\'], $affiliatesid);', 'Referral verification must receive the resolved inviter.'],
     [$panelConfig, 'function bluebotPanelIsHttps', 'Panel HTTPS proxy detection is missing.'],
     [$panelConfig, 'function bluebotPanelClientIp', 'Panel trusted client IP resolution is missing.'],
     [$panelLogin, '$ip = bluebotPanelClientIp();', 'Panel login rate limit must use the resolved client IP.'],
@@ -47,6 +51,10 @@ foreach ($checks as [$source, $needle, $message]) {
 
 if (str_contains($functions, '"https://$host/index.php?secret=$secret"')) {
     $failures[] = 'Webhook secret must never be embedded in the webhook URL.';
+}
+
+if (str_contains($index, "isValidInvitationCode($setting, $from_id, $user['verify']);")) {
+    $failures[] = 'Unresolved /start payloads must never grant account verification.';
 }
 
 if (preg_match('/function\s+outputlink\s*\([^)]*\)\s*\{(?<body>.*?)\n\}/s', $functions, $match)) {
