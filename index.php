@@ -16,7 +16,7 @@ require_once 'panels.php';
 $textbotlang = languagechange();
 $text = restoreCustomEmojiLabel($text);
 #-----------telegram_webhook_auth------------#
-$storedWebhookSecret = (string) ($setting['webhook_secret'] ?? select("setting", "*")['webhook_secret'] ?? '');
+$storedWebhookSecret = (string) ($setting['webhook_secret'] ?? selectValue("setting", "webhook_secret", null, null, ''));
 $telegramIpAllowed = checktelegramip();
 $telegramHeaderSecretAllowed = $storedWebhookSecret !== '' && webhookHeaderSecretMatches($storedWebhookSecret);
 $telegramLegacyQueryAllowed = $storedWebhookSecret !== '' && webhookLegacyQuerySecretMatches($storedWebhookSecret);
@@ -86,7 +86,7 @@ if (is_array($keyboard_check) && preg_match('/[\x{600}-\x{6FF}\x{FB50}-\x{FDFF}]
 if (intval($from_id) == 0)
     return;
 #-------------Variable----------#
-$otherreport = select("topicid", "idreport", "report", "otherreport", "select")['idreport'];
+$otherreport = selectValue("topicid", "idreport", "report", "otherreport", null);
 if ($setting['statusnewuser'] == "onnewuser" && !rowExists("user", "id", $from_id)) {
     $Response = json_encode([
         'inline_keyboard' => [
@@ -2303,7 +2303,7 @@ if ($text == "/start" || $datain == "start" || $text == "start") {
         ]
     ]);
     $priceproductformat = number_format($pricelastextend);
-    $balanceformatsell = number_format(select("user", "Balance", "id", $from_id, "select")['Balance'], 0);
+    $balanceformatsell = number_format((float) selectValue("user", "Balance", "id", $from_id, 0), 0);
     $balanceformatsellbefore = number_format($user['Balance'], 0);
     $textextend = sprintf($textbotlang['users']['extend']['success'], $nameloc['username'], $prodcut['name_product'], $priceproductformat);
     sendmessage($from_id, $textextend, $keyboardextendfnished, 'HTML');
@@ -2594,7 +2594,7 @@ if ($text == "/start" || $datain == "start" || $text == "start") {
     $userlimitlastfree = $limitchangeloc['free'] - $user['limitchangeloc'];
     if ($userlimitlastfree < 0)
         $userlimitlastfree = 0;
-    $Pricechange = select("marzban_panel", "*", "code_panel", $dataget[1], "select")['priceChangeloc'];
+    $Pricechange = selectValue("marzban_panel", "priceChangeloc", "code_panel", $dataget[1], 0);
     $textchange = sprintf($textbotlang['users']['changeLocation']['confirmPrompt'], $Pricechange, $userlimitlast, $userlimitlastfree);
     $keyboardextend = json_encode([
         'inline_keyboard' => [
@@ -2795,7 +2795,7 @@ if ($text == "/start" || $datain == "start" || $text == "start") {
         update("invoice", "inboundid", $marzban_list_get_new['inboundid'], "username", $nameloc['username']);
     }
     Editmessagetext($from_id, $message_id, $textchangeloc, $keyboardextend);
-    $balanceformatsell = number_format(select("user", "Balance", "id", $from_id, "select")['Balance'], 0);
+    $balanceformatsell = number_format((float) selectValue("user", "Balance", "id", $from_id, 0), 0);
     $format_byte = formatBytes($data_limit);
     $textreport = sprintf($textbotlang['Admin']['reportgroup']['locationChanged'], $from_id, $username, $marzban_list_get['name_panel'], $marzban_list_get_new['name_panel'], $nameloc['username'], $format_byte, $balanceformatsell);
     if (strlen($setting['Channel_Report']) > 0) {
@@ -3927,7 +3927,7 @@ if ($text == "/start" || $datain == "start" || $text == "start") {
 } elseif (preg_match('/^location_(.*)/', $datain, $dataget) || $datain == "backproduct") {
     $userdate = json_decode($user['Processing_value'], true);
     if ($datain != "backproduct") {
-        $location = select("marzban_panel", "*", "code_panel", $dataget[1], "select")['name_panel'];
+        $location = selectValue("marzban_panel", "name_panel", "code_panel", $dataget[1], '');
     } else {
         $location = $userdate['name_panel'];
     }
@@ -4000,7 +4000,7 @@ if ($text == "/start" || $datain == "start" || $text == "start") {
     }
 } elseif (preg_match('/^categorynames_(.*)/', $datain, $dataget)) {
     $categorynames = $dataget[1];
-    $categorynames = select("category", "remark", "id", $categorynames, "select")['remark'];
+    $categorynames = selectValue("category", "remark", "id", $categorynames, '');
     $userdate = json_decode($user['Processing_value'], true);
     if (isset($userdate['monthproduct'])) {
         $query = "SELECT * FROM product WHERE (Location = :loc OR Location = '/all') AND agent = :agent AND category = :category AND Service_time = :stime";
@@ -4522,7 +4522,7 @@ if ($text == "/start" || $datain == "start" || $text == "start") {
         $scorenew = $user['score'] + 1;
         update("user", "score", $scorenew, "id", $from_id);
     }
-    $balanceformatsell = number_format(select("user", "Balance", "id", $from_id, "select")['Balance'], 0);
+    $balanceformatsell = number_format((float) selectValue("user", "Balance", "id", $from_id, 0), 0);
     $textonebuy = "";
     if ($countinvoice == 1) {
         $textonebuy = $textbotlang['common']['labels']['firstPurchaseAlt'];
@@ -4685,7 +4685,7 @@ if ($text == "/start" || $datain == "start" || $text == "start") {
     update("user", "Processing_value_four", $text, "id", $from_id);
     step('home', $from_id);
 } elseif (preg_match('/^locationom_(.*)/', $datain, $dataget)) {
-    $location = select("marzban_panel", "*", "code_panel", $dataget[1], "select")['name_panel'];
+    $location = selectValue("marzban_panel", "name_panel", "code_panel", $dataget[1], '');
     $marzban_list_get = select("marzban_panel", "*", "code_panel", $dataget[1], "select");
     $nullproduct = select("product", "*", null, null, "count");
     if ($nullproduct == 0) {
@@ -4988,7 +4988,7 @@ if ($text == "/start" || $datain == "start" || $text == "start") {
         sendMessageService($marzban_list_get, $dataoutput['configs'], $output_config_link, $dataoutput['username'], $Shoppinginfo, $textcreatuser, $randomString);
     }
     sendmessage($from_id, $textbotlang['users']['selectoption'], $keyboard, 'HTML');
-    $balanceformatsell = number_format(select("user", "Balance", "id", $from_id, "select")['Balance'], 0);
+    $balanceformatsell = number_format((float) selectValue("user", "Balance", "id", $from_id, 0), 0);
     $balanceformatsellbefore = number_format($user['Balance'], 0);
     $pricebulk = $info_product['price_product'] * intval($user['Processing_value_four']);
     $count_service = $user['Processing_value_four'];
@@ -7267,7 +7267,7 @@ if ($text == "/start" || $datain == "start" || $text == "start") {
         ':output' => json_encode($extend)
     ]);
     $prodcut['price_product'] = number_format($prodcut['price_product']);
-    $balanceformatsell = number_format(select("user", "Balance", "id", $from_id, "select")['Balance'], 0);
+    $balanceformatsell = number_format((float) selectValue("user", "Balance", "id", $from_id, 0), 0);
     $textextend = sprintf($textbotlang['users']['extend']['success2'], $usernamePanelExtends, $prodcut['name_product'], $prodcut['price_product']);
     sendmessage($from_id, $textextend, $keyboard, 'HTML');
     $timejalali = jdate('Y/m/d H:i:s');
