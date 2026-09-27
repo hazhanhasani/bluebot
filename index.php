@@ -18,7 +18,9 @@ $text = restoreCustomEmojiLabel($text);
 #-----------telegram_webhook_auth------------#
 $storedWebhookSecret = (string) ($setting['webhook_secret'] ?? select("setting", "*")['webhook_secret'] ?? '');
 $telegramIpAllowed = checktelegramip();
-$telegramSecretAllowed = $storedWebhookSecret !== '' && webhookSecretMatches($storedWebhookSecret);
+$telegramHeaderSecretAllowed = $storedWebhookSecret !== '' && webhookHeaderSecretMatches($storedWebhookSecret);
+$telegramLegacyQueryAllowed = $storedWebhookSecret !== '' && webhookLegacyQuerySecretMatches($storedWebhookSecret);
+$telegramSecretAllowed = $telegramHeaderSecretAllowed || $telegramLegacyQueryAllowed;
 
 if ($storedWebhookSecret === '') {
     // First-time migration: only a request from Telegram itself may bootstrap
@@ -42,7 +44,9 @@ if ($storedWebhookSecret === '') {
 
     bluebotAdoptRuntimeIdentity(true, true);
 
-    if (!$telegramSecretAllowed) {
+    if (!$telegramHeaderSecretAllowed) {
+        // A verified Telegram IP or legacy query secret may be accepted once,
+        // then immediately migrate the webhook to header-only authentication.
         bluebotSetMainWebhook($storedWebhookSecret);
     }
     $webhookSecret = ['secret' => $storedWebhookSecret, 'created' => false];
