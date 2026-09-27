@@ -1695,21 +1695,58 @@ function DirectPayment($order_id, $image = null)
 }
 function plisio($order_id, $price, $from_id)
 {
-    $apinowpayments = select("PaySetting", "ValuePay", "NamePay", "apinowpayment", "select")['ValuePay'];
-    $api_key = $apinowpayments;
+    $apiRow = select("PaySetting", "ValuePay", "NamePay", "apinowpayment", "select");
+    $apiKey = is_array($apiRow) ? trim((string) ($apiRow['ValuePay'] ?? '')) : '';
+    if ($apiKey === '' || $apiKey === '0') {
+        return null;
+    }
 
-    $url = 'https://api.plisio.net/api/v1/invoices/new';
-    $url .= '?source_currency=USD';
-    $url .= '&source_amount=' . urlencode($price);
-    $url .= '&order_number=' . urlencode($order_id);
-    $url .= '&email=customer@plisio.net';
-    $url .= '&order_name=' . urlencode('TopUp - ' . $from_id);
-    $url .= '&language=fa';
-    $url .= '&api_key=' . urlencode($api_key);
-    $ch = curl_init($url);
-    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-    $response = json_decode(curl_exec($ch), true);
-    return $response['data'];
+    $query = http_build_query([
+        'source_currency' => 'USD',
+        'source_amount' => $price,
+        'order_number' => $order_id,
+        'email' => 'customer@plisio.net',
+        'order_name' => 'TopUp - ' . $from_id,
+        'language' => 'fa',
+        'api_key' => $apiKey,
+    ], '', '&', PHP_QUERY_RFC3986);
+
+    $ch = curl_init('https://api.plisio.net/api/v1/invoices/new?' . $query);
+    if ($ch === false) {
+        return null;
+    }
+
+    curl_setopt_array($ch, [
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_CONNECTTIMEOUT => 5,
+        CURLOPT_TIMEOUT => 15,
+        CURLOPT_FOLLOWLOCATION => true,
+        CURLOPT_MAXREDIRS => 3,
+        CURLOPT_PROTOCOLS => CURLPROTO_HTTPS,
+        CURLOPT_REDIR_PROTOCOLS => CURLPROTO_HTTPS,
+        CURLOPT_SSL_VERIFYPEER => true,
+        CURLOPT_SSL_VERIFYHOST => 2,
+        CURLOPT_HTTPHEADER => ['Accept: application/json'],
+    ]);
+
+    $raw = curl_exec($ch);
+    $error = $raw === false ? curl_error($ch) : '';
+    $status = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    curl_close($ch);
+
+    if (!is_string($raw) || $status < 200 || $status >= 300) {
+        bluebotLog('warning', 'Plisio invoice request failed', [
+            'order_id' => (string) $order_id,
+            'http_code' => $status,
+            'error' => $error,
+        ]);
+        return null;
+    }
+
+    $response = json_decode($raw, true);
+    return is_array($response) && isset($response['data']) && is_array($response['data'])
+        ? $response['data']
+        : null;
 }
 function checkConnection($address, $port)
 {
@@ -2400,15 +2437,36 @@ function applyKeyboardLabels($rows, array $labels)
 function languagechange($path_dir = null, string $lang = 'fa')
 {
     global $from_id;
+
     $user_lang = select("user", "*", "id", $from_id);
-    $lang = $user_lang ? $user_lang['lang'] : $lang;
-    $allowed = ['fa', 'en', 'ar', 'ru', 'zh'];
-    if (!in_array($lang, $allowed, true))
-        $lang = 'fa';
+    $lang = is_array($user_lang) && isset($user_lang['lang'])
+        ? trim((string) $user_lang['lang'])
+        : trim($lang);
+
     $base_dir = $path_dir ?: __DIR__;
-    $texts = require $base_dir . '/lang/' . $lang . '.php';
-    if (is_array($texts))
-        bottext_apply_overrides($texts, $lang);
+    $allowed = ['fa', 'en', 'ru', 'zh'];
+    if (!in_array($lang, $allowed, true)) {
+        $lang = 'fa';
+    }
+
+    $file = rtrim((string) $base_dir, '/\\') . '/lang/' . $lang . '.php';
+    if (!is_file($file)) {
+        $lang = 'fa';
+        $file = rtrim((string) $base_dir, '/\\') . '/lang/fa.php';
+    }
+
+    if (!is_file($file)) {
+        error_log('Language file not found: ' . $file);
+        return [];
+    }
+
+    $texts = require $file;
+    if (!is_array($texts)) {
+        error_log('Language file returned invalid data: ' . $file);
+        return [];
+    }
+
+    bottext_apply_overrides($texts, $lang);
     return $texts;
 }
 function bottext_apply_overrides(array &$base, $lang)
@@ -2857,7 +2915,7 @@ function createPayaqayepardakht($price, $order_id)
     curl_setopt($curl, CURLOPT_POSTFIELDS, json_encode([
         'pin' => $merchant_aqayepardakht,
         'amount' => $price,
-        'callback' => $domainhosts . "/payment/aqayepardakht.php",
+        'callback' => "https://" . $domainhosts . "/payment/aqayepardakht.php",
         'invoice_id' => $order_id,
     ]));
     $response = curl_exec($curl);
