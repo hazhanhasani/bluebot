@@ -53,7 +53,8 @@ if (str_contains($functions, '"https://$host/index.php?secret=$secret"')) {
     $failures[] = 'Webhook secret must never be embedded in the webhook URL.';
 }
 
-if (str_contains($index, "isValidInvitationCode($setting, $from_id, $user['verify']);")) {
+$legacyReferralBypassNeedle = 'isValidInvitationCode($setting, $from_id, $user[\'verify\']);';
+if (str_contains($index, $legacyReferralBypassNeedle)) {
     $failures[] = 'Unresolved /start payloads must never grant account verification.';
 }
 
