@@ -16,6 +16,9 @@ $textbotlang = languagechange();
 $order_id = trim((string) ($_GET['order_id'] ?? $_POST['order_id'] ?? ''));
 $authority = trim((string) ($_GET['authority'] ?? $_POST['authority'] ?? ''));
 
+$setting = select("setting", "*");
+$setting = is_array($setting) ? $setting : [];
+
 function iranpay4_finish(bool $ok, string $title, string $detail): never
 {
     if (!headers_sent()) {
@@ -35,16 +38,16 @@ function iranpay4_finish(bool $ok, string $title, string $detail): never
 $failedTitle = $textbotlang['paymentGateway']['statusFailed'] ?? 'پرداخت ناموفق';
 $successTitle = $textbotlang['paymentGateway']['statusSuccess'] ?? 'پرداخت موفق';
 
-if ($order_id === '') {
-    iranpay4_finish(false, $failedTitle, 'شناسه سفارش ارسال نشد.');
+if ($order_id === '' || strlen($order_id) > 2000 || strlen($authority) > 255) {
+    iranpay4_finish(false, $failedTitle, 'شناسه سفارش نامعتبر است.');
 }
 
 $payment = select("Payment_report", "*", "id_order", $order_id, "select");
-if (!$payment) {
+if (!is_array($payment) || ($payment['Payment_Method'] ?? '') !== 'iranpay4') {
     iranpay4_finish(false, $failedTitle, 'این سفارش پیدا نشد.');
 }
 
-if ($payment['payment_Status'] === 'paid') {
+if (($payment['payment_Status'] ?? '') === 'paid') {
     iranpay4_finish(true, $successTitle, 'این پرداخت قبلاً تایید شده است.');
 }
 
@@ -57,10 +60,19 @@ if ($api_key === '' || $api_key === '0' || $endpoint === null) {
 $price = intval($payment['price']);
 
 $curl = curl_init();
+if ($curl === false) {
+    iranpay4_finish(false, $failedTitle, 'ارتباط با درگاه ممکن نشد.');
+}
+
 curl_setopt_array($curl, [
     CURLOPT_URL => $endpoint . '/verify',
     CURLOPT_RETURNTRANSFER => true,
+    CURLOPT_CONNECTTIMEOUT => 5,
     CURLOPT_TIMEOUT => 25,
+    CURLOPT_PROTOCOLS => CURLPROTO_HTTPS,
+    CURLOPT_REDIR_PROTOCOLS => CURLPROTO_HTTPS,
+    CURLOPT_SSL_VERIFYPEER => true,
+    CURLOPT_SSL_VERIFYHOST => 2,
     CURLOPT_CUSTOMREQUEST => 'POST',
     CURLOPT_HTTPHEADER => [
         'Content-Type: application/json',
@@ -74,10 +86,20 @@ curl_setopt_array($curl, [
     ], JSON_UNESCAPED_UNICODE),
 ]);
 $result = curl_exec($curl);
+$curlError = $result === false ? curl_error($curl) : '';
 $httpCode = (int) curl_getinfo($curl, CURLINFO_HTTP_CODE);
 curl_close($curl);
 
-$response = is_string($result) ? json_decode($result, true) : null;
+if (!is_string($result)) {
+    bluebotLog('warning', 'IranPay4 verification request failed', [
+        'order_id' => $order_id,
+        'http_code' => $httpCode,
+        'error' => $curlError,
+    ]);
+    $response = null;
+} else {
+    $response = json_decode($result, true);
+}
 
 $answeredForThisOrder = is_array($response)
     && isset($response['order_id'], $response['amount'])
@@ -114,7 +136,7 @@ $statement->execute();
 $buyer = select("user", "*", "id", $payment['id_user'], "select");
 
 $cashback = intval(getPaySettingValue('chashbackiranpay4', '0'));
-if ($cashback > 0 && $buyer) {
+if ($cashback > 0 && is_array($buyer)) {
     $reward = intval($price * $cashback / 100);
     if ($reward > 0) {
         update("user", "Balance", intval($buyer['Balance']) + $reward, "id", $payment['id_user']);
@@ -127,8 +149,9 @@ if ($cashback > 0 && $buyer) {
     }
 }
 
-if ($buyer && strlen((string) ($setting['Channel_Report'] ?? '')) > 0) {
-    $paymentreports = select("topicid", "idreport", "report", "paymentreport", "select")['idreport'];
+if (is_array($buyer) && strlen((string) ($setting['Channel_Report'] ?? '')) > 0) {
+    $topicRow = select("topicid", "idreport", "report", "paymentreport", "select");
+    $paymentreports = is_array($topicRow) ? ($topicRow['idreport'] ?? null) : null;
     telegram('sendmessage', [
         'chat_id' => $setting['Channel_Report'],
         'message_thread_id' => $paymentreports,
