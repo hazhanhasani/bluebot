@@ -38,6 +38,10 @@ foreach ([
     'bluebotUpdateLatestReleaseFromRaw',
     'bluebotUpdateFetchText',
     'bluebotUpdateNormalizeDisplayVersion',
+    'bluebotUpdateSourceCachePath',
+    'bluebotUpdateSourceCachedTarget',
+    'bluebotUpdateSourceFailureShouldNotify',
+    'bluebotUpdateMarkSourceFailureNotified',
     'bluebotUpdateLatestBeta',
     'bluebotQueueUpdate',
     '/var/lib/bluebot',
@@ -59,6 +63,9 @@ if ($jobs === false || !str_contains($jobs, "'UpdateNotifier'")) {
 }
 if ($jobs === false || !str_contains($jobs, "['job' => 'UpdateNotifier', 'schedule' => '* * * * *'")) {
     $failures[] = 'UpdateNotifier must check for updates every minute.';
+}
+if ($jobs === false || !str_contains($jobs, 'بررسی نسخه جدید بلو پنل')) {
+    $failures[] = 'UpdateNotifier cron title must use Blue Panel branding.';
 }
 
 $installer = @file_get_contents($root . '/install.sh');
@@ -162,6 +169,7 @@ foreach ([
     'bluebot_update_status',
     'bluebot_update_run',
     'bluebotEnsureMiniAppMenuButton',
+    'bluebotUpdateLatest(bluebotUpdateChannel($updateSettings), true)',
     'بروزرسانی بلو پنل',
 ] as $needle) {
     if ($admin === false || !str_contains($admin, $needle)) {
@@ -180,6 +188,25 @@ if ($appHtaccess === false || !str_contains($appHtaccess, 'max-age=31536000, imm
 }
 if ($appHtaccess === false || !str_contains($appHtaccess, 'no-cache, no-store, must-revalidate')) {
     $failures[] = 'Mini App shell no-cache policy is missing.';
+}
+
+$notifier = @file_get_contents($root . '/cronbot/UpdateNotifier.php');
+foreach ([
+    'bluebotUpdateSourceFailureShouldNotify',
+    'bluebotUpdateMarkSourceFailureNotified',
+    'بررسی بروزرسانی بلو پنل ناموفق است',
+] as $needle) {
+    if ($notifier === false || !str_contains($notifier, $needle)) {
+        $failures[] = "UpdateNotifier source-health contract missing: {$needle}";
+    }
+}
+
+if ($manager !== false) {
+    $rawPos = strpos($manager, '$rawRelease = bluebotUpdateLatestReleaseFromRaw()');
+    $apiPos = strpos($manager, 'bluebotUpdateFetchJson("https://api.github.com/repos/{$repo}/releases/latest")');
+    if ($rawPos === false || $apiPos === false || $rawPos > $apiPos) {
+        $failures[] = 'Stable update checks must prefer the raw release source before GitHub API.';
+    }
 }
 
 if ($failures !== []) {
