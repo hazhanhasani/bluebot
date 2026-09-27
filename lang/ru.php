@@ -1863,6 +1863,24 @@ nowpayments.io
                         'askZarinpalMerchant' => '💳 Получите ваш код продавца от ZarinPal и введите его в этом разделе
         
 Ваш текущий код продавца: %s',
+                        'askZarinpalCallbackDomain' => "🔗 <b>Callback-домен ZarinPal</b>
+
+Отправьте домен, зарегистрированный для терминала ZarinPal и направленный на эту установку BlueBot.
+
+Текущий домен: <code>%s</code>
+Итоговый callback: <code>%s</code>
+
+Отправьте только домен, например:
+<code>bot.example.com</code>
+
+Отправьте <code>0</code>, чтобы использовать основной домен бота.",
+                        'invalidZarinpalCallbackDomain' => "❌ Некорректный домен. Отправьте только домен без пути, например <code>bot.example.com</code>",
+                        'savedZarinpalCallbackDomain' => "✅ Callback-домен ZarinPal сохранён.
+
+Домен: <code>%s</code>
+Callback: <code>%s</code>
+
+⚠️ Этот же домен должен быть зарегистрирован для терминала ZarinPal.",
                         'askMerchant' => '💳 Получите ваш код продавца и введите его в этом разделе
         
 Ваш текущий код продавца: %s',
@@ -4198,6 +4216,7 @@ ID пользователя : %s
                 'setEducationBlupal' => '📚 Инструкция Blupal',
                 'checkBlupalPayment' => '🔄 Проверить платёж',
                 'zarinPalMerchant' => 'Продавец ZarinPal',
+                'zarinPalCallbackDomain' => '🔗 Callback-домен ZarinPal',
                 'zeroBalance' => '0️⃣ Обнулить баланс',
                 'panelSetting' => '🎛 Настройка панели',
                 'mirzaAgentPanel' => 'Панель агента / реселлера',
