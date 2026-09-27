@@ -1541,8 +1541,8 @@ elseif ($datain == "systemsms") {
         $timedaystamp = intval($userdata['daynoyuse']) * 86400;
         $timenouser = time() - $timedaystamp;
         if ($agent == "all") {
-            $stmt = $pdo->prepare("SELECT id FROM user  WHERE last_message_time < $timenouser");
-            $stmt->execute();
+            $stmt = $pdo->prepare("SELECT id FROM user WHERE last_message_time < :time");
+            $stmt->execute([':time' => $timenouser]);
             $userslist = json_encode($stmt->fetchAll());
         } else {
             if ($typeusermessage == "all") {
@@ -2098,9 +2098,17 @@ elseif ($datain == "systemsms") {
         ));
         return;
     }
-    $sql = "SELECT * FROM Payment_report WHERE id_user = '{$Payment_report['id_user']}' AND payment_Status != 'paid' AND payment_Status != 'Unpaid' AND payment_Status != 'expire' AND payment_Status != 'reject' AND  (id_invoice  LIKE CONCAT('%','getconfigafterpay', '%') OR id_invoice  LIKE CONCAT('%','getextenduser', '%') OR id_invoice  LIKE CONCAT('%','getextravolumeuser', '%') OR id_invoice  LIKE CONCAT('%','getextratimeuser', '%'))";
+    $sql = "SELECT * FROM Payment_report
+            WHERE id_user = :id_user
+              AND payment_Status NOT IN ('paid', 'Unpaid', 'expire', 'reject')
+              AND (
+                    id_invoice LIKE '%getconfigafterpay%'
+                 OR id_invoice LIKE '%getextenduser%'
+                 OR id_invoice LIKE '%getextravolumeuser%'
+                 OR id_invoice LIKE '%getextratimeuser%'
+              )";
     $stmt = $pdo->prepare($sql);
-    $stmt->execute();
+    $stmt->execute([':id_user' => (string) $Payment_report['id_user']]);
     $countpay = $stmt->rowCount();
     $typepay = explode('|', $Payment_report['id_invoice']);
     if ($countpay > 0 and !in_array($typepay[0], ['getconfigafterpay', 'getextenduser', 'getextravolumeuser', 'getextratimeuser'])) {
@@ -7654,18 +7662,27 @@ if ($datain == "settimecornremove" && $adminrulecheck['rule'] == "administrator"
         return;
     }
     $response = getFileddire($photoid);
-    if ($response['ok']) {
-        $filePath = $response['result']['file_path'];
-        $fileUrl = "https://api.telegram.org/file/bot$APIKEY/$filePath";
-        $fileContent = file_get_contents($fileUrl);
-        if ($fileContent === false || !bluebotStoreQrBackground($fileContent)) {
-            sendmessage($from_id, "❌ ذخیره تصویر پس‌زمینه QR انجام نشد.", $setting_panel, 'HTML');
-            step("home", $from_id);
-            return;
-        }
-        sendmessage($from_id, $textbotlang['Admin']['managepanel']['qrBackgroundSaved'], $setting_panel, 'HTML');
+    $filePath = is_array($response)
+        && !empty($response['ok'])
+        && is_array($response['result'] ?? null)
+        ? trim((string) ($response['result']['file_path'] ?? ''))
+        : '';
+
+    if ($filePath === '') {
+        sendmessage($from_id, "❌ دریافت تصویر از تلگرام انجام نشد.", $setting_panel, 'HTML');
         step("home", $from_id);
+        return;
     }
+
+    $fileContent = bluebotDownloadTelegramFile($filePath, (string) $APIKEY);
+    if ($fileContent === null || !bluebotStoreQrBackground($fileContent)) {
+        sendmessage($from_id, "❌ ذخیره تصویر پس‌زمینه QR انجام نشد.", $setting_panel, 'HTML');
+        step("home", $from_id);
+        return;
+    }
+
+    sendmessage($from_id, $textbotlang['Admin']['managepanel']['qrBackgroundSaved'], $setting_panel, 'HTML');
+    step("home", $from_id);
 } elseif ($text == $textbotlang['keyboard']['setProtocolInbound'] || $text == $textbotlang['Admin']['managepanel']['btnSetGroupName']) {
     if ($text == $textbotlang['Admin']['managepanel']['btnSetGroupName']) {
         $textsetprotocol = $textbotlang['Admin']['managepanel']['askGroupName'];
