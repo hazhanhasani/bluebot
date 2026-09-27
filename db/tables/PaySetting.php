@@ -37,6 +37,7 @@ $values = [
     'checkpaycartfirst' => 'offpayverify',
     'zarinpalstatus' => 'offzarinpal',
     'merchant_zarinpal' => '0',
+    'zarinpal_callback_domain' => '0',
     'statusiranpay3' => 'oniranpay3',
     'apiiranpay' => '0',
     'autoconfirmcart' => 'offauto',
