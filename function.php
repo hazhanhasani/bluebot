@@ -2199,10 +2199,16 @@ function activecron()
 }
 function createInvoice($amount)
 {
-    $PaySetting = select("PaySetting", "*", "NamePay", "apiiranpay", "select")['ValuePay'];
-    $walletaddress = select("PaySetting", "*", "NamePay", "walletaddress", "select")['ValuePay'];
+    $PaySetting = trim((string) getPaySettingValue('apiiranpay', ''));
+    $walletaddress = trim((string) getPaySettingValue('walletaddress', ''));
+    if ($PaySetting === '' || $PaySetting === '0' || $walletaddress === '' || $walletaddress === '0') {
+        return ['error' => 'IranPay API key or wallet address not set'];
+    }
 
     $curl = curl_init();
+    if ($curl === false) {
+        return ['error' => 'Unable to initialize HTTP client'];
+    }
 
     curl_setopt_array($curl, array(
         CURLOPT_URL => 'https://pay.melorinabeauty.com/api/factor/create',
@@ -2212,6 +2218,10 @@ function createInvoice($amount)
         CURLOPT_TIMEOUT_MS => 10000,
         CURLOPT_CONNECTTIMEOUT_MS => 4000,
         CURLOPT_FOLLOWLOCATION => true,
+        CURLOPT_PROTOCOLS => CURLPROTO_HTTPS,
+        CURLOPT_REDIR_PROTOCOLS => CURLPROTO_HTTPS,
+        CURLOPT_SSL_VERIFYPEER => true,
+        CURLOPT_SSL_VERIFYHOST => 2,
         CURLOPT_HTTP_VERSION => CURL_HTTP_VERSION_1_1,
         CURLOPT_CUSTOMREQUEST => 'POST',
         CURLOPT_POSTFIELDS => array('amount' => $amount, 'address' => $walletaddress, 'base' => 'trx'),
@@ -2236,8 +2246,15 @@ function createInvoice($amount)
 }
 function verifpay($id)
 {
-    $PaySetting = select("PaySetting", "*", "NamePay", "apiiranpay", "select")['ValuePay'];
+    $PaySetting = trim((string) getPaySettingValue('apiiranpay', ''));
+    if ($PaySetting === '' || $PaySetting === '0') {
+        return false;
+    }
+
     $curl = curl_init();
+    if ($curl === false) {
+        return false;
+    }
 
     curl_setopt_array($curl, array(
         CURLOPT_URL => 'https://pay.melorinabeauty.ir/api/factor/status?id=' . $id,
@@ -2247,6 +2264,10 @@ function verifpay($id)
         CURLOPT_TIMEOUT_MS => 10000,
         CURLOPT_CONNECTTIMEOUT_MS => 4000,
         CURLOPT_FOLLOWLOCATION => true,
+        CURLOPT_PROTOCOLS => CURLPROTO_HTTPS,
+        CURLOPT_REDIR_PROTOCOLS => CURLPROTO_HTTPS,
+        CURLOPT_SSL_VERIFYPEER => true,
+        CURLOPT_SSL_VERIFYHOST => 2,
         CURLOPT_HTTP_VERSION => CURL_HTTP_VERSION_1_1,
         CURLOPT_CUSTOMREQUEST => 'GET',
         CURLOPT_HTTPHEADER => array(
@@ -2271,8 +2292,16 @@ function verifpay($id)
 function createInvoiceiranpay1($amount, $id_invoice)
 {
     global $domainhosts;
-    $PaySetting = select("PaySetting", "*", "NamePay", "marchent_floypay", "select")['ValuePay'];
+
+    $PaySetting = trim((string) getPaySettingValue('marchent_floypay', ''));
+    if ($PaySetting === '' || $PaySetting === '0') {
+        return ['error' => 'IranPay1 API key not set'];
+    }
+
     $curl = curl_init();
+    if ($curl === false) {
+        return ['error' => 'Unable to initialize HTTP client'];
+    }
     $amount = intval($amount);
     $data = [
         "ApiKey" => $PaySetting,
@@ -2288,6 +2317,10 @@ function createInvoiceiranpay1($amount, $id_invoice)
         CURLOPT_TIMEOUT_MS => 10000,
         CURLOPT_CONNECTTIMEOUT_MS => 4000,
         CURLOPT_FOLLOWLOCATION => true,
+        CURLOPT_PROTOCOLS => CURLPROTO_HTTPS,
+        CURLOPT_REDIR_PROTOCOLS => CURLPROTO_HTTPS,
+        CURLOPT_SSL_VERIFYPEER => true,
+        CURLOPT_SSL_VERIFYHOST => 2,
         CURLOPT_HTTP_VERSION => CURL_HTTP_VERSION_1_1,
         CURLOPT_CUSTOMREQUEST => 'POST',
         CURLOPT_POSTFIELDS => json_encode($data),
@@ -2882,8 +2915,16 @@ function isValidInvitationCode($setting, $fromId, $verifyStatus, ?string $invite
 function createPayZarinpal($price, $order_id)
 {
     global $domainhosts;
-    $marchent_zarinpal = select("PaySetting", "ValuePay", "NamePay", "merchant_zarinpal", "select")['ValuePay'];
+
+    $marchent_zarinpal = trim((string) getPaySettingValue('merchant_zarinpal', ''));
+    if ($marchent_zarinpal === '' || $marchent_zarinpal === '0') {
+        return ['error' => 'ZarinPal merchant id not set'];
+    }
+
     $curl = curl_init();
+    if ($curl === false) {
+        return ['error' => 'Unable to initialize HTTP client'];
+    }
     curl_setopt_array($curl, array(
         CURLOPT_URL => 'https://payment.zarinpal.com/pg/v4/payment/request.json',
         CURLOPT_RETURNTRANSFER => true,
@@ -2892,6 +2933,10 @@ function createPayZarinpal($price, $order_id)
         CURLOPT_TIMEOUT_MS => 10000,
         CURLOPT_CONNECTTIMEOUT_MS => 4000,
         CURLOPT_FOLLOWLOCATION => true,
+        CURLOPT_PROTOCOLS => CURLPROTO_HTTPS,
+        CURLOPT_REDIR_PROTOCOLS => CURLPROTO_HTTPS,
+        CURLOPT_SSL_VERIFYPEER => true,
+        CURLOPT_SSL_VERIFYHOST => 2,
         CURLOPT_HTTP_VERSION => CURL_HTTP_VERSION_1_1,
         CURLOPT_CUSTOMREQUEST => 'POST',
         CURLOPT_HTTPHEADER => array(
@@ -2973,8 +3018,16 @@ function createPayVariza($price, $order_id)
 function createPayaqayepardakht($price, $order_id)
 {
     global $domainhosts;
-    $merchant_aqayepardakht = select("PaySetting", "ValuePay", "NamePay", "merchant_id_aqayepardakht", "select")['ValuePay'];
+
+    $merchant_aqayepardakht = trim((string) getPaySettingValue('merchant_id_aqayepardakht', ''));
+    if ($merchant_aqayepardakht === '' || $merchant_aqayepardakht === '0') {
+        return ['error' => 'AqayePardakht merchant id not set'];
+    }
+
     $curl = curl_init();
+    if ($curl === false) {
+        return ['error' => 'Unable to initialize HTTP client'];
+    }
     curl_setopt_array($curl, array(
         CURLOPT_URL => 'https://panel.aqayepardakht.ir/api/v2/create',
         CURLOPT_RETURNTRANSFER => true,
@@ -2983,6 +3036,10 @@ function createPayaqayepardakht($price, $order_id)
         CURLOPT_TIMEOUT_MS => 10000,
         CURLOPT_CONNECTTIMEOUT_MS => 4000,
         CURLOPT_FOLLOWLOCATION => true,
+        CURLOPT_PROTOCOLS => CURLPROTO_HTTPS,
+        CURLOPT_REDIR_PROTOCOLS => CURLPROTO_HTTPS,
+        CURLOPT_SSL_VERIFYPEER => true,
+        CURLOPT_SSL_VERIFYHOST => 2,
         CURLOPT_HTTP_VERSION => CURL_HTTP_VERSION_1_1,
         CURLOPT_CUSTOMREQUEST => 'POST',
         CURLOPT_HTTPHEADER => array(
