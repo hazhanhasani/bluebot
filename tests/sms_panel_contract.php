@@ -65,7 +65,8 @@ $checks = [
     [$bot, "verify_phone_otp", 'Telegram phone OTP step is missing.'],
     [$bot, "BluebotSms::verifyPhoneOtp", 'Telegram phone OTP verification is missing.'],
     [$farazDocs, "phone_verification", 'FarazSMS pattern documentation is missing.'],
-    [$farazDocs, "code`: int, max 6", 'OTP variable type/length is not documented.'],
+    [$farazDocs, "code`: number, max 6", 'OTP variable type/length is not documented.'],
+    [$panel, "sms-var-type", 'SMS panel variable type badges are missing.'],
 ];
 
 foreach ($checks as [$source, $needle, $message]) {
@@ -94,6 +95,15 @@ if (BluebotSms::normalizePhone('not-a-phone') !== '') {
 }
 
 $catalog = BluebotSms::catalog();
+foreach ($catalog as $eventKey => $eventSpec) {
+    foreach ((array) ($eventSpec['vars'] ?? []) as $variable) {
+        $type = (string) ($variable['type'] ?? '');
+        if (!in_array($type, ['string', 'number'], true)) {
+            $failures[] = "Unsupported SMS variable type in {$eventKey}: {$type}";
+        }
+    }
+}
+
 foreach ([
     'phone_verification',
     'service_activated',
