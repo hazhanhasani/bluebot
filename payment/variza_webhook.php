@@ -77,12 +77,12 @@ if (($data['event'] ?? '') !== 'payment.paid') {
     variza_webhook_respond(200, 'ignored');
 }
 
-$slug = (string) ($data['slug'] ?? '');
+$slug = trim((string) ($data['slug'] ?? ''));
 $amount = (int) ($data['amount'] ?? 0);
 // attempt_code available as $data['attempt_code'] for audit if needed
 
-if ($slug === '') {
-    variza_webhook_respond(400, 'missing slug');
+if ($slug === '' || strlen($slug) > 255) {
+    variza_webhook_respond(400, 'missing or invalid slug');
 }
 
 // Variza stores slug in dec_not_confirmed (like zarinpal Authority).
@@ -91,8 +91,8 @@ if (!$payment) {
     // Fallback: some installs may have slug in id_invoice; try there too.
     $payment = select("Payment_report", "*", "id_invoice", $slug, "select");
 }
-if (!$payment) {
-    error_log("variza webhook: unknown slug {$slug}");
+if (!is_array($payment) || ($payment['Payment_Method'] ?? '') !== 'variza') {
+    error_log("variza webhook: unknown or invalid slug {$slug}");
     variza_webhook_respond(404, 'order not found');
 }
 
@@ -139,7 +139,9 @@ if ($cashback > 0) {
 
 // Report to Channel_Report like zarinpal does.
 $setting = select("setting", "*");
-$paymentreports = select("topicid", "idreport", "report", "paymentreport", "select")['idreport'] ?? null;
+$setting = is_array($setting) ? $setting : [];
+$topicRow = select("topicid", "idreport", "report", "paymentreport", "select");
+$paymentreports = is_array($topicRow) ? ($topicRow['idreport'] ?? null) : null;
 if (!empty($setting['Channel_Report']) && $paymentreports) {
     $buyer = select("user", "*", "id", $payment['id_user'], "select");
     $text_report = sprintf(
