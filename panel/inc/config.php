@@ -1,10 +1,45 @@
 <?php
 
+require_once __DIR__ . '/../../src/Support/TrustedProxy.php';
+
+function bluebotPanelIsHttps(): bool
+{
+    if (!empty($_SERVER['HTTPS']) && strtolower((string) $_SERVER['HTTPS']) !== 'off') {
+        return true;
+    }
+
+    $remote = trim((string) ($_SERVER['REMOTE_ADDR'] ?? ''));
+    if ($remote === '' || !bluebotIsCloudflareProxyIp($remote)) {
+        return false;
+    }
+
+    $cfVisitor = (string) ($_SERVER['HTTP_CF_VISITOR'] ?? '');
+    if ($cfVisitor !== '') {
+        $decoded = json_decode($cfVisitor, true);
+        if (is_array($decoded) && strtolower((string) ($decoded['scheme'] ?? '')) === 'https') {
+            return true;
+        }
+    }
+
+    return strtolower(trim((string) ($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? ''))) === 'https';
+}
+
+function bluebotPanelClientIp(): string
+{
+    $resolved = bluebotResolveWebhookClientIp($_SERVER);
+    if ($resolved !== '') {
+        return $resolved;
+    }
+
+    $remote = trim((string) ($_SERVER['REMOTE_ADDR'] ?? ''));
+    return filter_var($remote, FILTER_VALIDATE_IP) ? $remote : '0.0.0.0';
+}
+
 if (session_status() === PHP_SESSION_NONE) {
     session_set_cookie_params([
         'lifetime' => 0,
         'path' => '/',
-        'secure' => !empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off',
+        'secure' => bluebotPanelIsHttps(),
         'httponly' => true,
         'samesite' => 'Lax',
     ]);
