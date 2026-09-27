@@ -1697,38 +1697,56 @@ if ($text == "/start" || $datain == "start" || $text == "start") {
         return;
     }
     $config = "";
-    if ($dataget[2] == "1520") {
-        for ($i = 0; $i < count($DataUserOut['links']); ++$i) {
+    $serviceLinks = is_array($DataUserOut['links'] ?? null)
+        ? array_values(array_filter($DataUserOut['links'], 'is_string'))
+        : [];
+
+    if ((string) ($dataget[2] ?? '') === "1520") {
+        foreach ($serviceLinks as $serviceLink) {
             $randomString = bin2hex(random_bytes(3));
             $urlimage = qrTempPath("$from_id$randomString.png");
-            $qrCode = createqrcode($DataUserOut['links'][$i]);
-            if ($qrCode === null || @file_put_contents($urlimage, $qrCode->getString()) === false) {
-                sendmessage($from_id, "<code>{$DataUserOut['links'][$i]}</code>", null, 'HTML');
+            $qrCode = createqrcode($serviceLink);
+            $safeLink = htmlspecialchars($serviceLink, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+
+            if ($qrCode === null || @file_put_contents($urlimage, $qrCode->getString(), LOCK_EX) === false) {
+                sendmessage($from_id, "<code>{$safeLink}</code>", null, 'HTML');
                 continue;
             }
+
             addBackgroundImage($urlimage, $qrCode, bluebotQrBackgroundPath());
             telegram('sendphoto', [
                 'chat_id' => $from_id,
                 'photo' => new CURLFile($urlimage),
-                'caption' => "<code>{$DataUserOut['links'][$i]}</code>",
+                'caption' => "<code>{$safeLink}</code>",
                 'parse_mode' => "HTML",
             ]);
             @unlink($urlimage);
         }
         return;
     }
-    $randomString = bin2hex(random_bytes(3));
-    $urlimage = qrTempPath("$from_id$randomString.png");
-    $qrCode = createqrcode($DataUserOut['links'][$dataget[2]]);
-    if ($qrCode === null || @file_put_contents($urlimage, $qrCode->getString()) === false) {
-        sendmessage($from_id, "<code>{$DataUserOut['links'][$dataget[2]]}</code>", null, 'HTML');
+
+    $linkIndex = filter_var($dataget[2] ?? null, FILTER_VALIDATE_INT);
+    if ($linkIndex === false || !isset($serviceLinks[$linkIndex])) {
+        sendmessage($from_id, $textbotlang['users']['status']['error'], null, 'HTML');
         return;
     }
+
+    $serviceLink = $serviceLinks[$linkIndex];
+    $safeLink = htmlspecialchars($serviceLink, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+    $randomString = bin2hex(random_bytes(3));
+    $urlimage = qrTempPath("$from_id$randomString.png");
+    $qrCode = createqrcode($serviceLink);
+
+    if ($qrCode === null || @file_put_contents($urlimage, $qrCode->getString(), LOCK_EX) === false) {
+        sendmessage($from_id, "<code>{$safeLink}</code>", null, 'HTML');
+        return;
+    }
+
     addBackgroundImage($urlimage, $qrCode, bluebotQrBackgroundPath());
     telegram('sendphoto', [
         'chat_id' => $from_id,
         'photo' => new CURLFile($urlimage),
-        'caption' => "<code>{$DataUserOut['links'][$dataget[2]]}</code>",
+        'caption' => "<code>{$safeLink}</code>",
         'parse_mode' => "HTML",
     ]);
     @unlink($urlimage);
