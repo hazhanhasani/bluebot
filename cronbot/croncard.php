@@ -11,26 +11,38 @@ require __DIR__ . '/../vendor/autoload.php';
 require_once __DIR__ . '/../jdf.php';
 $ManagePanel = new ManagePanel();
 $setting = select("setting", "*");
-if ($setting['Bot_Status'] == "botstatusoff")
+if (!is_array($setting) || ($setting['Bot_Status'] ?? '') === "botstatusoff") {
     return;
-$autoconfirm = select("PaySetting", "ValuePay", "NamePay", "autoconfirmcart", "select")['ValuePay'];
-if ($autoconfirm != "onauto")
+}
+
+$autoConfirmRow = select("PaySetting", "ValuePay", "NamePay", "autoconfirmcart", "select");
+$autoconfirm = is_array($autoConfirmRow) ? ($autoConfirmRow['ValuePay'] ?? '') : '';
+if ($autoconfirm !== "onauto") {
     return;
-$paymentreports = select("topicid", "idreport", "report", "paymentreport", "select")['idreport'];
+}
+
+$paymentTopic = select("topicid", "idreport", "report", "paymentreport", "select");
+$paymentreports = is_array($paymentTopic) ? ($paymentTopic['idreport'] ?? null) : null;
 $textbotlang = languagechange();
-$list_Exceptions = select("PaySetting", "ValuePay", "NamePay", "Exception_auto_cart", "select")['ValuePay'];
+$exceptionRow = select("PaySetting", "ValuePay", "NamePay", "Exception_auto_cart", "select");
+$list_Exceptions = is_array($exceptionRow) ? ($exceptionRow['ValuePay'] ?? '[]') : '[]';
 $list_Exceptions = is_string($list_Exceptions) ? json_decode($list_Exceptions, true) : [];
 if (!is_array($list_Exceptions)) {
     $list_Exceptions = [];
 }
-$timecheck = $setting['timeauto_not_verify'] * 60;
+$timecheck = max(0, (int) ($setting['timeauto_not_verify'] ?? 0)) * 60;
 $stmt = $pdo->prepare("SELECT * FROM Payment_report WHERE payment_Status = 'waiting' AND (Payment_Method = 'cart to cart' OR Payment_Method = 'arze digital offline') AND bottype IS NULL");
 $stmt->execute();
 while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
     if ($row['at_updated'] == null)
         continue;
-    $since_start = time() - strtotime($row['at_updated']);
-    if ($since_start >= 3600)
+    $updatedAt = strtotime((string) $row['at_updated']);
+    if ($updatedAt === false || $updatedAt <= 0) {
+        continue;
+    }
+
+    $since_start = time() - $updatedAt;
+    if ($since_start < 0 || $since_start >= 3600)
         continue;
     if ($since_start <= $timecheck)
         continue;
@@ -45,9 +57,27 @@ while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
     clearSelectCache('Payment_report');
     if ($stmtPaid->rowCount() === 0)
         continue;
-    DirectPayment($Payment_report['id_order'], "../images.jpg");
-    $pricecashback = select("PaySetting", "ValuePay", "NamePay", "chashbackcart", "select")['ValuePay'];
+    try {
+        DirectPayment($Payment_report['id_order'], "../images.jpg");
+    } catch (Throwable $deliveryError) {
+        markPaymentDeliveryError($Payment_report['id_order'], $deliveryError->getMessage());
+        bluebotLog('error', 'Auto-confirmed card payment delivery failed', [
+            'order_id' => (string) $Payment_report['id_order'],
+            'error' => $deliveryError->getMessage(),
+        ]);
+        continue;
+    }
+
+    $cashbackRow = select("PaySetting", "ValuePay", "NamePay", "chashbackcart", "select");
+    $pricecashback = is_array($cashbackRow) ? ($cashbackRow['ValuePay'] ?? '0') : '0';
     $Balance_id = select("user", "*", "id", $Payment_report['id_user'], "select");
+    if (!is_array($Balance_id)) {
+        bluebotLog('warning', 'Auto-confirmed payment has no buyer record', [
+            'order_id' => (string) $Payment_report['id_order'],
+            'user_id' => (string) $Payment_report['id_user'],
+        ]);
+        continue;
+    }
     if ($pricecashback != "0") {
         $result = ($Payment_report['price'] * $pricecashback) / 100;
         $Balance_confrim = intval($Balance_id['Balance']) + $result;
