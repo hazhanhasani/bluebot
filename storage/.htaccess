@@ -7,3 +7,11 @@ Options -Indexes
         Deny from all
     </IfModule>
 </FilesMatch>
+
+<Files "cron-http.secret">
+    Require all denied
+    <IfModule !mod_authz_core.c>
+        Order deny,allow
+        Deny from all
+    </IfModule>
+</Files>
