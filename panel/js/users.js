@@ -40,9 +40,24 @@
         fetch('users.php?' + params.toString(), {
             headers: { 'X-Requested-With': 'XMLHttpRequest' },
         })
-            .then(function (r) { return r.text(); })
+            .then(function (r) {
+                if (!r.ok) throw new Error('HTTP ' + r.status);
+                return r.text();
+            })
             .then(function (html) {
-                usersBody.innerHTML = html;
+                var doc = new DOMParser().parseFromString(html, 'text/html');
+                var nextBody = doc.getElementById('usersBody');
+                var nextFoot = doc.getElementById('tblFoot');
+
+                if (!nextBody) {
+                    throw new Error('Users table fragment not found');
+                }
+
+                usersBody.innerHTML = nextBody.innerHTML;
+                if (tblFoot && nextFoot) {
+                    tblFoot.innerHTML = nextFoot.innerHTML;
+                }
+
                 updateClearBtn();
                 history.replaceState(null, '', location.pathname + '?' + params.toString());
 
