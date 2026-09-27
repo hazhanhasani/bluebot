@@ -1846,6 +1846,24 @@ nowpayments.io
                         'askZarinpalMerchant' => '💳 مرچنت کد خود را از زرین پال دریافت و در این قسمت وارد کنید
         
 مرچنت کد فعلی شما : %s',
+                        'askZarinpalCallbackDomain' => "🔗 <b>دامنه Callback زرین پال</b>
+
+دامنه‌ای را بفرستید که در ترمینال زرین پال ثبت شده و به همین نصب BlueBot متصل است.
+
+دامنه فعلی: <code>%s</code>
+Callback نهایی: <code>%s</code>
+
+فقط دامنه را بفرستید، مثال:
+<code>bot.example.com</code>
+
+برای بازگشت به دامنه اصلی ربات، عدد <code>0</code> را ارسال کنید.",
+                        'invalidZarinpalCallbackDomain' => "❌ دامنه معتبر نیست. فقط دامنه را بدون مسیر ارسال کنید؛ مثال: <code>bot.example.com</code>",
+                        'savedZarinpalCallbackDomain' => "✅ دامنه Callback زرین پال ذخیره شد.
+
+دامنه: <code>%s</code>
+Callback: <code>%s</code>
+
+⚠️ همین دامنه باید در ترمینال زرین پال ثبت شده باشد.",
                         'askVarizaApiToken' => '💳 کلید API واریزا را از پنل واریزا (پروفایل ← کلید API) دریافت و وارد کنید
 
 کلید فعلی شما: <code>%s</code>',
@@ -4177,6 +4195,7 @@ f,n.n2',
                 'zarinPalGateway' => 'زرین پال',
                 'varizaGateway' => 'واریزا',
                 'zarinPalMerchant' => 'مرچنت زرین پال',
+                'zarinPalCallbackDomain' => '🔗 دامنه Callback زرین پال',
                 'varizaApiToken' => 'کلید API واریزا',
                 'varizaWebhookSecret' => 'کلید وب‌هوک واریزا',
                 'cashbackVariza' => 'کش‌بک واریزا',
