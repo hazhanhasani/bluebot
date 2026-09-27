@@ -25,9 +25,22 @@ class ServiceMonitor
         global $pdo;
         $this->pdo = $pdo;
         $this->Panel = new ManagePanel();
-        $this->reportCron = select("topicid", "idreport", "report", "reportcron", "select")['idreport'];
-        $this->setting = select("setting", "*");
-        $this->status_cron = json_decode($this->setting['cron_status'], true);
+
+        $reportRow = select("topicid", "idreport", "report", "reportcron", "select");
+        $this->reportCron = is_array($reportRow) ? ($reportRow['idreport'] ?? null) : null;
+
+        $setting = select("setting", "*");
+        $this->setting = is_array($setting) ? $setting : [];
+
+        $cronStatus = json_decode((string) ($this->setting['cron_status'] ?? ''), true);
+        $this->status_cron = is_array($cronStatus) ? $cronStatus : [];
+        $this->status_cron += [
+            'volume' => false,
+            'day' => false,
+            'remove' => false,
+            'remove_volume' => false,
+        ];
+
         $this->textBotLang = languagechange(dirname(__DIR__));
         $this->text_Purchased_services = $this->textBotLang['textbot']['purchasedServices'] ?? '';
     }
@@ -43,7 +56,12 @@ class ServiceMonitor
                 continue;
             $stmtCron->execute([time(), $invoice['id_invoice']]);
             clearSelectCache('invoice');
-            $check_send = json_decode($invoice['notifctions'], true);
+            $check_send = json_decode((string) ($invoice['notifctions'] ?? ''), true);
+            if (!is_array($check_send)) {
+                $check_send = [];
+            }
+            $check_send += ['volume' => false, 'time' => false];
+
             $data = $this->processInvoice($invoice);
             if (!is_array($data))
                 continue;
@@ -58,20 +76,25 @@ class ServiceMonitor
             }
 
             $result = false;
-            if (!$check_send['volume']) {
-                if ($this->status_cron['volume'])
-                    $result = $this->checkVolumeThreshold($data['invoice'], $data['user'], $data['userData'], $invoice['username']);
+            if (!$check_send['volume'] && !empty($this->status_cron['volume'])) {
+                $result = $this->checkVolumeThreshold(
+                    $data['invoice'],
+                    $data['user'],
+                    $data['userData'],
+                    $invoice['username']
+                );
             }
             if ($result)
                 $data['invoice'] = select("invoice", "*", "id_invoice", $invoice['id_invoice']);
-            if (!$check_send['time']) {
-                if ($this->status_cron['day'])
-                    $this->checkTimeExpiration($data['invoice'], $data['user'], $data['userData'], $invoice['username']);
+            if (!$check_send['time'] && !empty($this->status_cron['day'])) {
+                $this->checkTimeExpiration($data['invoice'], $data['user'], $data['userData'], $invoice['username']);
             }
-            if ($this->status_cron['remove'])
+            if (!empty($this->status_cron['remove'])) {
                 $this->shouldRemoveService($data['invoice'], $data['user'], $data['userData'], $invoice['username']);
-            if ($this->status_cron['remove_volume'])
-                $this->shouldRemoveServiceـvolume($data['invoice'], $data['user'], $data['userData'], $invoice['username']);
+            }
+            if (!empty($this->status_cron['remove_volume'])) {
+                $this->shouldRemoveServiceVolume($data['invoice'], $data['user'], $data['userData'], $invoice['username']);
+            }
             if ($data['panel']['inboundstatus'] == "oninbounddisable" && $data['panel']['type'] == "marzban")
                 $this->active_inbound_expire($data['invoice'], $data['userData'], $data['panel']);
         }
@@ -162,71 +185,113 @@ class ServiceMonitor
             $this->sendReportNotification($reportMessage);
         }
     }
-    private function shouldRemoveServiceـvolume($invoice, $user, $userData, $username)
+    private function shouldRemoveServiceVolume($invoice, $user, $userData, $username)
     {
-        if (!in_array($userData['status'], ['limited', 'expired']))
+        if (($userData['status'] ?? '') !== 'limited') {
             return false;
-        $panel = select("marzban_panel", "*", "name_panel", $invoice['Service_location'], "select");
-        if ($panel['type'] != "marzban")
-            return;
-        if ($userData['data_limit_reset'] != "no_reset")
-            return;
-        if ($userData['status'] == "Unsuccessful")
-            return;
-        if (in_array($userData['status'], ['Unknown', 'active', 'on_hold', 'disabled', 'expired']))
-            return;
-        if (empty($userData['online_at']) or $userData['online_at'] == null) {
-            $timelastconect = 0;
-        } else {
-            $time = strtotime($userData['online_at']);
-            $timelastconect = (time() - $time) / 86400;
         }
-        if ($timelastconect == 0)
-            return;
-        $timeService = $userData['expire'] - time();
-        $daysRemaining = intval($timeService / 86400);
-        $removalThreshold = intval($this->setting['cronvolumere']);
-        $result = $timelastconect >= $removalThreshold;
-        $statusText = [
-            'active' => $this->textBotLang['users']['status']['active'],
-            'limited' => $this->textBotLang['users']['status']['limited'],
-            'disabled' => $this->textBotLang['users']['status']['disabled'],
-            'expired' => $this->textBotLang['users']['status']['expired'],
-            'on_hold' => $this->textBotLang['users']['status']['on_hold'],
-            'Unknown' => $this->textBotLang['users']['status']['unknown']
-        ][$userData['status']];
-        $remainingVolume = formatBytes($userData['data_limit'] - $userData['used_traffic']);
-        if ($result) {
-            update("invoice", "status", "removevolume", "username", $username);
-            $this->Panel->RemoveUser($invoice['Service_location'], $username);
-            $message = sprintf($this->textBotLang['users']['notify']['serviceDeleted2'], $username);
-            $reportMessage = sprintf($this->textBotLang['users']['notify']['volumeDeleteInfo'], $username, $statusText, $daysRemaining, $remainingVolume, $userData['online_at']);
-            $this->send_notifactions($invoice, $user, $message, false, $invoice['bottype']);
-            $this->sendReportNotification($reportMessage);
+
+        $panel = select("marzban_panel", "*", "name_panel", $invoice['Service_location'] ?? '', "select");
+        if (!is_array($panel) || ($panel['type'] ?? '') !== "marzban") {
+            return false;
         }
+
+        if (($userData['data_limit_reset'] ?? '') !== "no_reset") {
+            return false;
+        }
+
+        $onlineAt = trim((string) ($userData['online_at'] ?? ''));
+        if ($onlineAt === '') {
+            return false;
+        }
+
+        $lastOnline = strtotime($onlineAt);
+        if ($lastOnline === false || $lastOnline <= 0) {
+            return false;
+        }
+
+        $daysSinceLastConnection = max(0, (time() - $lastOnline) / self::SECONDS_PER_DAY);
+        $removalThreshold = max(0, (int) ($this->setting['cronvolumere'] ?? 0));
+        if ($removalThreshold <= 0 || $daysSinceLastConnection < $removalThreshold) {
+            return false;
+        }
+
+        $expire = is_numeric($userData['expire'] ?? null) ? (int) $userData['expire'] : 0;
+        $daysRemaining = $expire > 0
+            ? (int) (($expire - time()) / self::SECONDS_PER_DAY)
+            : 0;
+
+        $statusText = $this->textBotLang['users']['status']['limited'] ?? 'limited';
+        $dataLimit = is_numeric($userData['data_limit'] ?? null) ? (float) $userData['data_limit'] : 0;
+        $usedTraffic = is_numeric($userData['used_traffic'] ?? null) ? (float) $userData['used_traffic'] : 0;
+        $remainingVolume = formatBytes(max(0, $dataLimit - $usedTraffic));
+
+        update("invoice", "status", "removevolume", "username", $username);
+        $this->Panel->RemoveUser($invoice['Service_location'], $username);
+
+        $message = sprintf($this->textBotLang['users']['notify']['serviceDeleted2'], $username);
+        $reportMessage = sprintf(
+            $this->textBotLang['users']['notify']['volumeDeleteInfo'],
+            $username,
+            $statusText,
+            $daysRemaining,
+            $remainingVolume,
+            $onlineAt
+        );
+
+        $this->send_notifactions($invoice, $user, $message, false, $invoice['bottype']);
+        $this->sendReportNotification($reportMessage);
+        return true;
     }
     private function active_inbound_expire($invoice, $userData, $panel_info)
     {
-        if ($invoice['uuid'] != null || $userData['data_limit_reset'] != "no_reset")
+        if (!empty($invoice['uuid']) || ($userData['data_limit_reset'] ?? '') !== "no_reset") {
             return;
-        $inbound = explode("*", $panel_info['inbound_deactive']);
-        update("invoice", "uuid", json_encode($userData['uuid']), "id_invoice", $invoice['id_invoice']);
-        $proxies = [];
-        $proxies[$inbound[0]] = new stdClass();
-        ;
-        $inbounds[$inbound[0]][] = $inbound[1];
-        $configs = array(
+        }
+
+        $rawInbound = trim((string) ($panel_info['inbound_deactive'] ?? ''));
+        $parts = explode("*", $rawInbound, 2);
+        if (count($parts) !== 2 || trim($parts[0]) === '' || trim($parts[1]) === '') {
+            bluebotLog('warning', 'Invalid inactive inbound configuration', [
+                'panel' => (string) ($panel_info['name_panel'] ?? ''),
+                'value' => $rawInbound,
+            ]);
+            return;
+        }
+
+        $protocol = trim($parts[0]);
+        $inboundTag = trim($parts[1]);
+        $uuid = $userData['uuid'] ?? null;
+        if ($uuid === null || $uuid === '' || empty($invoice['id_invoice'])) {
+            return;
+        }
+
+        update("invoice", "uuid", json_encode($uuid), "id_invoice", $invoice['id_invoice']);
+
+        $proxies = [$protocol => new stdClass()];
+        $inbounds = [$protocol => [$inboundTag]];
+        $configs = [
             "proxies" => $proxies,
-            "inbounds" => $inbounds
+            "inbounds" => $inbounds,
+        ];
+
+        $this->Panel->Modifyuser(
+            (string) ($invoice['username'] ?? ''),
+            (string) ($panel_info['code_panel'] ?? ''),
+            $configs
         );
-        $this->Panel->Modifyuser($invoice['username'], $panel_info['code_panel'], $configs);
     }
     private function checkTimeExpiration($invoice, $user, $userData, $username)
     {
         $validStatuses = ['expired', 'on_hold', 'limited'];
         if (in_array($userData['status'], $validStatuses))
             return;
-        $timeRemaining = $userData['expire'] - time();
+        $expire = is_numeric($userData['expire'] ?? null) ? (int) $userData['expire'] : 0;
+        if ($expire <= 0) {
+            return false;
+        }
+
+        $timeRemaining = $expire - time();
         $daysRemaining = intval($timeRemaining / self::SECONDS_PER_DAY);
         $warningThreshold = intval($this->setting['daywarn']) * self::SECONDS_PER_DAY;
 
@@ -287,10 +352,18 @@ class ServiceMonitor
 
     private function updateInvoiceStatus($type, $invoice)
     {
-        $data = json_decode($invoice['notifctions'], true);
+        $data = json_decode((string) ($invoice['notifctions'] ?? ''), true);
+        if (!is_array($data)) {
+            $data = [];
+        }
         $data[$type] = true;
-        $data = json_encode($data);
-        update("invoice", "notifctions", $data, "id_invoice", $invoice['id_invoice']);
+        update(
+            "invoice",
+            "notifctions",
+            json_encode($data, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
+            "id_invoice",
+            $invoice['id_invoice']
+        );
     }
 }
 
