@@ -24,6 +24,7 @@ $functions = $read('function.php');
 $userPanel = $read('panel/user.php');
 $bot = $read('index.php');
 $farazDocs = $read('docs/FARAZSMS_PATTERNS.md');
+$langFa = $read('lang/fa.php');
 
 $checks = [
     [$tables, "'sms_settings'", 'sms_settings is not registered in the schema.'],
@@ -70,12 +71,17 @@ $checks = [
     [$farazDocs, "phone_verification", 'FarazSMS pattern documentation is missing.'],
     [$farazDocs, "code`: number, max 6", 'OTP variable type/length is not documented.'],
     [$panel, "sms-var-type", 'SMS panel variable type badges are missing.'],
+    [$langFa, "'confirming' => '🔐 <b>تأیید شماره موبایل</b>", 'Persian phone verification prompt is missing.'],
 ];
 
 foreach ($checks as [$source, $needle, $message]) {
     if ($source === '' || !str_contains($source, $needle)) {
         $failures[] = $message;
     }
+}
+
+if (str_contains($langFa, "'confirming' => '🔐 <b>تأیید شماره موبایل</b>\\n")) {
+    $failures[] = 'Phone verification prompt must not render literal \\n sequences.';
 }
 
 require_once $root . '/src/Support/SmsService.php';
