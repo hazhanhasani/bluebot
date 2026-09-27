@@ -686,13 +686,27 @@ function rate_arze(array $requiredSymbols = [])
         $url = 'https://demo.mirzabot.com/b.php';
     }
 
+    $url = trim($url);
+    if (filter_var($url, FILTER_VALIDATE_URL) === false
+        || strtolower((string) parse_url($url, PHP_URL_SCHEME)) !== 'https') {
+        error_log('rate_arze: invalid or non-HTTPS endpoint');
+        return null;
+    }
+
     $ch = curl_init($url);
+    if ($ch === false) {
+        error_log('rate_arze: unable to initialize HTTP client');
+        return null;
+    }
+
     curl_setopt_array($ch, [
         CURLOPT_RETURNTRANSFER => true,
         CURLOPT_TIMEOUT => 10,
         CURLOPT_CONNECTTIMEOUT => 5,
         CURLOPT_FOLLOWLOCATION => true,
         CURLOPT_MAXREDIRS => 3,
+        CURLOPT_PROTOCOLS => CURLPROTO_HTTPS,
+        CURLOPT_REDIR_PROTOCOLS => CURLPROTO_HTTPS,
         CURLOPT_SSL_VERIFYPEER => true,
         CURLOPT_SSL_VERIFYHOST => 2,
         CURLOPT_HTTPHEADER => ['Accept: application/json'],
