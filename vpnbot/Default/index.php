@@ -19,17 +19,31 @@ require_once 'keyboard.php';
 require_once $Pathfiles . 'vendor/autoload.php';
 $ManagePanel = new ManagePanel();
 
-$text_bot_var = json_decode(file_get_contents('text.json'), true);
+$text_bot_var = is_file('text.json')
+    ? bluebotJsonArray(file_get_contents('text.json'))
+    : [];
 if (!checktelegramip())
     die("Unauthorized access");
 
 $textbotlang = languagechange();
 $dataBase = select("botsaz", "*", "bot_token", $ApiToken, "select");
+if (!is_array($dataBase)) {
+    http_response_code(404);
+    exit;
+}
+
 $agentWebhookSecret = ensureAgentWebhookSecret($dataBase);
-if (!$agentWebhookSecret['created'] && $agentWebhookSecret['secret'] !== '' && !webhookSecretMatches($agentWebhookSecret['secret']))
+if (!$agentWebhookSecret['created']
+    && $agentWebhookSecret['secret'] !== ''
+    && !webhookSecretMatches($agentWebhookSecret['secret'])) {
     die("Unauthorized access");
-$admin_ids = json_decode($dataBase['admin_ids']);
-$setting = json_decode($dataBase['setting'], true);
+}
+
+$admin_ids = array_values(array_filter(
+    array_map('strval', bluebotJsonArray($dataBase['admin_ids'] ?? '[]')),
+    static fn($value) => $value !== ''
+));
+$setting = bluebotJsonArray($dataBase['setting'] ?? '{}');
 if (!empty($setting['channel'])) {
     $channel = channel_check("@" . $setting['channel']);
     if (count($channel) != 0) {
@@ -62,12 +76,14 @@ if (!isset($setting['active_step_note'])) {
     update("botsaz", "setting", json_encode($setting), "bot_token", $ApiToken);
 }
 $settingmain = select("setting", "*", null, null, "select");
+$settingmain = is_array($settingmain) ? $settingmain : [];
 $showcard = 1;
-$users_ids = select("user", "*", "bottype", $ApiToken, "FETCH_COLUMN");
-if (!is_dir('data')) {
-    mkdir('data');
-}
-if (!in_array($from_id, $users_ids) && $settingmain['statusnewuser'] == "onnewuser" && $from_id != 0) {
+$users_ids = select("user", "id", "bottype", $ApiToken, "FETCH_COLUMN");
+$users_ids = is_array($users_ids) ? array_map('strval', $users_ids) : [];
+
+if (!in_array((string) $from_id, $users_ids, true)
+    && ($settingmain['statusnewuser'] ?? '') == "onnewuser"
+    && $from_id != 0) {
 
     $newuser = sprintf($textbotlang['Admin']['reportgroup']['newUser'], $first_name, $username, "<a href = \"tg://user?id=$from_id\">$from_id</a>");
     foreach ($admin_ids as $admin) {
@@ -79,17 +95,18 @@ if ($from_id != 0) {
     $randomString = bin2hex(random_bytes(6));
     $date = time();
     $valueverify = 1;
-    if (!is_dir("data/$from_id")) {
-        mkdir("data/$from_id");
-        $data_user = json_encode(array(
-            "Balance" => 0,
-        ));
-        file_put_contents("data/$from_id/$from_id.json", $data_user);
+    $walletPath = vpnbotUserDataPath($from_id);
+    if ($walletPath === null || (!is_file($walletPath) && vpnbotCreditWallet($from_id, 0) === null)) {
+        bluebotLog('error', 'Unable to initialize agent wallet file', [
+            'user_id' => (string) $from_id,
+        ]);
+        return;
     }
     $stmt = $pdo->prepare("INSERT IGNORE INTO user (id , step,limit_usertest,User_Status,number,Balance,pagenumber,username,agent,message_count,last_message_time,affiliates,affiliatescount,cardpayment,number_username,namecustom,register,verify,codeInvitation,pricediscount,maxbuyagent,joinchannel,score,bottype,status_cron) VALUES (:from_id, 'none',:limit_usertest_all,'Active','none','0','1',:username,'f','0','0','0','0',:showcard,'100','none',:date,:verifycode,:codeInvitation,'0','0','0','0',:bottype,'1')");
     $stmt->bindParam(':bottype', $ApiToken);
     $stmt->bindParam(':from_id', $from_id);
-    $stmt->bindParam(':limit_usertest_all', $settingmain['limit_usertest_all']);
+    $limitUserTestAll = (string) ($settingmain['limit_usertest_all'] ?? '0');
+    $stmt->bindParam(':limit_usertest_all', $limitUserTestAll);
     $stmt->bindParam(':username', $username);
     $stmt->bindParam(':showcard', $showcard);
     $stmt->bindParam(':date', $date);
@@ -98,24 +115,48 @@ if ($from_id != 0) {
     $stmt->execute();
 }
 $user = select("user", "*", "id", $from_id, "select");
-$user['Balance'] = json_decode(file_get_contents("data/$from_id/$from_id.json"), true)['Balance'];
-$usernameinvoice = select("invoice", "username", null, null, "FETCH_COLUMN");
-$buyreport = select("topicid", "idreport", "report", "buyreport", "select")['idreport'];
-$reportnight = select("topicid", "idreport", "report", "reportnight", "select")['idreport'];
-$reporttest = select("topicid", "idreport", "report", "reporttest", "select")['idreport'];
-$errorreport = select("topicid", "idreport", "report", "errorreport", "select")['idreport'];
-$porsantreport = select("topicid", "idreport", "report", "porsantreport", "select")['idreport'];
-$reportcron = select("topicid", "idreport", "report", "reportcron", "select")['idreport'];
-$otherservice = select("topicid", "idreport", "report", "otherservice", "select")['idreport'];
+if (!is_array($user)) {
+    bluebotLog('error', 'Agent bot user row is unavailable', [
+        'user_id' => (string) $from_id,
+    ]);
+    return;
+}
 
-$paymentreports = select("topicid", "idreport", "report", "paymentreport", "select")['idreport'];
+$localUserData = vpnbotReadUserData($from_id);
+$user['Balance'] = is_numeric($localUserData['Balance'] ?? null)
+    ? (int) $localUserData['Balance']
+    : 0;
+
+$usernameinvoice = select("invoice", "username", null, null, "FETCH_COLUMN");
+$usernameinvoice = is_array($usernameinvoice) ? $usernameinvoice : [];
+
+$buyreport = selectValue("topicid", "idreport", "report", "buyreport", null);
+$reportnight = selectValue("topicid", "idreport", "report", "reportnight", null);
+$reporttest = selectValue("topicid", "idreport", "report", "reporttest", null);
+$errorreport = selectValue("topicid", "idreport", "report", "errorreport", null);
+$porsantreport = selectValue("topicid", "idreport", "report", "porsantreport", null);
+$reportcron = selectValue("topicid", "idreport", "report", "reportcron", null);
+$otherservice = selectValue("topicid", "idreport", "report", "otherservice", null);
+$paymentreports = selectValue("topicid", "idreport", "report", "paymentreport", null);
+
 $admin_idsmain = select("admin", "id_admin", null, null, "FETCH_COLUMN");
+$admin_idsmain = is_array($admin_idsmain) ? array_map('strval', $admin_idsmain) : [];
 $id_invoice = select("invoice", "id_invoice", null, null, "FETCH_COLUMN");
-$userbot = select("user", "*", "id", $dataBase['id_user'], "select");
-if ($user['bottype'] != $ApiToken) {
+$id_invoice = is_array($id_invoice) ? $id_invoice : [];
+
+$ownerId = trim((string) ($dataBase['id_user'] ?? ''));
+$userbot = $ownerId !== '' ? select("user", "*", "id", $ownerId, "select") : false;
+if (!is_array($userbot)) {
+    bluebotLog('error', 'Agent owner account is unavailable', [
+        'bot_token_suffix' => substr((string) $ApiToken, -6),
+    ]);
+    return;
+}
+
+if (($user['bottype'] ?? '') != $ApiToken) {
     update("user", "bottype", $ApiToken, "id", $from_id);
 }
-if ($user['username'] != $username) {
+if (($user['username'] ?? '') != $username) {
     update("user", "username", $username, "id", $from_id);
 }
 if ($text == "/start") {
@@ -630,7 +671,7 @@ if ($text == $text_bot_var['btn_keyboard']['buy'] && $setting['active_step_note'
         $marzban_list_get = $locationproduct;
         if ($productnotexits != 0 and $setting['show_product'] == false) {
             if ($settingmain['statuscategorygenral'] == "offcategorys") {
-                $statuscustomvolume = json_decode($locationproduct['customvolume'], true)[$userbot['agent']];
+                $statuscustomvolume = getStructuredSettingValue($locationproduct['customvolume'] ?? '', $userbot['agent'], null);
                 if ($statuscustomvolume == "1" && $locationproduct['type'] != "Manualsale") {
                     $statuscustom = true;
                 } else {
@@ -709,7 +750,7 @@ if ($text == $text_bot_var['btn_keyboard']['buy'] && $setting['active_step_note'
     $productnotexits = $stmt->rowCount();
     if ($productnotexits != 0 and $setting['show_product'] == false) {
         if ($settingmain['statuscategorygenral'] == "offcategorys") {
-            $statuscustomvolume = json_decode($locationproduct['customvolume'], true)[$userbot['agent']];
+            $statuscustomvolume = getStructuredSettingValue($locationproduct['customvolume'] ?? '', $userbot['agent'], null);
             if ($statuscustomvolume == "1" && $locationproduct['type'] != "Manualsale") {
                 $statuscustom = true;
             } else {
@@ -751,7 +792,7 @@ if ($text == $text_bot_var['btn_keyboard']['buy'] && $setting['active_step_note'
     $userdate = json_decode($user['Processing_value'], true);
     $locationproduct = select("marzban_panel", "*", "name_panel", $userdate['name_panel'], "seelct");
     $query = "SELECT * FROM product WHERE (Location = '{$locationproduct['name_panel']}' OR Location = '/all') AND category = '$categorynames' AND agent= '{$userbot['agent']}' ";
-    $statuscustomvolume = json_decode($locationproduct['customvolume'], true)[$userbot['agent']];
+    $statuscustomvolume = getStructuredSettingValue($locationproduct['customvolume'] ?? '', $userbot['agent'], null);
     if ($statuscustomvolume == "1" && $locationproduct['type'] != "Manualsale") {
         $statuscustom = true;
     } else {
@@ -1049,8 +1090,8 @@ if ($text == $text_bot_var['btn_keyboard']['buy'] && $setting['active_step_note'
         $Balance_prim = $datafactor['price_product'] - $user['Balance'];
         if ($Balance_prim <= 1)
             $Balance_prim = 0;
-        $minbalance = number_format(json_decode(select("PaySetting", "*", "NamePay", "minbalance", "select")['ValuePay'], true)[$userbot['agent']]);
-        $maxbalance = number_format(json_decode(select("PaySetting", "*", "NamePay", "maxbalance", "select")['ValuePay'], true)[$userbot['agent']]);
+        $minbalance = number_format(getPaySettingAgentValue('minbalance', $userbot['agent'], 0));
+        $maxbalance = number_format(getPaySettingAgentValue('maxbalance', $userbot['agent'], 0));
         $bakinfos = json_encode([
             'inline_keyboard' => [
                 [
@@ -1592,7 +1633,7 @@ $output
     $stmt->execute();
     $productnotexits = $stmt->rowCount();
     if ($productnotexits != 0 and $setting['show_product'] == false) {
-        $statuscustomvolume = json_decode($marzban_list_get['customvolume'], true)[$userbot['agent']];
+        $statuscustomvolume = getStructuredSettingValue($marzban_list_get['customvolume'] ?? '', $userbot['agent'], null);
         if ($statuscustomvolume == "1" && $marzban_list_get['type'] != "Manualsale") {
             $statuscustom = true;
         } else {
@@ -1804,8 +1845,8 @@ $output
         $Balance_prim = $datafactor['price_product'] - $user['Balance'];
         if ($Balance_prim <= 1)
             $Balance_prim = 0;
-        $minbalance = number_format(json_decode(select("PaySetting", "*", "NamePay", "minbalance", "select")['ValuePay'], true)[$userbot['agent']]);
-        $maxbalance = number_format(json_decode(select("PaySetting", "*", "NamePay", "maxbalance", "select")['ValuePay'], true)[$userbot['agent']]);
+        $minbalance = number_format(getPaySettingAgentValue('minbalance', $userbot['agent'], 0));
+        $maxbalance = number_format(getPaySettingAgentValue('maxbalance', $userbot['agent'], 0));
         $bakinfos = json_encode([
             'inline_keyboard' => [
                 [
@@ -1877,7 +1918,7 @@ $output
         ]
     ]);
     $priceproductformat = number_format($datafactor['price_product']);
-    $balanceformatsell = number_format($userbalance = json_decode(file_get_contents("data/$from_id/$from_id.json"), true)['Balance']);
+    $balanceformatsell = number_format((int) (vpnbotReadUserData($from_id)['Balance'] ?? 0));
     $balanceformatsellbefore = number_format($user['Balance'], 0);
     $textextend = "✅ تمدید برای سرویس شما با موفقیت صورت گرفت
  
