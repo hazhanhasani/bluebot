@@ -2031,7 +2031,7 @@ elseif ($datain == "systemsms") {
         return;
     }
     DirectPayment($order_id);
-    $pricecashback = select("PaySetting", "ValuePay", "NamePay", "chashbackcart", "select")['ValuePay'];
+    $pricecashback = getPaySettingValue('chashbackcart');
     $Balance_id = select("user", "*", "id", $Payment_report['id_user'], "select");
     if ($pricecashback != "0") {
         $result = ($Payment_report['price'] * $pricecashback) / 100;
@@ -2720,7 +2720,7 @@ elseif ($datain == "systemsms") {
         step('home', $from_id);
     }
 } elseif ($text == "🧩 api plisio" && $adminrulecheck['rule'] == "administrator") {
-    $PaySetting = select("PaySetting", "ValuePay", "NamePay", "apinowpayment")['ValuePay'];
+    $PaySetting = getPaySettingValue('apinowpayment');
     $textcart = sprintf($textbotlang['Admin']['gateway']['askPlisioApi'], $PaySetting);
     sendmessage($from_id, $textcart, $backadmin, 'HTML');
     step('apinowpayment', $from_id);
@@ -2729,7 +2729,7 @@ elseif ($datain == "systemsms") {
     update("PaySetting", "ValuePay", $text, "NamePay", "apinowpayment");
     step('home', $from_id);
 } elseif ($text == $textbotlang['keyboard']['apiNowPayment']) {
-    $PaySetting = select("PaySetting", "ValuePay", "NamePay", "marchent_tronseller")['ValuePay'];
+    $PaySetting = getPaySettingValue('marchent_tronseller');
     $texttronseller = sprintf($textbotlang['Admin']['gateway']['askNowPaymentsApi'], $PaySetting);
     sendmessage($from_id, $texttronseller, $backadmin, 'HTML');
     step('marchent_tronseller', $from_id);
@@ -2738,7 +2738,7 @@ elseif ($datain == "systemsms") {
     update("PaySetting", "ValuePay", $text, "NamePay", "marchent_tronseller");
     step('home', $from_id);
 } elseif ($text == $textbotlang['keyboard']['setAqayePardakhtMerchant'] && $adminrulecheck['rule'] == "administrator") {
-    $PaySetting = select("PaySetting", "ValuePay", "NamePay", "merchant_id_aqayepardakht")['ValuePay'];
+    $PaySetting = getPaySettingValue('merchant_id_aqayepardakht');
     $textaqayepardakht = sprintf($textbotlang['Admin']['gateway']['askAqayePardakhtMerchant'], $PaySetting);
     sendmessage($from_id, $textaqayepardakht, $backadmin, 'HTML');
     step('merchant_id_aqayepardakht', $from_id);
@@ -2747,7 +2747,7 @@ elseif ($datain == "systemsms") {
     update("PaySetting", "ValuePay", $text, "NamePay", "merchant_id_aqayepardakht");
     step('home', $from_id);
 } elseif ($text == $textbotlang['keyboard']['zarinPalMerchant'] && $adminrulecheck['rule'] == "administrator") {
-    $PaySetting = select("PaySetting", "ValuePay", "NamePay", "merchant_zarinpal")['ValuePay'];
+    $PaySetting = getPaySettingValue('merchant_zarinpal');
     $textaqayepardakht = sprintf($textbotlang['Admin']['gateway']['askZarinpalMerchant'], $PaySetting);
     sendmessage($from_id, $textaqayepardakht, $backadmin, 'HTML');
     step('merchant_zarinpal', $from_id);
@@ -2756,7 +2756,7 @@ elseif ($datain == "systemsms") {
     update("PaySetting", "ValuePay", $text, "NamePay", "merchant_zarinpal");
     step('home', $from_id);
 } elseif ($text == $textbotlang['keyboard']['varizaApiToken'] && $adminrulecheck['rule'] == "administrator") {
-    $PaySetting = select("PaySetting", "ValuePay", "NamePay", "variza_api_token")['ValuePay'];
+    $PaySetting = getPaySettingValue('variza_api_token');
     $msg = sprintf($textbotlang['Admin']['gateway']['askVarizaApiToken'], $PaySetting);
     sendmessage($from_id, $msg, $backadmin, 'HTML');
     step('variza_api_token', $from_id);
@@ -2765,7 +2765,7 @@ elseif ($datain == "systemsms") {
     update("PaySetting", "ValuePay", trim($text), "NamePay", "variza_api_token");
     step('home', $from_id);
 } elseif ($text == $textbotlang['keyboard']['varizaWebhookSecret'] && $adminrulecheck['rule'] == "administrator") {
-    $PaySetting = select("PaySetting", "ValuePay", "NamePay", "variza_webhook_secret")['ValuePay'];
+    $PaySetting = getPaySettingValue('variza_webhook_secret');
     $msg = sprintf($textbotlang['Admin']['gateway']['askVarizaWebhookSecret'], $PaySetting, 'https://' . $domainhosts . '/payment/variza_webhook.php');
     sendmessage($from_id, $msg, $backadmin, 'HTML');
     step('variza_webhook_secret', $from_id);
@@ -4362,7 +4362,7 @@ elseif ($datain == "systemsms") {
     update("PaySetting", "ValuePay", $text, "NamePay", "CartDirect");
     step('home', $from_id);
 } elseif ($text == $textbotlang['keyboard']['offlineGatewayPv'] && $adminrulecheck['rule'] == "administrator") {
-    $PaySetting = select("PaySetting", "ValuePay", "NamePay", "Cartstatuspv")['ValuePay'];
+    $PaySetting = getPaySettingValue('Cartstatuspv');
     $card_Statuspv = json_encode([
         'inline_keyboard' => [
             [
@@ -4438,7 +4438,7 @@ elseif ($datain == "systemsms") {
         return;
     }
     step('home', $from_id);
-    $balancemaax = json_decode(select("PaySetting", "ValuePay", "NamePay", "minbalance", "select")['ValuePay'], true);
+    $balancemaax = json_decode(getPaySettingValue('minbalance'), true);
     $balancemaax[$text] = $user['Processing_value'];
     $balancemaax = json_encode($balancemaax);
     sendmessage($from_id, $textbotlang['Admin']['SettingnowPayment']['saveApi'], $keyboardadmin, 'HTML');
@@ -4463,7 +4463,7 @@ elseif ($datain == "systemsms") {
         return;
     }
     step('home', $from_id);
-    $balancemaax = json_decode(select("PaySetting", "ValuePay", "NamePay", "maxbalance", "select")['ValuePay'], true);
+    $balancemaax = json_decode(getPaySettingValue('maxbalance'), true);
     $balancemaax[$text] = $user['Processing_value'];
     $balancemaax = json_encode($balancemaax);
     sendmessage($from_id, $textbotlang['Admin']['SettingnowPayment']['saveApi'], $keyboardadmin, 'HTML');
@@ -4741,14 +4741,14 @@ elseif ($datain == "systemsms") {
     }
     step('home', $from_id);
 } elseif ($text == $textbotlang['keyboard']['shopFeatureStatus'] && $adminrulecheck['rule'] == "administrator") {
-    $marzbanstatusextra = select("shopSetting", "*", "Namevalue", "statusextra", "select")['value'];
-    $marzbandirectpay = select("shopSetting", "*", "Namevalue", "statusdirectpabuy", "select")['value'];
-    $statustimeextra = select("shopSetting", "*", "Namevalue", "statustimeextra", "select")['value'];
-    $statusdisorder = select("shopSetting", "*", "Namevalue", "statusdisorder", "select")['value'];
-    $statuschangeservice = select("shopSetting", "*", "Namevalue", "statuschangeservice", "select")['value'];
-    $statusshowprice = select("shopSetting", "*", "Namevalue", "statusshowprice", "select")['value'];
-    $statusshowconfig = select("shopSetting", "*", "Namevalue", "configshow", "select")['value'];
-    $statusremoveserveice = select("shopSetting", "*", "Namevalue", "backserviecstatus", "select")['value'];
+    $marzbanstatusextra = getShopSettingValue('statusextra');
+    $marzbandirectpay = getShopSettingValue('statusdirectpabuy');
+    $statustimeextra = getShopSettingValue('statustimeextra');
+    $statusdisorder = getShopSettingValue('statusdisorder');
+    $statuschangeservice = getShopSettingValue('statuschangeservice');
+    $statusshowprice = getShopSettingValue('statusshowprice');
+    $statusshowconfig = getShopSettingValue('configshow');
+    $statusremoveserveice = getShopSettingValue('backserviecstatus');
     $name_status_extra_Vloume = [
         'onextra' => $textbotlang['Admin']['Status']['statuson'],
         'offextra' => $textbotlang['Admin']['Status']['statusoff']
@@ -4913,14 +4913,14 @@ elseif ($datain == "systemsms") {
         update("setting", "statuscategory", $valuenew);
     }
     $setting = select("setting", "*", null, null, "select");
-    $marzbanstatusextra = select("shopSetting", "*", "Namevalue", "statusextra", "select")['value'];
-    $marzbandirectpay = select("shopSetting", "*", "Namevalue", "statusdirectpabuy", "select")['value'];
-    $statustimeextra = select("shopSetting", "*", "Namevalue", "statustimeextra", "select")['value'];
-    $statusdisorder = select("shopSetting", "*", "Namevalue", "statusdisorder", "select")['value'];
-    $statuschangeservice = select("shopSetting", "*", "Namevalue", "statuschangeservice", "select")['value'];
-    $statusshowprice = select("shopSetting", "*", "Namevalue", "statusshowprice", "select")['value'];
-    $statusshowconfig = select("shopSetting", "*", "Namevalue", "configshow", "select")['value'];
-    $statusremoveserveice = select("shopSetting", "*", "Namevalue", "backserviecstatus", "select")['value'];
+    $marzbanstatusextra = getShopSettingValue('statusextra');
+    $marzbandirectpay = getShopSettingValue('statusdirectpabuy');
+    $statustimeextra = getShopSettingValue('statustimeextra');
+    $statusdisorder = getShopSettingValue('statusdisorder');
+    $statuschangeservice = getShopSettingValue('statuschangeservice');
+    $statusshowprice = getShopSettingValue('statusshowprice');
+    $statusshowconfig = getShopSettingValue('configshow');
+    $statusremoveserveice = getShopSettingValue('backserviecstatus');
     $name_status_extra_Vloume = [
         'onextra' => $textbotlang['Admin']['Status']['statuson'],
         'offextra' => $textbotlang['Admin']['Status']['statusoff']
@@ -6085,7 +6085,7 @@ if ($datain == "settimecornremove" && $adminrulecheck['rule'] == "administrator"
     if ($text == "f") {
         update("shopSetting", "value", $userdata['price_cashback'], "Namevalue", "chashbackextend");
     } else {
-        $shop_cashbackagent = json_decode(select("shopSetting", "*", "Namevalue", "chashbackextend_agent")['value'], true);
+        $shop_cashbackagent = json_decode(getShopSettingValue('chashbackextend_agent'), true);
         $shop_cashbackagent[$text] = $userdata['price_cashback'];
         update("shopSetting", "value", json_encode($shop_cashbackagent), "Namevalue", "chashbackextend_agent");
     }
@@ -6128,7 +6128,7 @@ if ($datain == "settimecornremove" && $adminrulecheck['rule'] == "administrator"
     step("home", $from_id);
     update("PaySetting", "ValuePay", $text, "NamePay", "chashbackaqaypardokht");
 } elseif ($text == $textbotlang['keyboard']['feeStatusIranPay2'] && $adminrulecheck['rule'] == "administrator") {
-    $feeStatusNow = select("PaySetting", "ValuePay", "NamePay", "feestatusternado", "select")['ValuePay'] ?? 'offfeeternado';
+    $feeStatusNow = getPaySettingValue('feestatusternado') ?? 'offfeeternado';
     $feeStatusNew = ($feeStatusNow === 'onfeeternado') ? 'offfeeternado' : 'onfeeternado';
     update("PaySetting", "ValuePay", $feeStatusNew, "NamePay", "feestatusternado");
     if ($feeStatusNew === 'onfeeternado') {
@@ -6470,7 +6470,7 @@ if ($datain == "settimecornremove" && $adminrulecheck['rule'] == "administrator"
     update("user", "Processing_value", $userdata['namepanel'], "id", $from_id);
     step('home', $from_id);
 } elseif ($text == $textbotlang['keyboard']['showCartAfterFirstPay'] && $adminrulecheck['rule'] == "administrator") {
-    $paymentverify = select("PaySetting", "ValuePay", "NamePay", "checkpaycartfirst", "select")['ValuePay'];
+    $paymentverify = getPaySettingValue('checkpaycartfirst');
     $keyboardverify = json_encode([
         'inline_keyboard' => [
             [
@@ -6481,7 +6481,7 @@ if ($datain == "settimecornremove" && $adminrulecheck['rule'] == "administrator"
     sendmessage($from_id, $textbotlang['Admin']['card']['afterFirstPayDesc'], $keyboardverify, 'HTML');
 } elseif ($datain == "onpayverify") {
     update("PaySetting", "ValuePay", "offpayverify", "NamePay", "checkpaycartfirst");
-    $paymentverify = select("PaySetting", "ValuePay", "NamePay", "checkpaycartfirst", "select")['ValuePay'];
+    $paymentverify = getPaySettingValue('checkpaycartfirst');
     $keyboardverify = json_encode([
         'inline_keyboard' => [
             [
@@ -6492,7 +6492,7 @@ if ($datain == "settimecornremove" && $adminrulecheck['rule'] == "administrator"
     Editmessagetext($from_id, $message_id, $textbotlang['Admin']['card']['afterFirstPayOff'], $keyboardverify);
 } elseif ($datain == "offpayverify") {
     update("PaySetting", "ValuePay", "onpayverify", "NamePay", "checkpaycartfirst");
-    $paymentverify = select("PaySetting", "ValuePay", "NamePay", "checkpaycartfirst", "select")['ValuePay'];
+    $paymentverify = getPaySettingValue('checkpaycartfirst');
     $keyboardverify = json_encode([
         'inline_keyboard' => [
             [
@@ -6830,7 +6830,7 @@ if ($datain == "settimecornremove" && $adminrulecheck['rule'] == "administrator"
     update("PaySetting", "ValuePay", $text, "NamePay", "walletaddress");
     step('home', $from_id);
 } elseif ($text == $textbotlang['keyboard']['apiIranPay'] && $adminrulecheck['rule'] == "administrator") {
-    $PaySetting = select("PaySetting", "ValuePay", "NamePay", "apiiranpay", "select")['ValuePay'];
+    $PaySetting = getPaySettingValue('apiiranpay');
     $texttronseller = sprintf($textbotlang['Admin']['gateway']['askApiCode'], $PaySetting);
     sendmessage($from_id, $texttronseller, $backadmin, 'HTML');
     step('apiiranpay', $from_id);
@@ -7394,7 +7394,7 @@ if ($datain == "settimecornremove" && $adminrulecheck['rule'] == "administrator"
     step("home", $from_id);
     update("setting", "agentreqprice", $text, null, null);
 } elseif ($text == $textbotlang['keyboard']['autoConfirmNoCheck'] && $adminrulecheck['rule'] == "administrator") {
-    $paymentverify = select("PaySetting", "ValuePay", "NamePay", "autoconfirmcart", "select")['ValuePay'];
+    $paymentverify = getPaySettingValue('autoconfirmcart');
     $keyboardverify = json_encode([
         'inline_keyboard' => [
             [
@@ -7405,7 +7405,7 @@ if ($datain == "settimecornremove" && $adminrulecheck['rule'] == "administrator"
     sendmessage($from_id, $textbotlang['Admin']['Payment']['autoConfirmDesc'], $keyboardverify, 'HTML');
 } elseif ($datain == "onauto") {
     update("PaySetting", "ValuePay", "offauto", "NamePay", "autoconfirmcart");
-    $paymentverify = select("PaySetting", "ValuePay", "NamePay", "autoconfirmcart", "select")['ValuePay'];
+    $paymentverify = getPaySettingValue('autoconfirmcart');
     $keyboardverify = json_encode([
         'inline_keyboard' => [
             [
@@ -7416,7 +7416,7 @@ if ($datain == "settimecornremove" && $adminrulecheck['rule'] == "administrator"
     Editmessagetext($from_id, $message_id, $textbotlang['Admin']['card']['afterFirstPayOff'], $keyboardverify);
 } elseif ($datain == "offauto") {
     update("PaySetting", "ValuePay", "onauto", "NamePay", "autoconfirmcart");
-    $paymentverify = select("PaySetting", "ValuePay", "NamePay", "autoconfirmcart", "select")['ValuePay'];
+    $paymentverify = getPaySettingValue('autoconfirmcart');
     $keyboardverify = json_encode([
         'inline_keyboard' => [
             [
@@ -9868,7 +9868,7 @@ if ($datain == "settimecornday" && $adminrulecheck['rule'] == "administrator") {
         sendmessage($from_id, $textbotlang['Admin']['Payment']['userNotFound'], $backadmin, 'HTML');
         return;
     }
-    $list_Exceptions = select("PaySetting", "ValuePay", "NamePay", "Exception_auto_cart", "select")['ValuePay'];
+    $list_Exceptions = getPaySettingValue('Exception_auto_cart');
     $list_Exceptions = is_string($list_Exceptions) ? json_decode($list_Exceptions, true) : [];
     if (in_array($text, $list_Exceptions)) {
         sendmessage($from_id, $textbotlang['Admin']['Payment']['userAlreadyExcluded'], $backadmin, 'HTML');
@@ -9887,7 +9887,7 @@ if ($datain == "settimecornday" && $adminrulecheck['rule'] == "administrator") {
         sendmessage($from_id, $textbotlang['Admin']['Payment']['userNotFound'], $backadmin, 'HTML');
         return;
     }
-    $list_Exceptions = select("PaySetting", "ValuePay", "NamePay", "Exception_auto_cart", "select")['ValuePay'];
+    $list_Exceptions = getPaySettingValue('Exception_auto_cart');
     $list_Exceptions = is_string($list_Exceptions) ? json_decode($list_Exceptions, true) : [];
     if (!in_array($text, $list_Exceptions)) {
         sendmessage($from_id, $textbotlang['Admin']['Payment']['userNotExcluded'], $backadmin, 'HTML');
@@ -9906,7 +9906,7 @@ if ($datain == "settimecornday" && $adminrulecheck['rule'] == "administrator") {
     update("PaySetting", "ValuePay", json_encode($list_Exceptions), "NamePay", "Exception_auto_cart");
     step("home", $from_id);
 } elseif ($text == $textbotlang['keyboard']['showUserList']) {
-    $list_Exceptions = select("PaySetting", "ValuePay", "NamePay", "Exception_auto_cart", "select")['ValuePay'];
+    $list_Exceptions = getPaySettingValue('Exception_auto_cart');
     $list_Exceptions = is_string($list_Exceptions) ? json_decode($list_Exceptions, true) : [];
     if (count($list_Exceptions) == 0) {
         sendmessage($from_id, $textbotlang['Admin']['Payment']['excludeListEmpty'], null, 'HTML');
@@ -9919,7 +9919,7 @@ if ($datain == "settimecornday" && $adminrulecheck['rule'] == "administrator") {
     sendmessage($from_id, $textbotlang['Admin']['Payment']['excludeListTitle'], null, 'HTML');
     sendmessage($from_id, $list, null, 'HTML');
 } elseif ($text == $textbotlang['keyboard']['setApi'] && $adminrulecheck['rule'] == "administrator") {
-    $PaySetting = select("PaySetting", "ValuePay", "NamePay", "marchent_floypay")['ValuePay'];
+    $PaySetting = getPaySettingValue('marchent_floypay');
     $textaqayepardakht = sprintf($textbotlang['Admin']['gateway']['askApiCode2'], $PaySetting);
     sendmessage($from_id, $textaqayepardakht, $backadmin, 'HTML');
     step('marchent_floypay', $from_id);
