@@ -12,21 +12,21 @@ BlueBot discovers accessible sender lines automatically, walks all pattern pages
 
 ## Pattern texts to create in FarazSMS
 
-Create the following patterns in FarazSMS. Variable names are case-sensitive and must match exactly. Preserve the shown line breaks as real new lines; do not type the two characters `\\n`.
+Create the following patterns in FarazSMS. Variable names are case-sensitive and must match exactly. Preserve the shown line breaks as real new lines; do not type the two characters `\\n`. The first line `BlueVPN | بلو پنل` is mandatory branding and must not be removed, otherwise the provider may reject the pattern because the sender is not identifiable.
 
 | Event | Suggested category | Exact pattern text | Variables |
 | --- | --- | --- | --- |
-| `phone_verification` | OTP | `بلو پنل`<br>`کد ورود: %code%`<br>`این کد محرمانه است.` | `code`: number, max 6 |
-| `service_activated` | Others | `بلو پنل`<br>`سرویس %service% فعال شد.`<br>`کاربر: %username%`<br>`اعتبار: %expire_date%` | `service`: string, max 40; `username`: string, max 40; `expire_date`: string, max 20 |
-| `service_renewed` | Others | `بلو پنل`<br>`سرویس %username% تمدید شد.`<br>`اعتبار جدید: %expire_date%` | `username`: string, max 40; `expire_date`: string, max 20 |
-| `subscription_reminder` | Others | `بلو پنل`<br>`%days_left% روز تا پایان سرویس %username% باقی مانده.`<br>`برای جلوگیری از قطعی، تمدید کنید.` | `days_left`: number, max 3; `username`: string, max 40 |
-| `subscription_expired` | Others | `بلو پنل`<br>`اعتبار سرویس %username% تمام شد.`<br>`برای اتصال مجدد، تمدید کنید.` | `username`: string, max 40 |
-| `low_remaining_volume` | Others | `بلو پنل`<br>`حجم سرویس %username% رو به پایان است.`<br>`باقی‌مانده: %remaining_volume% گیگ` | `username`: string, max 40; `remaining_volume`: string, max 12 |
-| `volume_expired` | Others | `بلو پنل`<br>`حجم سرویس %username% تمام شد.`<br>`برای ادامه، سرویس را تمدید کنید.` | `username`: string, max 40 |
-| `payment_success` | Order | `بلو پنل`<br>`پرداخت %amount% تومان موفق بود.`<br>`کد سفارش: %order_id%` | `amount`: number, max 12; `order_id`: string, max 40 |
-| `payment_failed` | Order | `بلو پنل`<br>`پرداخت سفارش %order_id% ناموفق بود.`<br>`لطفاً دوباره تلاش کنید.` | `order_id`: string, max 40 |
-| `wallet_charged` | Others | `بلو پنل`<br>`%amount% تومان به کیف پول اضافه شد.`<br>`موجودی: %balance% تومان` | `amount`: number, max 12; `balance`: number, max 12 |
-| `admin_announcement` | Others | `بلو پنل`<br>`%message%` | `message`: string, max 120 |
+| `phone_verification` | OTP | `BlueVPN | بلو پنل`<br>`کد ورود: %code%`<br>`این کد محرمانه است.` | `code`: number, max 6 |
+| `service_activated` | Others | `BlueVPN | بلو پنل`<br>`سرویس %service% فعال شد.`<br>`کاربر: %username%`<br>`اعتبار: %expire_date%` | `service`: string, max 40; `username`: string, max 40; `expire_date`: string, max 20 |
+| `service_renewed` | Others | `BlueVPN | بلو پنل`<br>`سرویس %username% تمدید شد.`<br>`اعتبار جدید: %expire_date%` | `username`: string, max 40; `expire_date`: string, max 20 |
+| `subscription_reminder` | Others | `BlueVPN | بلو پنل`<br>`%days_left% روز تا پایان سرویس %username% باقی مانده.`<br>`برای جلوگیری از قطعی، تمدید کنید.` | `days_left`: number, max 3; `username`: string, max 40 |
+| `subscription_expired` | Others | `BlueVPN | بلو پنل`<br>`اعتبار سرویس %username% تمام شد.`<br>`برای اتصال مجدد، تمدید کنید.` | `username`: string, max 40 |
+| `low_remaining_volume` | Others | `BlueVPN | بلو پنل`<br>`حجم سرویس %username% رو به پایان است.`<br>`باقی‌مانده: %remaining_volume% گیگ` | `username`: string, max 40; `remaining_volume`: string, max 12 |
+| `volume_expired` | Others | `BlueVPN | بلو پنل`<br>`حجم سرویس %username% تمام شد.`<br>`برای ادامه، سرویس را تمدید کنید.` | `username`: string, max 40 |
+| `payment_success` | Order | `BlueVPN | بلو پنل`<br>`پرداخت %amount% تومان موفق بود.`<br>`کد سفارش: %order_id%` | `amount`: number, max 12; `order_id`: string, max 40 |
+| `payment_failed` | Order | `BlueVPN | بلو پنل`<br>`پرداخت سفارش %order_id% ناموفق بود.`<br>`لطفاً دوباره تلاش کنید.` | `order_id`: string, max 40 |
+| `wallet_charged` | Others | `BlueVPN | بلو پنل`<br>`%amount% تومان به کیف پول اضافه شد.`<br>`موجودی: %balance% تومان` | `amount`: number, max 12; `balance`: number, max 12 |
+| `admin_announcement` | Others | `BlueVPN | بلو پنل`<br>`%message%` | `message`: string, max 120 |
 
 ### Variable rules
 
