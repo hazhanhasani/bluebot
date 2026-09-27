@@ -152,27 +152,29 @@ function getusers($location, $status)
 #-----------------------------#
 function getinbounds($location)
 {
-    $marzban_list_get = select("marzban_panel", "*", "name_panel", $location, "select");
-    $Check_token = token_panel($marzban_list_get['code_panel']);
-    if (!isset($Check_token['access_token']))
-        return null;
-    $url = $marzban_list_get['url_panel'] . '/api/inbounds';
-    $header_value = 'Bearer ';
+    $panel = select("marzban_panel", "*", "name_panel", $location, "select");
+    if (!is_array($panel) || empty($panel['code_panel']) || empty($panel['url_panel'])) {
+        return [];
+    }
 
-    $ch = curl_init();
-    curl_setopt($ch, CURLOPT_URL, $url);
-    curl_setopt($ch, CURLOPT_HTTPGET, true);
-    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-    curl_setopt($ch, CURLOPT_TIMEOUT_MS, ($GLOBALS['request_exec_timeout'] ?? null) ?: 10000);
-    curl_setopt($ch, CURLOPT_HTTPHEADER, array(
-        'Accept: application/json',
-        'Authorization: ' . $header_value . $Check_token['access_token']
-    ));
+    $token = token_panel($panel['code_panel']);
+    if (!is_array($token) || empty($token['access_token'])) {
+        return [];
+    }
 
-    $output = curl_exec($ch);
-    curl_close($ch);
-    $inbounds = json_decode($output, true);
-    return $inbounds;
+    $url = rtrim((string) $panel['url_panel'], '/') . '/api/inbounds';
+    $request = new CurlRequest($url);
+    $request->setHeaders(['Accept: application/json']);
+    $request->setBearerToken((string) $token['access_token']);
+
+    $response = $request->get();
+    if (!is_array($response)
+        || !empty($response['error'])
+        || (!empty($response['status']) && (int) $response['status'] >= 400)) {
+        return [];
+    }
+
+    return bluebotJsonArray($response['body'] ?? '[]');
 }
 #-----------------------------#
 function ResetUserDataUsage($username_account, $location)
