@@ -31,15 +31,36 @@ function telegram($method, $datas = [],$botToken = null)
     }
     $url = "https://api.telegram.org/bot" . $ApiToken . "/" . $method;
     $ch = curl_init();
+    if ($ch === false) {
+        return ['ok' => false, 'description' => 'Unable to initialise Telegram request'];
+    }
+
     curl_setopt($ch, CURLOPT_URL, $url);
     curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+    curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 5);
+    curl_setopt($ch, CURLOPT_TIMEOUT, 10);
     curl_setopt($ch, CURLOPT_POSTFIELDS, $datas);
+
     $res = curl_exec($ch);
-    if (curl_error($ch)) {
-        var_dump(curl_error($ch));
-    } else {
-        return json_decode($res,true);
+    if ($res === false) {
+        $error = curl_error($ch);
+        curl_close($ch);
+        if ($error !== '') {
+            error_log('VPNBot Telegram request failed: ' . $error);
+        }
+        return ['ok' => false, 'description' => 'Telegram request failed'];
     }
+
+    $httpCode = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    curl_close($ch);
+
+    $decoded = json_decode($res, true);
+    if (!is_array($decoded)) {
+        error_log('VPNBot Telegram returned invalid response (HTTP ' . $httpCode . ')');
+        return ['ok' => false, 'error_code' => $httpCode, 'description' => 'Invalid Telegram response'];
+    }
+
+    return $decoded;
 }
 function sendmessage($chat_id,$text,$keyboard,$parse_mode){
     if (isTelegramChatIdEmpty($chat_id)) {
