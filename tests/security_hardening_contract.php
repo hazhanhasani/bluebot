@@ -14,6 +14,7 @@ $botapi = $read('botapi.php');
 $functions = $read('function.php');
 $index = $read('index.php');
 $table = $read('table.php');
+$rootHtaccess = $read('.htaccess');
 $panelConfig = $read('panel/inc/config.php');
 $panelLogin = $read('panel/login.php');
 $vpnDefaultBotapi = $read('vpnbot/Default/botapi.php');
@@ -31,6 +32,8 @@ $checks = [
     [$index, '$telegramHeaderSecretAllowed', 'Main webhook migration must distinguish header authentication.'],
     [$table, "PHP_SAPI !== 'cli'", 'Database/schema bootstrap must not be web-accessible.'],
     [$table, 'bluebotSetMainWebhook($webhookSecret)', 'Database bootstrap must configure the protected webhook helper.'],
+    [$rootHtaccess, 'RewriteRule ^(?:db|src|tests|scripts|vendor)(?:/|$) - [F,L,NC]', 'Internal runtime directories must be blocked from direct HTTP access.'],
+    [$rootHtaccess, 'RewriteRule ^cronbot/(?!run\\.php$).*\\.php$ - [F,L,NC]', 'Individual cron jobs must not be directly web-triggerable.'],
     [$functions, 'function resolveInvitationOwnerId', 'Referral payload resolver is missing.'],
     [$functions, 'function isValidInvitationCode($setting, $fromId, $verifyStatus, ?string $inviterId = null): bool', 'Referral verification must require a resolved inviter.'],
     [$index, '$affiliatesid = resolveInvitationOwnerId($affiliatesPayload);', 'Referral payload must be resolved before verification.'],
