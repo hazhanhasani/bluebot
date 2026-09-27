@@ -6373,8 +6373,12 @@ if ($text == "/start" || $datain == "start" || $text == "start") {
         return;
     }
     $affiliates = select("affiliates", "*", null, null, "select");
-    $textaffiliates = "{$affiliates['description']}\n\n🔗 https://t.me/$usernamebot?start=$from_id";
-    if (strlen($affiliates['id_media']) >= 5) {
+    $affiliates = is_array($affiliates) ? $affiliates : [];
+
+    $textaffiliates = (string) ($affiliates['description'] ?? '')
+        . "\n\n🔗 https://t.me/" . (string) $usernamebot . "?start=" . (string) $from_id;
+
+    if (strlen((string) ($affiliates['id_media'] ?? '')) >= 5) {
         telegram('sendphoto', [
             'chat_id' => $from_id,
             'photo' => $affiliates['id_media'],
@@ -6382,12 +6386,29 @@ if ($text == "/start" || $datain == "start" || $text == "start") {
             'parse_mode' => "HTML",
         ]);
     }
-    $affiliatescommission = select("affiliates", "*", null, null, "select");
-    $sqlPanel = sprintf("SELECT COUNT(*) AS orders, SUM(price_product) AS total_price\n                 FROM invoice \n                 WHERE Status IN ('active', 'end_of_time', 'sendedwarn', 'send_on_hold') \n                 AND refral = '%s'\n                 AND name_product != '{$textbotlang['common']['labels']['testServiceName']}'", $from_id);
-    $stmt = $pdo->prepare($sqlPanel);
-    $stmt->execute();
+
+    $affiliatescommission = $affiliates;
+    $stmt = $pdo->prepare(
+        "SELECT COUNT(*) AS orders, COALESCE(SUM(price_product), 0) AS total_price
+         FROM invoice
+         WHERE Status IN ('active', 'end_of_time', 'sendedwarn', 'send_on_hold')
+           AND refral = :referral
+           AND name_product != :test_service"
+    );
+    $stmt->execute([
+        ':referral' => (string) $from_id,
+        ':test_service' => (string) ($textbotlang['common']['labels']['testServiceName'] ?? 'سرویس تست'),
+    ]);
+
     $inforefral = $stmt->fetch(PDO::FETCH_ASSOC);
-    $inforefral['total_price'] = ($inforefral['total_price'] * $setting['affiliatespercentage']) / 100;
+    $inforefral = is_array($inforefral)
+        ? $inforefral
+        : ['orders' => 0, 'total_price' => 0];
+
+    $affiliatePercentage = is_numeric($setting['affiliatespercentage'] ?? null)
+        ? (float) $setting['affiliatespercentage']
+        : 0.0;
+    $inforefral['total_price'] = ((float) ($inforefral['total_price'] ?? 0) * $affiliatePercentage) / 100;
     $keyboard_share = json_encode([
         'inline_keyboard' => [
             [
