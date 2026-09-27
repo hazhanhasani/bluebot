@@ -695,10 +695,16 @@ if ($text == $text_bot_var['btn_keyboard']['buy'] && $setting['active_step_note'
         } else {
             $marzban_list_get = $locationproduct;
             $eextraprice = $setting['pricevolume'];
-            $mainvolume = json_decode($marzban_list_get['mainvolume'], true);
-            $mainvolume = $mainvolume[$userbot['agent']];
-            $maxvolume = json_decode($marzban_list_get['maxvolume'], true);
-            $maxvolume = $maxvolume[$userbot['agent']];
+            $mainvolume = getStructuredSettingValue(
+        $marzban_list_get['mainvolume'] ?? '',
+        $userbot['agent'],
+        0
+    );
+            $maxvolume = getStructuredSettingValue(
+        $marzban_list_get['maxvolume'] ?? '',
+        $userbot['agent'],
+        0
+    );
             $textcustom = "📌 حجم درخواستی خود را ارسال کنید.
         🔔قیمت هر گیگ حجم $eextraprice تومان می باشد.
         🔔 حداقل حجم $mainvolume گیگابایت و حداکثر $maxvolume گیگابایت می باشد.";
@@ -716,10 +722,16 @@ if ($text == $text_bot_var['btn_keyboard']['buy'] && $setting['active_step_note'
     $userdate = bluebotJsonArray($user['Processing_value'] ?? '{}');
     $marzban_list_get = select("marzban_panel", "*", "name_panel", $userdate['name_panel'], "select");
     $eextraprice = $setting['pricevolume'];
-    $mainvolume = json_decode($marzban_list_get['mainvolume'], true);
-    $mainvolume = $mainvolume[$userbot['agent']];
-    $maxvolume = json_decode($marzban_list_get['maxvolume'], true);
-    $maxvolume = $maxvolume[$userbot['agent']];
+    $mainvolume = getStructuredSettingValue(
+        $marzban_list_get['mainvolume'] ?? '',
+        $userbot['agent'],
+        0
+    );
+    $maxvolume = getStructuredSettingValue(
+        $marzban_list_get['maxvolume'] ?? '',
+        $userbot['agent'],
+        0
+    );
     $textcustom = "📌 حجم درخواستی خود را ارسال کنید.
 🔔قیمت هر گیگ حجم $eextraprice تومان می باشد.
 🔔 حداقل حجم $mainvolume گیگابایت و حداکثر $maxvolume گیگابایت می باشد.";
@@ -821,14 +833,26 @@ if ($text == $text_bot_var['btn_keyboard']['buy'] && $setting['active_step_note'
 } elseif ($user['step'] == "gettimecustomvol") {
     $userdate = bluebotJsonArray($user['Processing_value'] ?? '{}');
     $marzban_list_get = select("marzban_panel", "*", "name_panel", $userdate['name_panel'], "select");
-    $mainvolume = json_decode($marzban_list_get['mainvolume'], true);
-    $mainvolume = $mainvolume[$userbot['agent']];
-    $maxvolume = json_decode($marzban_list_get['maxvolume'], true);
-    $maxvolume = $maxvolume[$userbot['agent']];
-    $maintime = json_decode($marzban_list_get['maintime'], true);
-    $maintime = $maintime[$userbot['agent']];
-    $maxtime = json_decode($marzban_list_get['maxtime'], true);
-    $maxtime = $maxtime[$userbot['agent']];
+    $mainvolume = getStructuredSettingValue(
+        $marzban_list_get['mainvolume'] ?? '',
+        $userbot['agent'],
+        0
+    );
+    $maxvolume = getStructuredSettingValue(
+        $marzban_list_get['maxvolume'] ?? '',
+        $userbot['agent'],
+        0
+    );
+    $maintime = getStructuredSettingValue(
+        $marzban_list_get['maintime'] ?? '',
+        $userbot['agent'],
+        0
+    );
+    $maxtime = getStructuredSettingValue(
+        $marzban_list_get['maxtime'] ?? '',
+        $userbot['agent'],
+        0
+    );
     if ($text > intval($maxvolume) || $text < intval($mainvolume)) {
         $texttime = "❌ حجم نامعتبر است.\n🔔 حداقل حجم $mainvolume گیگابایت و حداکثر $maxvolume گیگابایت می باشد";
         sendmessage($from_id, $texttime, $backuser, 'HTML');
@@ -1695,10 +1719,16 @@ $output
     $userdate = bluebotJsonArray($user['Processing_value'] ?? '{}');
     $marzban_list_get = select("marzban_panel", "*", "name_panel", $userdate['name_panel'], "select");
     $custompricevalue = $setting['pricevolume'];
-    $mainvolume = json_decode($marzban_list_get['mainvolume'], true);
-    $mainvolume = $mainvolume[$userbot['agent']];
-    $maxvolume = json_decode($marzban_list_get['maxvolume'], true);
-    $maxvolume = $maxvolume[$userbot['agent']];
+    $mainvolume = getStructuredSettingValue(
+        $marzban_list_get['mainvolume'] ?? '',
+        $userbot['agent'],
+        0
+    );
+    $maxvolume = getStructuredSettingValue(
+        $marzban_list_get['maxvolume'] ?? '',
+        $userbot['agent'],
+        0
+    );
     $textcustom = "📌 حجم درخواستی خود را ارسال کنید.
 🔔قیمت هر گیگ حجم $custompricevalue تومان می باشد.
 🔔 حداقل حجم $mainvolume گیگابایت و حداکثر $maxvolume گیگابایت می باشد.";
@@ -1711,14 +1741,26 @@ $output
     $stmt->execute([$userdate['id_invoice'], $from_id, $ApiToken]);
     $nameloc = $stmt->fetch(PDO::FETCH_ASSOC);
     $marzban_list_get = select("marzban_panel", "*", "name_panel", $nameloc['Service_location'], "select");
-    $mainvolume = json_decode($marzban_list_get['mainvolume'], true);
-    $mainvolume = $mainvolume[$userbot['agent']];
-    $maxvolume = json_decode($marzban_list_get['maxvolume'], true);
-    $maxvolume = $maxvolume[$userbot['agent']];
-    $maintime = json_decode($marzban_list_get['maintime'], true);
-    $maintime = $maintime[$userbot['agent']];
-    $maxtime = json_decode($marzban_list_get['maxtime'], true);
-    $maxtime = $maxtime[$userbot['agent']];
+    $mainvolume = getStructuredSettingValue(
+        $marzban_list_get['mainvolume'] ?? '',
+        $userbot['agent'],
+        0
+    );
+    $maxvolume = getStructuredSettingValue(
+        $marzban_list_get['maxvolume'] ?? '',
+        $userbot['agent'],
+        0
+    );
+    $maintime = getStructuredSettingValue(
+        $marzban_list_get['maintime'] ?? '',
+        $userbot['agent'],
+        0
+    );
+    $maxtime = getStructuredSettingValue(
+        $marzban_list_get['maxtime'] ?? '',
+        $userbot['agent'],
+        0
+    );
     if ($text > intval($maxvolume) || $text < intval($mainvolume)) {
         $texttime = "❌ حجم نامعتبر است.\n🔔 حداقل حجم $mainvolume گیگابایت و حداکثر $maxvolume گیگابایت می باشد";
         sendmessage($from_id, $texttime, $backuser, 'HTML');
@@ -1857,7 +1899,7 @@ $output
             "data_limit_reset" => "no_reset"
         );
     }
-    $productlist_name = json_decode(file_get_contents('product_name.json'), true);
+    $productlist_name = readJsonFileIfExists('product_name.json');
     $datafactor['name_product'] = empty($productlist_name[$datafactor['code_product']]) ? $datafactor['name_product'] : $productlist_name[$datafactor['code_product']];
     $botbalance = select("botsaz", "*", "bot_token", $ApiToken, "select");
     $userbotbalance = select("user", "*", "id", $botbalance['id_user'], "select");
