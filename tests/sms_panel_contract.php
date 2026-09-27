@@ -27,6 +27,7 @@ $farazDocs = $read('docs/FARAZSMS_PATTERNS.md');
 $langFa = $read('lang/fa.php');
 $privacy = $read('privacy.html');
 $terms = $read('terms.html');
+$enamadProxy = $read('enamad-logo.php');
 
 $checks = [
     [$tables, "'sms_settings'", 'sms_settings is not registered in the schema.'],
@@ -60,6 +61,10 @@ $checks = [
     [$bot, "سامانه فعال و قابل بررسی است", 'Public provider verification landing page is missing from root index.'],
     [$bot, "trustseal.enamad.ir", 'Enamad trust seal is missing from the public verification page.'],
     [$bot, "HuvEauyphrDRR17dhwoisDFNoMFMkDC0", 'Configured Enamad trust-seal code is missing.'],
+    [$bot, 'src="/enamad-logo.php"', 'Public landing must load the Enamad badge through the local resilient proxy.'],
+    [$enamadProxy, "trustseal.enamad.ir/logo.aspx", 'Enamad proxy must fetch the official trust-seal endpoint.'],
+    [$enamadProxy, "storage/cache", 'Enamad proxy must cache the official trust-seal image.'],
+    [$enamadProxy, "image/svg+xml", 'Enamad proxy must provide a visible fallback image.'],
     [$bot, "https://trustseal.enamad.ir", 'CSP must allow the Enamad trust-seal image.'],
     [$bot, "REQUEST_METHOD", 'Root index must distinguish public GET/HEAD requests from Telegram webhook POSTs.'],
     [$bot, "bot.blluepanel.ir", 'Provider verification fallback host must match the registered system.'],
