@@ -497,26 +497,30 @@ if ($text === "/debug") {
     $stmt = $pdo->prepare($sql);
     $stmt->execute();
     $extend_stat = $stmt->fetch(PDO::FETCH_ASSOC);
-    $count_extend = $extend_stat['count'];
-    $sum_extend = number_format($extend_stat['sum'], 0);
+    $extend_stat = is_array($extend_stat) ? $extend_stat : ['count' => 0, 'sum' => 0];
+    $count_extend = (int) ($extend_stat['count'] ?? 0);
+    $sum_extend = number_format((float) ($extend_stat['sum'] ?? 0), 0);
     $sql = "SELECT COUNT(*) AS count,SUM(price) as sum FROM service_other WHERE  time  >= NOW() - INTERVAL 1 HOUR AND type = 'extra_user'";
     $stmt = $pdo->prepare($sql);
     $stmt->execute();
     $extra_volume_stat = $stmt->fetch(PDO::FETCH_ASSOC);
-    $count_extra_volume = $extra_volume_stat['count'];
-    $sum_extra_volume = number_format($extra_volume_stat['sum'], 0);
+    $extra_volume_stat = is_array($extra_volume_stat) ? $extra_volume_stat : ['count' => 0, 'sum' => 0];
+    $count_extra_volume = (int) ($extra_volume_stat['count'] ?? 0);
+    $sum_extra_volume = number_format((float) ($extra_volume_stat['sum'] ?? 0), 0);
     $sql = "SELECT COUNT(*) AS count,SUM(price) as sum FROM service_other WHERE  time  >= NOW() - INTERVAL 1 HOUR AND type = 'extra_time_user'";
     $stmt = $pdo->prepare($sql);
     $stmt->execute();
     $extra_time_stat = $stmt->fetch(PDO::FETCH_ASSOC);
-    $count_extra_time = $extra_time_stat['count'];
-    $sum_extrat_time = number_format($extra_time_stat['sum'], 0);
+    $extra_time_stat = is_array($extra_time_stat) ? $extra_time_stat : ['count' => 0, 'sum' => 0];
+    $count_extra_time = (int) ($extra_time_stat['count'] ?? 0);
+    $sum_extrat_time = number_format((float) ($extra_time_stat['sum'] ?? 0), 0);
     $sql = "SELECT COUNT(*) AS count,SUM(price) as sum FROM service_other WHERE  time  >= NOW() - INTERVAL 1 HOUR AND type = 'change_location'";
     $stmt = $pdo->prepare($sql);
     $stmt->execute();
     $change_location_stat = $stmt->fetch(PDO::FETCH_ASSOC);
-    $count_change_location = $change_location_stat['count'];
-    $sum_change_location = number_format($change_location_stat['sum'], 0);
+    $change_location_stat = is_array($change_location_stat) ? $change_location_stat : ['count' => 0, 'sum' => 0];
+    $count_change_location = (int) ($change_location_stat['count'] ?? 0);
+    $sum_change_location = number_format((float) ($change_location_stat['sum'] ?? 0), 0);
     $stmt = $pdo->prepare("SELECT COUNT(*) FROM user WHERE  (register BETWEEN :requestedDate AND :requestedDateend)  AND register != 'none'");
     $stmt->bindParam(':requestedDate', $desired_date_time_start);
     $stmt->bindParam(':requestedDateend', $time_current);
@@ -537,12 +541,16 @@ if ($text === "/debug") {
     $statorder = $stmt->fetch(PDO::FETCH_ASSOC);
     $count_order = $statorder['count'];
     $sum_order = number_format($statorder['sum'], 0);
-    $sql = "SELECT COUNT(*) AS count FROM invoice WHERE (time_sell BETWEEN :requestedDate AND :requestedDateend)  AND name_product = '{$textbotlang['common']['labels']['testServiceName']}'";
+    $sql = "SELECT COUNT(*) FROM invoice
+            WHERE time_sell BETWEEN :requestedDate AND :requestedDateend
+              AND name_product = :testServiceName";
     $stmt = $pdo->prepare($sql);
-    $stmt->bindParam(':requestedDate', $start_time_timestamp);
-    $stmt->bindParam(':requestedDateend', $end_time_timestamp);
-    $stmt->execute();
-    $count_test = $stmt->fetch(PDO::FETCH_ASSOC)['count'];
+    $stmt->execute([
+        ':requestedDate' => $start_time_timestamp,
+        ':requestedDateend' => $end_time_timestamp,
+        ':testServiceName' => $testServiceName,
+    ]);
+    $count_test = (int) $stmt->fetchColumn();
     $sql = "SELECT COUNT(*) AS count,SUM(price) as sum FROM service_other WHERE  (time BETWEEN :requestedDate AND :requestedDateend) AND type = 'extend_user' AND status != 'unpaid'";
     $stmt = $pdo->prepare($sql);
     $stmt->bindParam(':requestedDate', $start_time);
@@ -777,18 +785,39 @@ if ($text === "/debug") {
         return;
     }
     $userdata = bluebotJsonArray($user['Processing_value'] ?? '');
-    $start_time = $userdata['start_time'] . "00:00:00";
-    $end_time = $text . "23:59:00";
+    $startDate = trim((string) ($userdata['start_time'] ?? ''));
+    if ($startDate === '' || !isValidDate($startDate)) {
+        sendmessage($from_id, $textbotlang['Admin']['stats']['invalidDate'], $backadmin, 'HTML');
+        step('home', $from_id);
+        return;
+    }
+
+    $start_time = $startDate . " 00:00:00";
+    $end_time = trim((string) $text) . " 23:59:59";
     $start_time_timestamp = strtotime($start_time);
     $end_time_timestamp = strtotime($end_time);
-    $sql = "SELECT COUNT(*) AS count,SUM(price_product) as sum FROM invoice WHERE (time_sell BETWEEN :requestedDate AND :requestedDateend)  AND  Status != 'Unpaid' AND name_product != '{$textbotlang['common']['labels']['testServiceName']}'";
+    if ($start_time_timestamp === false || $end_time_timestamp === false || $start_time_timestamp > $end_time_timestamp) {
+        sendmessage($from_id, $textbotlang['Admin']['stats']['invalidDate'], $backadmin, 'HTML');
+        step('home', $from_id);
+        return;
+    }
+
+    $testServiceName = (string) ($textbotlang['common']['labels']['testServiceName'] ?? 'test');
+    $sql = "SELECT COUNT(*) AS count, COALESCE(SUM(price_product), 0) AS sum
+            FROM invoice
+            WHERE time_sell BETWEEN :requestedDate AND :requestedDateend
+              AND Status != 'Unpaid'
+              AND name_product != :testServiceName";
     $stmt = $pdo->prepare($sql);
-    $stmt->bindParam(':requestedDate', $start_time_timestamp);
-    $stmt->bindParam(':requestedDateend', $end_time_timestamp);
-    $stmt->execute();
+    $stmt->execute([
+        ':requestedDate' => $start_time_timestamp,
+        ':requestedDateend' => $end_time_timestamp,
+        ':testServiceName' => $testServiceName,
+    ]);
     $statorder = $stmt->fetch(PDO::FETCH_ASSOC);
-    $count_order = $statorder['count'];
-    $sum_order = number_format($statorder['sum'], 0);
+    $statorder = is_array($statorder) ? $statorder : ['count' => 0, 'sum' => 0];
+    $count_order = (int) ($statorder['count'] ?? 0);
+    $sum_order = number_format((float) ($statorder['sum'] ?? 0), 0);
     $sql = "SELECT COUNT(*) AS count FROM invoice WHERE (time_sell BETWEEN :requestedDate AND :requestedDateend)  AND name_product = '{$textbotlang['common']['labels']['testServiceName']}'";
     $stmt = $pdo->prepare($sql);
     $stmt->bindParam(':requestedDate', $start_time_timestamp);
