@@ -14,8 +14,8 @@ if (in_array($bluePanelRequestMethod, ['GET', 'HEAD'], true)) {
     header('Content-Type: text/html; charset=UTF-8');
     header('Cache-Control: public, max-age=300');
     header('X-Content-Type-Options: nosniff');
-    header('Referrer-Policy: no-referrer');
-    header("Content-Security-Policy: default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'");
+    header('Referrer-Policy: origin-when-cross-origin');
+    header("Content-Security-Policy: default-src 'none'; style-src 'unsafe-inline'; img-src https://trustseal.enamad.ir; base-uri 'none'; form-action 'none'; frame-ancestors 'none'");
 
     if ($bluePanelRequestMethod === 'HEAD') {
         exit;
@@ -28,8 +28,8 @@ if (in_array($bluePanelRequestMethod, ['GET', 'HEAD'], true)) {
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width,initial-scale=1">
     <meta name="robots" content="index,follow">
-    <title>BlueVPN | بلو پنل</title>
-    <meta name="description" content="صفحه رسمی سامانه BlueVPN و بلو پنل برای احراز هویت و اطلاع‌رسانی پیامکی.">
+    <title>بلو پنل | سامانه رسمی خدمات مشتریان</title>
+    <meta name="description" content="صفحه رسمی بلو پنل برای احراز هویت، اطلاع‌رسانی و خدمات مشتریان.">
     <style>
         :root{color-scheme:light dark;font-family:Tahoma,Arial,sans-serif}
         *{box-sizing:border-box}
@@ -40,23 +40,27 @@ if (in_array($bluePanelRequestMethod, ['GET', 'HEAD'], true)) {
         .badge{display:inline-block;margin:14px 0;padding:7px 12px;border-radius:999px;background:#123b35;color:#8cf3c8;font-weight:700}
         p{line-height:2;margin:10px 0;color:#cedbeb}
         ul{line-height:2.1;margin:14px 0;padding-right:22px;color:#dce8f5}
+        .trust{margin-top:24px;padding:18px;border:1px solid #24496f;border-radius:18px;background:#0a1d33;display:flex;align-items:center;justify-content:space-between;gap:18px;flex-wrap:wrap}
+        .trust strong{display:block;margin-bottom:6px}
+        .trust span{font-size:14px;color:#9fb4ca;line-height:1.9}
+        .trust a{display:inline-flex;background:#fff;border-radius:14px;padding:10px;line-height:0}
+        .trust img{width:96px;height:auto;display:block}
         .foot{margin-top:22px;padding-top:18px;border-top:1px solid #24496f;font-size:14px;color:#91a9c2}
     </style>
 </head>
 <body>
 <main>
-    <h1 class="brand">BlueVPN | بلو پنل</h1>
+    <h1 class="brand">بلو پنل</h1>
     <div class="domain">{{HOST}}</div>
     <div class="badge">سامانه فعال و قابل بررسی است</div>
 
     <p>
-        این دامنه، سامانه رسمی «بلو پنل» برای ارائه خدمات مشتریان BlueVPN است.
-        پیامک‌های این سامانه برای احراز هویت و اطلاع‌رسانی مرتبط با خدمات کاربران ارسال می‌شوند.
+        این دامنه، سامانه رسمی «بلو پنل» برای ارائه خدمات دیجیتال، احراز هویت و اطلاع‌رسانی به کاربران است.
     </p>
 
     <ul>
         <li>ارسال کد ورود و تأیید شماره موبایل</li>
-        <li>اطلاع‌رسانی فعال‌سازی، تمدید و وضعیت سرویس</li>
+        <li>اطلاع‌رسانی وضعیت و تمدید خدمات</li>
         <li>اعلان‌های پرداخت و کیف پول</li>
     </ul>
 
@@ -64,6 +68,16 @@ if (in_array($bluePanelRequestMethod, ['GET', 'HEAD'], true)) {
         نشانی رسمی سامانه:
         <span class="domain">https://{{HOST}}/</span>
     </p>
+
+    <section class="trust" aria-label="نماد اعتماد الکترونیکی">
+        <div>
+            <strong>نماد اعتماد الکترونیکی</strong>
+            <span>برای مشاهده و بررسی اعتبار نماد، روی نشان مقابل بزنید.</span>
+        </div>
+        <a referrerpolicy="origin" target="_blank" rel="noopener noreferrer" href="https://trustseal.enamad.ir/?id=748781&Code=HuvEauyphrDRR17dhwoisDFNoMFMkDC0">
+            <img referrerpolicy="origin" src="https://trustseal.enamad.ir/logo.aspx?id=748781&Code=HuvEauyphrDRR17dhwoisDFNoMFMkDC0" alt="نماد اعتماد الکترونیکی بلو پنل" code="HuvEauyphrDRR17dhwoisDFNoMFMkDC0">
+        </a>
+    </section>
 
     <div class="foot">
         صفحه عمومی بررسی سامانه — بدون نیاز به ورود یا احراز هویت
