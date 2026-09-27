@@ -165,7 +165,8 @@ $message_id = $update["message"]["message_id"] ?? $update["callback_query"]["mes
 $photo = $update["message"]["photo"] ?? 0;
 $document = $update["message"]["document"] ?? 0;
 $fileid = $update["message"]["document"]["file_id"] ?? 0;
-$photoid = $photo ? end($photo)["file_id"] : '';
+$lastPhoto = is_array($photo) && $photo !== [] ? end($photo) : false;
+$photoid = is_array($lastPhoto) ? (string) ($lastPhoto['file_id'] ?? '') : '';
 $caption = $update["message"]["caption"] ?? '';
 $video = $update["message"]["video"] ?? 0;
 $videoid = $video ? $video["file_id"] : 0;
