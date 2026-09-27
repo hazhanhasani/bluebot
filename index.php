@@ -1545,7 +1545,11 @@ if ($text == "/start" || $datain == "start" || $text == "start") {
     return;
 } elseif (preg_match('/subscriptionurl_(\w+)/', $datain, $dataget) || strpos($text, "/sub ") !== false) {
     if (!empty($text) && $text[0] == "/") {
-        $id_invoice = explode(' ', $text)[1];
+        $commandParts = preg_split('/\s+/', trim((string) $text), 2);
+        $id_invoice = trim((string) ($commandParts[1] ?? ''));
+        if ($id_invoice === '') {
+            return;
+        }
         $nameloc = select("invoice", "*", "username", $id_invoice, "select");
         if (!$nameloc || $nameloc['id_user'] != $from_id) {
             $nameloc = false;
@@ -1639,7 +1643,12 @@ if ($text == "/start" || $datain == "start" || $text == "start") {
     sendmessage($from_id, $textbotlang['users']['status']['deletedSuccess'], null, 'html');
 } elseif (preg_match('/config_(\w+)/', $datain, $dataget) || strpos($text, "/link ") !== false) {
     if (!empty($text) && $text[0] == "/") {
-        $id_invoice = explode(' ', $text)[1];
+        $commandParts = preg_split('/\s+/', trim((string) $text), 2);
+        $id_invoice = trim((string) ($commandParts[1] ?? ''));
+        if ($id_invoice === '') {
+            sendmessage($from_id, $textbotlang['users']['status']['userNotFound'], null, 'html');
+            return;
+        }
         $nameloc = select("invoice", "*", "username", $id_invoice, "select");
         if (!$nameloc || $nameloc['id_user'] != $from_id) {
             $nameloc = false;
@@ -3824,11 +3833,21 @@ if ($text == "/start" || $datain == "start" || $text == "start") {
         return;
     #-----------------------#
     if (($locationproduct)->rowCount() == 1) {
-        $location = ($locationproduct)->fetch(PDO::FETCH_ASSOC)['name_panel'];
+        $locationRow = $locationproduct->fetch(PDO::FETCH_ASSOC);
+        $location = is_array($locationRow) ? trim((string) ($locationRow['name_panel'] ?? '')) : '';
+        if ($location === '') {
+            sendmessage($from_id, $textbotlang['users']['sell']['nullPanel'], null, 'HTML');
+            return;
+        }
+
         $locationproduct = select("marzban_panel", "*", "name_panel", $location, "select");
-        if ($locationproduct['hide_user'] != null) {
-            $list_user = json_decode($locationproduct['hide_user'], true);
-            if (in_array($from_id, $list_user)) {
+        if (!is_array($locationproduct)) {
+            sendmessage($from_id, $textbotlang['users']['sell']['nullPanel'], null, 'HTML');
+            return;
+        }
+        if (($locationproduct['hide_user'] ?? null) != null) {
+            $list_user = bluebotJsonArray($locationproduct['hide_user'] ?? '[]');
+            if (in_array((string) $from_id, array_map('strval', $list_user), true)) {
                 sendmessage($from_id, $textbotlang['users']['sell']['nullPanel'], null, 'HTML');
                 return;
             }
@@ -3880,7 +3899,7 @@ if ($text == "/start" || $datain == "start" || $text == "start") {
                 $query = "SELECT * FROM product WHERE (Location = :loc OR Location = '/all') AND agent = :agent";
                 $queryParams = [':loc' => $location, ':agent' => $user['agent']];
                 $marzban_list_get = select("marzban_panel", "*", "name_panel", $location, "select");
-                $statuscustomvolume = json_decode($marzban_list_get['customvolume'], true)[$user['agent']];
+                $statuscustomvolume = getStructuredSettingValue($marzban_list_get['customvolume'] ?? '', $user['agent'], null);
                 if (in_array(usernameMethodKey($marzban_list_get['MethodUsername']), ['customUsername', 'customUsernameRandom'], true)) {
                     $datakeyboard = "prodcutservices_";
                 } else {
@@ -3906,7 +3925,7 @@ if ($text == "/start" || $datain == "start" || $text == "start") {
             }
             $marzban_list_get = select("marzban_panel", "*", "name_panel", $location, "select");
             $statuscustom = false;
-            $statuscustomvolume = json_decode($marzban_list_get['customvolume'], true)[$user['agent']];
+            $statuscustomvolume = getStructuredSettingValue($marzban_list_get['customvolume'] ?? '', $user['agent'], null);
             if ($statuscustomvolume == "1" && $marzban_list_get['type'] != "Manualsale")
                 $statuscustom = true;
             if ($statusnote) {
@@ -3975,7 +3994,7 @@ if ($text == "/start" || $datain == "start" || $text == "start") {
         } else {
             $query = "SELECT * FROM product WHERE (Location = :loc OR Location = '/all') AND agent = :agent";
             $queryParams = [':loc' => $location, ':agent' => $user['agent']];
-            $statuscustomvolume = json_decode($marzban_list_get['customvolume'], true)[$user['agent']];
+            $statuscustomvolume = getStructuredSettingValue($marzban_list_get['customvolume'] ?? '', $user['agent'], null);
             if (in_array(usernameMethodKey($marzban_list_get['MethodUsername']), ['customUsername', 'customUsernameRandom'], true)) {
                 $datakeyboard = "prodcutservices_";
             } else {
@@ -4000,7 +4019,7 @@ if ($text == "/start" || $datain == "start" || $text == "start") {
             return;
         }
         $statuscustom = false;
-        $statuscustomvolume = json_decode($marzban_list_get['customvolume'], true)[$user['agent']];
+        $statuscustomvolume = getStructuredSettingValue($marzban_list_get['customvolume'] ?? '', $user['agent'], null);
         if ($statuscustomvolume == "1" && $marzban_list_get['type'] != "Manualsale")
             $statuscustom = true;
         $monthkeyboard = keyboardTimeCategory($marzban_list_get['name_panel'], $user['agent'], "productmonth_", "buybacktow", $statuscustom, false);
@@ -4018,7 +4037,7 @@ if ($text == "/start" || $datain == "start" || $text == "start") {
         $queryParams = [':loc' => $userdate['name_panel'], ':agent' => $user['agent'], ':category' => $categorynames];
     }
     $marzban_list_get = select("marzban_panel", "*", "name_panel", $userdate['name_panel'], "select");
-    $statuscustomvolume = json_decode($marzban_list_get['customvolume'], true)[$user['agent']];
+    $statuscustomvolume = getStructuredSettingValue($marzban_list_get['customvolume'] ?? '', $user['agent'], null);
     if (in_array(usernameMethodKey($marzban_list_get['MethodUsername']), ['customUsername', 'customUsernameRandom'], true)) {
         $datakeyboard = "prodcutservices_";
     } else {
@@ -4060,7 +4079,7 @@ if ($text == "/start" || $datain == "start" || $text == "start") {
         $query = "SELECT * FROM product WHERE (Location = :loc OR Location = '/all') AND agent = :agent AND Service_time = :stime";
         $queryParams = [':loc' => $userdate['name_panel'], ':agent' => $user['agent'], ':stime' => $monthenumber];
         $marzban_list_get = select("marzban_panel", "*", "name_panel", $userdate['name_panel'], "select");
-        $statuscustomvolume = json_decode($marzban_list_get['customvolume'] ?? '[]', true)[$user['agent']] ?? null;
+        $statuscustomvolume = getStructuredSettingValue($marzban_list_get['customvolume'] ?? '', $user['agent'], null);
         if (in_array(usernameMethodKey($marzban_list_get['MethodUsername']), ['customUsername', 'customUsernameRandom'], true)) {
             $datakeyboard = "prodcutservices_";
         } else {
@@ -4701,7 +4720,7 @@ if ($text == "/start" || $datain == "start" || $text == "start") {
         return;
     }
     update("user", "Processing_value", $location, "id", $from_id);
-    $statuscustomvolume = json_decode($marzban_list_get['customvolume'], true)[$user['agent']];
+    $statuscustomvolume = getStructuredSettingValue($marzban_list_get['customvolume'] ?? '', $user['agent'], null);
     if (in_array(usernameMethodKey($marzban_list_get['MethodUsername']), ['customUsername', 'customUsernameRandom'], true)) {
         $datakeyboard = "prodcutservicesom_";
     } else {
@@ -7146,7 +7165,7 @@ if ($text == "/start" || $datain == "start" || $text == "start") {
         step('home', $from_id);
         return;
     }
-    $statuscustomvolume = json_decode($marzban_list_get['customvolume'] ?? '[]', true)[$user['agent']] ?? null;
+    $statuscustomvolume = getStructuredSettingValue($marzban_list_get['customvolume'] ?? '', $user['agent'], null);
     if (in_array(usernameMethodKey($marzban_list_get['MethodUsername']), ['customUsername', 'customUsernameRandom'], true)) {
         $datakeyboard = "prodcutservicesom_";
     } else {
