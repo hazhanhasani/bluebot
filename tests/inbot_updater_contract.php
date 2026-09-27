@@ -61,7 +61,10 @@ $installer = @file_get_contents($root . '/install.sh');
 if ($installer !== false && preg_match('/curl[^\n]*https?:\/\/[^\n]*\/table\.php/', $installer)) {
     $failures[] = 'Installer/updater still exposes database migration through public HTTP.';
 }
-$legacyDirectWebhook = 'curl -F "url=https://' . '
+$legacyDirectWebhook = 'curl -F "url=https://${DOMAIN_NAME}/index.php"';
+if ($installer !== false && str_contains($installer, $legacyDirectWebhook)) {
+    $failures[] = 'Migration still creates an unprotected Telegram webhook directly.';
+}
 if ($installer === false || !str_contains($installer, "php scripts/repair-webhook.php")) {
     $failures[] = 'Updater does not refresh the main Telegram webhook after update.';
 }
