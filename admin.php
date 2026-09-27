@@ -205,7 +205,7 @@ if ($text === "/debug") {
         Editmessagetext(
             $from_id,
             $message_id,
-            "🚀 <b>بروزرسانی در صف قرار گرفت</b>\n\nWorker امن بلو پنل حداکثر تا یک دقیقه دیگر عملیات را شروع می‌کند و نتیجه را همین‌جا در تلگرام اعلام می‌کند.",
+            "🚀 <b>بروزرسانی بلو پنل در صف قرار گرفت</b>\n\nWorker امن بلو پنل حداکثر تا یک دقیقه دیگر عملیات را شروع می‌کند و نتیجه را همین‌جا در تلگرام اعلام می‌کند.",
             json_encode(['inline_keyboard' => [[['text' => '🔍 وضعیت', 'callback_data' => 'bluebot_update_status']]]], JSON_UNESCAPED_UNICODE),
             'HTML'
         );
