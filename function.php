@@ -3333,6 +3333,46 @@ function isValidInvitationCode($setting, $fromId, $verifyStatus, ?string $invite
     update("user", "cardpayment", "1", "id", $fromId);
     return true;
 }
+function normalizeZarinpalCallbackDomain($value): ?string
+{
+    $value = strtolower(trim((string) $value));
+    if ($value === '' || $value === '0') {
+        return '0';
+    }
+
+    $value = preg_replace('#^https?://#i', '', $value);
+    $value = rtrim((string) $value, '/');
+    if ($value === '' || str_contains($value, '/') || str_contains($value, '?') || str_contains($value, '#')) {
+        return null;
+    }
+
+    if (!preg_match('/^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/', $value)) {
+        return null;
+    }
+
+    return $value;
+}
+
+function zarinpalCallbackUrl(): ?string
+{
+    global $domainhosts;
+
+    $configured = normalizeZarinpalCallbackDomain(getPaySettingValue('zarinpal_callback_domain', '0'));
+    if ($configured === null) {
+        return null;
+    }
+
+    if ($configured === '0') {
+        $configured = normalizeZarinpalCallbackDomain($domainhosts);
+    }
+
+    if ($configured === null || $configured === '0') {
+        return null;
+    }
+
+    return 'https://' . $configured . '/payment/zarinpal.php';
+}
+
 function createPayZarinpal($price, $order_id)
 {
     global $domainhosts;
@@ -3345,13 +3385,11 @@ function createPayZarinpal($price, $order_id)
         ];
     }
 
-    $domain = trim((string) $domainhosts);
-    $domain = preg_replace('#^https?://#i', '', $domain);
-    $domain = rtrim((string) $domain, '/');
-    if ($domain === '' || $domain === '{domain_name}') {
+    $callbackUrl = zarinpalCallbackUrl();
+    if ($callbackUrl === null) {
         return [
             'data' => [],
-            'errors' => ['code' => 0, 'message' => 'Payment callback domain is not configured'],
+            'errors' => ['code' => 0, 'message' => 'Payment callback domain is not configured or invalid'],
         ];
     }
 
@@ -3368,7 +3406,7 @@ function createPayZarinpal($price, $order_id)
         'amount' => $amount,
         'currency' => 'IRT',
         'description' => 'BlueBot order ' . (string) $order_id,
-        'callback_url' => 'https://' . $domain . '/payment/zarinpal.php',
+        'callback_url' => $callbackUrl,
     ];
     $jsonPayload = json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
     if (!is_string($jsonPayload)) {
