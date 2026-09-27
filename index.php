@@ -4,15 +4,15 @@ date_default_timezone_set('Asia/Tehran');
 ini_set('default_charset', 'UTF-8');
 ini_set('error_log', 'error_log');
 ini_set('memory_limit', '512M');
-require_once 'config.php';
-require_once 'botapi.php';
+require_once __DIR__ . '/config.php';
+require_once __DIR__ . '/botapi.php';
 require_once __DIR__ . '/src/Support/JalaliDate.php';
 require_once __DIR__ . '/src/Support/MiniApp.php';
-require_once 'function.php';
+require_once __DIR__ . '/function.php';
 bluebotEnsureInstallerRemoved();
-require_once 'keyboard.php';
-require_once 'vendor/autoload.php';
-require_once 'panels.php';
+require_once __DIR__ . '/keyboard.php';
+require_once __DIR__ . '/vendor/autoload.php';
+require_once __DIR__ . '/panels.php';
 $textbotlang = languagechange();
 $text = restoreCustomEmojiLabel($text);
 #-----------telegram_webhook_auth------------#
@@ -76,9 +76,15 @@ if (isset($chat_member))
     return;
 $first_name = sanitizeUserName($first_name);
 $setting = select("setting", "*");
+$setting = is_array($setting) ? $setting : [];
 $ManagePanel = new ManagePanel();
-$keyboard_check = json_decode($setting['keyboardmain'], true);
-if (is_array($keyboard_check) && preg_match('/[\x{600}-\x{6FF}\x{FB50}-\x{FDFF}]/u', $keyboard_check['keyboard'][0][0]['text'])) {
+
+$keyboard_check = json_decode((string) ($setting['keyboardmain'] ?? ''), true);
+$firstKeyboardText = is_array($keyboard_check)
+    ? (string) ($keyboard_check['keyboard'][0][0]['text'] ?? '')
+    : '';
+if ($firstKeyboardText !== ''
+    && preg_match('/[\x{600}-\x{6FF}\x{FB50}-\x{FDFF}]/u', $firstKeyboardText)) {
     $keyboardmain = '{"keyboard":[[{"text":"text_sell"},{"text":"text_extend"}],[{"text":"text_usertest"},{"text":"text_wheel_luck"}],[{"text":"text_Purchased_services"},{"text":"accountwallet"}],[{"text":"text_affiliates"},{"text":"text_Tariff_list"}],[{"text":"text_support"},{"text":"text_help"}],[{"text":"text_agentpanel"},{"text":"text_requestagent"}]]}';
     update("setting", "keyboardmain", $keyboardmain, null, null);
 }
@@ -87,7 +93,7 @@ if (intval($from_id) == 0)
     return;
 #-------------Variable----------#
 $otherreport = selectValue("topicid", "idreport", "report", "otherreport", null);
-if ($setting['statusnewuser'] == "onnewuser" && !rowExists("user", "id", $from_id)) {
+if (($setting['statusnewuser'] ?? '') === "onnewuser" && !rowExists("user", "id", $from_id)) {
     $Response = json_encode([
         'inline_keyboard' => [
             [
@@ -96,7 +102,7 @@ if ($setting['statusnewuser'] == "onnewuser" && !rowExists("user", "id", $from_i
         ]
     ]);
     $newuser = sprintf($textbotlang['Admin']['reportgroup']['newUser'], $first_name, $username, "<a href = \"tg://user?id=$from_id\">$from_id</a>");
-    if (strlen($setting['Channel_Report']) > 0) {
+    if (strlen((string) ($setting['Channel_Report'] ?? '')) > 0) {
         telegram('sendmessage', [
             'chat_id' => $setting['Channel_Report'],
             'message_thread_id' => $otherreport,
@@ -108,7 +114,7 @@ if ($setting['statusnewuser'] == "onnewuser" && !rowExists("user", "id", $from_i
 }
 $date = time();
 if ($from_id != 0) {
-    if ($setting['verifystart'] != "onverify") {
+    if (($setting['verifystart'] ?? '') !== "onverify") {
         $valueverify = 1;
     } else {
         $valueverify = 0;
@@ -116,9 +122,11 @@ if ($from_id != 0) {
     $randomString = bin2hex(random_bytes(6));
     $stmt = $pdo->prepare("INSERT IGNORE INTO user (id , step,limit_usertest,User_Status,number,Balance,pagenumber,username,agent,message_count,last_message_time,affiliates,affiliatescount,cardpayment,number_username,namecustom,register,verify,codeInvitation,pricediscount,maxbuyagent,joinchannel,score,status_cron) VALUES (:from_id, 'none',:limit_usertest_all,'Active','none','0','1',:username,'f','0','0','0','0',:showcard,'100','none',:date,:verifycode,:codeInvitation,'0','0','0','0','1')");
     $stmt->bindParam(':from_id', $from_id);
-    $stmt->bindParam(':limit_usertest_all', $setting['limit_usertest_all']);
+    $limitUserTestAll = (string) ($setting['limit_usertest_all'] ?? '0');
+    $stmt->bindParam(':limit_usertest_all', $limitUserTestAll);
     $stmt->bindParam(':username', $username);
-    $stmt->bindParam(':showcard', $setting['showcard']);
+    $showCard = (string) ($setting['showcard'] ?? '0');
+    $stmt->bindParam(':showcard', $showCard);
     $stmt->bindParam(':date', $date);
     $stmt->bindParam(':verifycode', $valueverify);
     $stmt->bindParam(':codeInvitation', $randomString);
@@ -7314,6 +7322,6 @@ if ($text == "/start" || $datain == "start" || $text == "start") {
     sendmessage($from_id, $textbotlang['users']['invalidCommand'], $keyboard, 'HTML');
 }
 if (in_array($from_id, $admin_ids))
-    require_once 'admin.php';
+    require_once __DIR__ . '/admin.php';
 
 $pdo = null;
