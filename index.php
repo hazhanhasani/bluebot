@@ -1,5 +1,74 @@
 <?php
 
+// Public verification surface for provider reviewers and normal browser visits.
+// Telegram webhooks use POST, so serving GET/HEAD here does not interfere with bot updates.
+$bluePanelRequestMethod = strtoupper((string) ($_SERVER['REQUEST_METHOD'] ?? ''));
+if (in_array($bluePanelRequestMethod, ['GET', 'HEAD'], true)) {
+    http_response_code(200);
+    header('Content-Type: text/html; charset=UTF-8');
+    header('Cache-Control: public, max-age=300');
+    header('X-Content-Type-Options: nosniff');
+    header('Referrer-Policy: no-referrer');
+    header("Content-Security-Policy: default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'");
+
+    if ($bluePanelRequestMethod === 'HEAD') {
+        exit;
+    }
+
+    echo <<<'HTML'
+<!doctype html>
+<html lang="fa" dir="rtl">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <meta name="robots" content="index,follow">
+    <title>BlueVPN | بلو پنل</title>
+    <meta name="description" content="صفحه رسمی سامانه BlueVPN و بلو پنل برای احراز هویت و اطلاع‌رسانی پیامکی.">
+    <style>
+        :root{color-scheme:light dark;font-family:Tahoma,Arial,sans-serif}
+        *{box-sizing:border-box}
+        body{margin:0;min-height:100vh;display:grid;place-items:center;background:#07172a;color:#eef6ff;padding:24px}
+        main{width:min(720px,100%);background:#0d223b;border:1px solid #24496f;border-radius:24px;padding:32px;box-shadow:0 24px 80px rgba(0,0,0,.28)}
+        .brand{font-size:28px;font-weight:800;margin:0 0 8px}
+        .domain{direction:ltr;unicode-bidi:isolate;color:#8ec5ff;font-weight:700}
+        .badge{display:inline-block;margin:14px 0;padding:7px 12px;border-radius:999px;background:#123b35;color:#8cf3c8;font-weight:700}
+        p{line-height:2;margin:10px 0;color:#cedbeb}
+        ul{line-height:2.1;margin:14px 0;padding-right:22px;color:#dce8f5}
+        .foot{margin-top:22px;padding-top:18px;border-top:1px solid #24496f;font-size:14px;color:#91a9c2}
+    </style>
+</head>
+<body>
+<main>
+    <h1 class="brand">BlueVPN | بلو پنل</h1>
+    <div class="domain">bot.bluepanel.ir</div>
+    <div class="badge">سامانه فعال و قابل بررسی است</div>
+
+    <p>
+        این دامنه، سامانه رسمی «بلو پنل» برای ارائه خدمات مشتریان BlueVPN است.
+        پیامک‌های این سامانه برای احراز هویت و اطلاع‌رسانی مرتبط با خدمات کاربران ارسال می‌شوند.
+    </p>
+
+    <ul>
+        <li>ارسال کد ورود و تأیید شماره موبایل</li>
+        <li>اطلاع‌رسانی فعال‌سازی، تمدید و وضعیت سرویس</li>
+        <li>اعلان‌های پرداخت و کیف پول</li>
+    </ul>
+
+    <p>
+        نشانی رسمی سامانه:
+        <span class="domain">https://bot.bluepanel.ir/</span>
+    </p>
+
+    <div class="foot">
+        صفحه عمومی بررسی سامانه — بدون نیاز به ورود یا احراز هویت
+    </div>
+</main>
+</body>
+</html>
+HTML;
+    exit;
+}
+
 date_default_timezone_set('Asia/Tehran');
 ini_set('default_charset', 'UTF-8');
 ini_set('error_log', 'error_log');
