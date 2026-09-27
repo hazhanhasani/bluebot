@@ -2509,13 +2509,16 @@ elseif ($datain == "systemsms") {
     step('show_info', $from_id);
 } elseif ($user['step'] == "show_info" || preg_match('/manageuser_(\w+)/', $datain, $dataget) || preg_match('/updateinfouser_(\w+)/', $datain, $dataget) || strpos($text, "/user ") !== false || strpos($text, "/id ") !== false) {
     if ($user['step'] == "show_info") {
-        $id_user = $text;
-    } elseif (explode(" ", $text)[0] == "/user") {
-        $id_user = explode(" ", $text)[1];
-    } elseif (explode(" ", $text)[0] == "/id") {
-        $id_user = explode(" ", $text)[1];
+        $id_user = trim((string) $text);
+    } elseif (preg_match('/^\/(?:user|id)\s+([^\s]+)$/', trim((string) $text), $commandMatch)) {
+        $id_user = trim((string) ($commandMatch[1] ?? ''));
     } else {
-        $id_user = $dataget[1];
+        $id_user = trim((string) ($dataget[1] ?? ''));
+    }
+
+    if ($id_user === '') {
+        sendmessage($from_id, $textbotlang['Admin']['notUser'], null, 'HTML');
+        return;
     }
     if (!rowExists("user", "id", $id_user)) {
         sendmessage($from_id, $textbotlang['Admin']['notUser'], null, 'HTML');
@@ -2946,7 +2949,7 @@ elseif ($datain == "systemsms") {
         } elseif (isset($status_server['error']) && $status_server['error'] != 200) {
             sendmessage($from_id, panelErrorText($status_server['error']), $optionX_ui_single, 'HTML');
         } else {
-            $status_server = json_decode($status_server['body'], true);
+            $status_server = bluebotJsonArray($status_server['body'] ?? '');
             function percent($current, $total)
             {
                 if ($total <= 0)
@@ -3008,7 +3011,7 @@ elseif ($datain == "systemsms") {
             $text_marzban = panelErrorText($System_Stats['error']);
             sendmessage($from_id, $text_marzban, $optionhiddfy, 'HTML');
         } else {
-            $System_Stats = json_decode($System_Stats['body'], true);
+            $System_Stats = bluebotJsonArray($System_Stats['body'] ?? '');
             if (isset($System_Stats['stats'])) {
                 $mem_total = round($System_Stats['stats']['system']['ram_total'], 2);
                 $mem_used = round($System_Stats['stats']['system']['ram_used'], 2);
@@ -3037,7 +3040,7 @@ elseif ($datain == "systemsms") {
                 sendmessage($from_id, $text_marzban, $optionMarzban, 'HTML');
                 return;
             }
-            $System_Stats = json_decode($System_Stats['body'], true);
+            $System_Stats = bluebotJsonArray($System_Stats['body'] ?? '');
             $active_users = $System_Stats['active'];
             $total_user = $System_Stats['total'];
             $__q43 = $pdo->prepare("SELECT COUNT(*) FROM invoice WHERE (status = 'active' OR status = 'end_of_time'  OR status = 'end_of_volume' OR status = 'sendedwarn' OR Status = 'send_on_hold') AND Service_location = ? AND name_product != ?");
@@ -4503,7 +4506,7 @@ elseif ($datain == "systemsms") {
         return;
     }
     step('home', $from_id);
-    $balancemaax = json_decode(getPaySettingValue('minbalance'), true);
+    $balancemaax = bluebotJsonArray(getPaySettingValue('minbalance', '{}'));
     $balancemaax[$text] = $user['Processing_value'];
     $balancemaax = json_encode($balancemaax);
     sendmessage($from_id, $textbotlang['Admin']['SettingnowPayment']['saveApi'], $keyboardadmin, 'HTML');
@@ -4528,7 +4531,7 @@ elseif ($datain == "systemsms") {
         return;
     }
     step('home', $from_id);
-    $balancemaax = json_decode(getPaySettingValue('maxbalance'), true);
+    $balancemaax = bluebotJsonArray(getPaySettingValue('maxbalance', '{}'));
     $balancemaax[$text] = $user['Processing_value'];
     $balancemaax = json_encode($balancemaax);
     sendmessage($from_id, $textbotlang['Admin']['SettingnowPayment']['saveApi'], $keyboardadmin, 'HTML');
@@ -5936,7 +5939,7 @@ if ($datain == "settimecornremove" && $adminrulecheck['rule'] == "administrator"
         sendmessage($from_id, sprintf($textbotlang['Admin']['errorCode'], $nodes['status']), null, 'HTML');
         return;
     }
-    $nodes = json_decode($nodes['body'], true);
+    $nodes = bluebotJsonArray($nodes['body'] ?? '');
     $nodes = $nodes['nodes'] ?? $nodes;
     if (count($nodes) == 0) {
         sendmessage($from_id, $textbotlang['Admin']['node']['settingsUnavailable'], null, 'HTML');
@@ -5972,7 +5975,7 @@ if ($datain == "settimecornremove" && $adminrulecheck['rule'] == "administrator"
         sendmessage($from_id, sprintf($textbotlang['Admin']['errorCode2'], $node['status']), null, 'HTML');
         return;
     }
-    $node = json_decode($node['body'], true);
+    $node = bluebotJsonArray($node['body'] ?? '');
     if (isset($node['uplink'])) {
         $nodeusage = ['uplink' => $node['lifetime_uplink'] ?? $node['uplink'], 'downlink' => $node['lifetime_downlink'] ?? $node['downlink']];
     } else {
@@ -5985,7 +5988,7 @@ if ($datain == "settimecornremove" && $adminrulecheck['rule'] == "administrator"
             sendmessage($from_id, sprintf($textbotlang['Admin']['errorCode3'], $nodeusage['status']), null, 'HTML');
             return;
         }
-        $nodeusage = json_decode($nodeusage['body'], true);
+        $nodeusage = bluebotJsonArray($nodeusage['body'] ?? '');
         foreach ($nodeusage['usages'] as $nodeusages) {
             if ($nodeusages['node_id'] == $nodeid) {
                 $nodeusage = $nodeusages;
@@ -6952,7 +6955,7 @@ if ($datain == "settimecornremove" && $adminrulecheck['rule'] == "administrator"
     $userdata = bluebotJsonArray($user['Processing_value'] ?? '');
     $typepanel = select("marzban_panel", "*", "name_panel", $userdata['namepanel'], "select");
     outtypepanel($typepanel['type'], $textbotlang['Admin']['managepanel']['savedData']);
-    $eextraprice = json_decode($typepanel['mainvolume'], true);
+    $eextraprice = bluebotJsonArray($typepanel['mainvolume'] ?? '{}');
     $eextraprice[$text] = $userdata['mainvalume'];
     $eextraprice = json_encode($eextraprice);
     update("marzban_panel", "mainvolume", $eextraprice, "name_panel", $userdata['namepanel']);
@@ -6979,7 +6982,7 @@ if ($datain == "settimecornremove" && $adminrulecheck['rule'] == "administrator"
     $userdata = bluebotJsonArray($user['Processing_value'] ?? '');
     $typepanel = select("marzban_panel", "*", "name_panel", $userdata['namepanel'], "select");
     outtypepanel($typepanel['type'], $textbotlang['Admin']['managepanel']['savedData']);
-    $eextraprice = json_decode($typepanel['maxvolume'], true);
+    $eextraprice = bluebotJsonArray($typepanel['maxvolume'] ?? '{}');
     $eextraprice[$text] = $userdata['maxvolume'];
     $eextraprice = json_encode($eextraprice);
     update("marzban_panel", "maxvolume", $eextraprice, "name_panel", $userdata['namepanel']);
@@ -7006,7 +7009,7 @@ if ($datain == "settimecornremove" && $adminrulecheck['rule'] == "administrator"
     $userdata = bluebotJsonArray($user['Processing_value'] ?? '');
     $typepanel = select("marzban_panel", "*", "name_panel", $userdata['namepanel'], "select");
     outtypepanel($typepanel['type'], $textbotlang['Admin']['managepanel']['savedData']);
-    $eextraprice = json_decode($typepanel['maintime'], true);
+    $eextraprice = bluebotJsonArray($typepanel['maintime'] ?? '{}');
     $eextraprice[$text] = $userdata['maintime'];
     $eextraprice = json_encode($eextraprice);
     update("marzban_panel", "maintime", $eextraprice, "name_panel", $userdata['namepanel']);
@@ -7033,7 +7036,7 @@ if ($datain == "settimecornremove" && $adminrulecheck['rule'] == "administrator"
     $userdata = bluebotJsonArray($user['Processing_value'] ?? '');
     $typepanel = select("marzban_panel", "*", "name_panel", $userdata['namepanel'], "select");
     outtypepanel($typepanel['type'], $textbotlang['Admin']['managepanel']['savedData']);
-    $eextraprice = json_decode($typepanel['maxtime'], true);
+    $eextraprice = bluebotJsonArray($typepanel['maxtime'] ?? '{}');
     $eextraprice[$text] = $userdata['maxtime'];
     $eextraprice = json_encode($eextraprice);
     update("marzban_panel", "maxtime", $eextraprice, "name_panel", $userdata['namepanel']);
@@ -7633,7 +7636,7 @@ if ($datain == "settimecornremove" && $adminrulecheck['rule'] == "administrator"
                 sendmessage($from_id, sprintf($textbotlang['Admin']['errorCode4'], $DataUserOut['status']), null, 'HTML');
                 return;
             }
-            $DataUserOut = json_decode($DataUserOut['body'], true);
+            $DataUserOut = bluebotJsonArray($DataUserOut['body'] ?? '');
             if ((isset($DataUserOut['msg']) && $DataUserOut['msg'] == "User not found") or !isset($DataUserOut['proxy_settings'])) {
                 sendmessage($from_id, $textbotlang['users']['status']['userNotFound'], null, 'html');
                 return;
@@ -7666,7 +7669,7 @@ if ($datain == "settimecornremove" && $adminrulecheck['rule'] == "administrator"
                 sendmessage($from_id, sprintf($textbotlang['Admin']['errorCode5'], $DataUserOut['status']), null, 'HTML');
                 return;
             }
-            $DataUserOut = json_decode($DataUserOut['body'], true);
+            $DataUserOut = bluebotJsonArray($DataUserOut['body'] ?? '');
             if ((isset($DataUserOut['msg']) && $DataUserOut['msg'] == "User not found") or !isset($DataUserOut['proxies'])) {
                 sendmessage($from_id, $textbotlang['users']['status']['userNotFound'], null, 'html');
                 return;
@@ -8028,7 +8031,7 @@ elseif ($text == $textbotlang['keyboard']['hidePanelForUser'] && $adminrulecheck
             sendmessage($from_id, sprintf($textbotlang['Admin']['errorCode6'], $DataUserOut['status']), null, 'HTML');
             return;
         }
-        $DataUserOut = json_decode($DataUserOut['body'], true);
+        $DataUserOut = bluebotJsonArray($DataUserOut['body'] ?? '');
         if ((isset($DataUserOut['msg']) && $DataUserOut['msg'] == "User not found") or !isset($DataUserOut['proxies'])) {
             sendmessage($from_id, $textbotlang['users']['status']['userNotFound'], null, 'html');
             return;
@@ -8073,7 +8076,7 @@ elseif ($text == $textbotlang['keyboard']['hidePanelForUser'] && $adminrulecheck
             sendmessage($from_id, sprintf($textbotlang['Admin']['managepanel']['ErrorCode'], $data['status']), null, 'HTML');
             return;
         }
-        $data = json_decode($data['body'], true);
+        $data = bluebotJsonArray($data['body'] ?? '');
         if (!$data['success']) {
             sendmessage($from_id, $textbotlang['Admin']['managepanel']['UserNotExist'], $optionX_ui_single, 'HTML');
             sendmessage($from_id, $textbotlang['Admin']['managepanel']['PanelOutput'] . json_encode($data), null, 'HTML');
@@ -8691,7 +8694,7 @@ if (isset($update["inline_query"])) {
     }
     step("home", $from_id);
     $userdate = bluebotJsonArray($user['Processing_value'] ?? '');
-    $botinfo = json_decode((string) selectValue("botsaz", "setting", "id_user", $userdate['id_user'], '{}'), true);
+    $botinfo = bluebotJsonArray(selectValue("botsaz", "setting", "id_user", $userdate['id_user'], '{}'));
     $botinfo['minpricevolume'] = $text;
     update("botsaz", "setting", json_encode($botinfo), "id_user", $userdate['id_user']);
     sendmessage($from_id, $textbotlang['Admin']['price']['saved'], $keyboardadmin, 'HTML');
@@ -9283,7 +9286,7 @@ if ($datain == "settimecornday" && $adminrulecheck['rule'] == "administrator") {
 } elseif ($datain == "changeloclimit") {
     sendmessage($from_id, $textbotlang['Admin']['changeLocation']['askLimitType'], $keyboardchangelimit, 'HTML');
 } elseif ($text == $textbotlang['keyboard']['generalLimit']) {
-    $limitnumber = json_decode($setting['limitnumber'], true);
+    $limitnumber = bluebotJsonArray($setting['limitnumber'] ?? '{}');
     sendmessage($from_id, sprintf($textbotlang['Admin']['changeLocation']['askTotalLimit'], $limitnumber['all']), $backadmin, 'HTML');
     step("limitchangeall", $from_id);
 } elseif ($user['step'] == "limitchangeall") {
