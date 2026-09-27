@@ -20,7 +20,14 @@ zarinpalContractContains(
     $failures
 );
 zarinpalContractContains($helper, "'currency' => 'IRT'", 'ZarinPal checkout must declare IRT currency.', $failures);
-zarinpalContractContains($helper, "'callback_url' => 'https://' . $domain . '/payment/zarinpal.php'", 'ZarinPal callback URL is missing.', $failures);
+zarinpalContractContains(
+    $helper,
+    <<<'PHP'
+'callback_url' => 'https://' . $domain . '/payment/zarinpal.php'
+PHP,
+    'ZarinPal callback URL is missing.',
+    $failures
+);
 zarinpalContractContains($helper, "CURLOPT_PROTOCOLS => CURLPROTO_HTTPS", 'ZarinPal client must restrict transport to HTTPS.', $failures);
 zarinpalContractContains($helper, "CURLOPT_SSL_VERIFYPEER => true", 'ZarinPal TLS peer verification must remain enabled.', $failures);
 zarinpalContractContains($helper, "'gateway_message'", 'ZarinPal request failures must retain gateway diagnostics.', $failures);
