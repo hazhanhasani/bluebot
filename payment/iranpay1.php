@@ -10,22 +10,38 @@ require_once __DIR__ . '/../panels.php';
 require __DIR__ . '/../vendor/autoload.php';
 
 $ManagePanel = new ManagePanel();
-$data = json_decode(file_get_contents("php://input"), true);
+$textbotlang = languagechange(dirname(__DIR__));
+
+$data = json_decode((string) file_get_contents("php://input"), true);
 if (!is_array($data) || !isset($data['hashid'], $data['authority'], $data['status'])) {
     http_response_code(400);
     exit('invalid request');
 }
-$hashid = $data['hashid'];
-$authority = $data['authority'];
-$StatusPayment = $data['status'];
+
+$hashid = trim((string) $data['hashid']);
+$authority = trim((string) $data['authority']);
+$StatusPayment = (int) $data['status'];
+
+if ($hashid === '' || strlen($hashid) > 2000 || $authority === '' || strlen($authority) > 255) {
+    http_response_code(400);
+    exit('invalid request');
+}
+
 $setting = select("setting", "*");
-$PaySetting = select("PaySetting", "*", "NamePay", "marchent_floypay", "select")['ValuePay'];
+$setting = is_array($setting) ? $setting : [];
+
+$PaySetting = trim((string) getPaySettingValue('marchent_floypay', ''));
+if ($PaySetting === '' || $PaySetting === '0') {
+    http_response_code(503);
+    exit('payment gateway unavailable');
+}
+
 $Payment_reports = select("Payment_report", "*", "id_order", $hashid, "select");
-if (!is_array($Payment_reports)) {
+if (!is_array($Payment_reports) || ($Payment_reports['Payment_Method'] ?? '') !== 'Currency Rial 1') {
     http_response_code(404);
     exit('order not found');
 }
-if ($Payment_reports['payment_Status'] == "expire") {
+if (($Payment_reports['payment_Status'] ?? '') === "expire") {
     exit('order expired');
 }
 $invoice_id = $Payment_reports['id_order'];
@@ -33,8 +49,13 @@ $price = $Payment_reports['price'];
 // verify Transaction
 $dec_payment_status = "";
 $payment_status = "";
-if ($StatusPayment == 100) {
+if ($StatusPayment === 100) {
     $curl = curl_init();
+    if ($curl === false) {
+        http_response_code(503);
+        exit('payment gateway unavailable');
+    }
+
     $data = [
         "ApiKey" => $PaySetting,
         "authority" => $authority,
@@ -60,15 +81,28 @@ if ($StatusPayment == 100) {
             'Accept: application/json'
         ),
     ));
-    $response = curl_exec($curl);
+    $rawResponse = curl_exec($curl);
+    $curlError = $rawResponse === false ? curl_error($curl) : '';
+    $httpCode = (int) curl_getinfo($curl, CURLINFO_HTTP_CODE);
     curl_close($curl);
-    $response = json_decode($response, true);
-    if (!empty($response['status']) && $response['status'] == 100) {
+
+    if (!is_string($rawResponse) || $httpCode < 200 || $httpCode >= 300) {
+        bluebotLog('warning', 'IranPay1 verification request failed', [
+            'order_id' => (string) $invoice_id,
+            'http_code' => $httpCode,
+            'error' => $curlError,
+        ]);
+        $response = [];
+    } else {
+        $response = json_decode($rawResponse, true);
+        $response = is_array($response) ? $response : [];
+    }
+
+    if ((int) ($response['status'] ?? 0) === 100) {
         $payment_status = $textbotlang['paymentGateway']['statusSuccess'];
         $dec_payment_status = $textbotlang['paymentGateway']['descThanks'];
         $Payment_report = select("Payment_report", "*", "id_order", $invoice_id, "select");
         if (claimPaymentPaid($invoice_id)) {
-            $textbotlang = languagechange();
             try {
                 DirectPayment($invoice_id, "../images.jpg");
             } catch (Throwable $directPaymentError) {
@@ -76,9 +110,19 @@ if ($StatusPayment == 100) {
                 markPaymentDeliveryError($invoice_id, $directPaymentError->getMessage());
                 return;
             }
-            $pricecashback = select("PaySetting", "ValuePay", "NamePay", "chashbackiranpay1", "select")['ValuePay'];
-            $Balance_id = select("user", "*", "id", $Payment_report['id_user'], "select");
-            if ($pricecashback != "0") {
+            $pricecashback = (float) getPaySettingValue('chashbackiranpay1', 0);
+            $Balance_id = is_array($Payment_report)
+                ? select("user", "*", "id", $Payment_report['id_user'], "select")
+                : false;
+
+            if (!is_array($Payment_report) || !is_array($Balance_id)) {
+                bluebotLog('warning', 'IranPay1 paid order has no buyer record', [
+                    'order_id' => (string) $invoice_id,
+                ]);
+                return;
+            }
+
+            if ($pricecashback > 0) {
                 $result = ($Payment_report['price'] * $pricecashback) / 100;
                 $Balance_confrim = intval($Balance_id['Balance']) + $result;
                 update("user", "Balance", $Balance_confrim, "id", $Balance_id['id']);
@@ -86,10 +130,17 @@ if ($StatusPayment == 100) {
                 $text_report = sprintf($textbotlang['paymentGateway']['giftReport'], $result);
                 sendmessage($Balance_id['id'], $text_report, null, 'HTML');
             }
-            $paymentreports = select("topicid", "idreport", "report", "paymentreport", "select")['idreport'];
-            $price = number_format($price);
-            $text_report = sprintf($textbotlang['paymentGateway']['reportIranpay'], $Payment_report['id_user'], $Balance_id['username'], $price);
-            if (strlen($setting['Channel_Report']) > 0) {
+            $topicRow = select("topicid", "idreport", "report", "paymentreport", "select");
+            $paymentreports = is_array($topicRow) ? ($topicRow['idreport'] ?? null) : null;
+
+            $price = number_format((float) $price);
+            $text_report = sprintf(
+                $textbotlang['paymentGateway']['reportIranpay'],
+                (string) $Payment_report['id_user'],
+                (string) ($Balance_id['username'] ?? ''),
+                $price
+            );
+            if (strlen((string) ($setting['Channel_Report'] ?? '')) > 0) {
                 telegram('sendmessage', [
                     'chat_id' => $setting['Channel_Report'],
                     'message_thread_id' => $paymentreports,
@@ -149,11 +200,11 @@ if ($StatusPayment == 100) {
 
 <body>
     <div class="confirmation-box">
-        <h1><?php echo $payment_status ?></h1>
-        <p><?php echo $textbotlang['paymentGateway']['invoiceTransactionNo'] ?><span><?php echo $invoice_id ?></span></p>
-        <p><?php echo $textbotlang['paymentGateway']['invoiceAmount'] ?> <span><?php echo $price ?></span><?php echo $textbotlang['paymentGateway']['invoiceAmountUnit'] ?></p>
+        <h1><?php echo htmlspecialchars((string) $payment_status, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?></h1>
+        <p><?php echo $textbotlang['paymentGateway']['invoiceTransactionNo'] ?><span><?php echo htmlspecialchars((string) $invoice_id, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?></span></p>
+        <p><?php echo $textbotlang['paymentGateway']['invoiceAmount'] ?> <span><?php echo htmlspecialchars((string) $price, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?></span><?php echo $textbotlang['paymentGateway']['invoiceAmountUnit'] ?></p>
         <p><?php echo $textbotlang['paymentGateway']['invoiceDate'] ?> <span> <?php echo jdate('Y/m/d') ?> </span></p>
-        <p><?php echo $dec_payment_status ?></p>
+        <p><?php echo htmlspecialchars((string) $dec_payment_status, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?></p>
     </div>
 </body>
 
