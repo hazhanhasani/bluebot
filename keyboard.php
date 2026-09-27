@@ -230,7 +230,7 @@ $trnado = json_encode([
 ]);
 $keyboardzarinpal = json_encode([
     'inline_keyboard' => [
-        [['text' => $textbotlang['keyboard']['zarinPalMerchant'], 'callback_data' => "paygwopt-zarinPalMerchant"]],
+        [['text' => $textbotlang['keyboard']['zarinPalMerchant'], 'callback_data' => "paygwopt-zarinPalMerchant"], ['text' => $textbotlang['keyboard']['zarinPalCallbackDomain'], 'callback_data' => "paygwopt-zarinPalCallbackDomain"]],
         [['text' => $textbotlang['keyboard']['cashbackZarinPal'], 'callback_data' => "paygwopt-cashbackZarinPal"]],
         [['text' => $textbotlang['keyboard']['minAmountZarinPal'], 'callback_data' => "paygwopt-minAmountZarinPal"], ['text' => $textbotlang['keyboard']['maxAmountZarinPal'], 'callback_data' => "paygwopt-maxAmountZarinPal"]],
         [['text' => $textbotlang['keyboard']['setEducationZarinPal'], 'callback_data' => "paygwopt-setEducationZarinPal"]],
