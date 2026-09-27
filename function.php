@@ -623,13 +623,11 @@ function getPaySettingValue($name, $default = null)
 }
 function generateUUID()
 {
-    $data = openssl_random_pseudo_bytes(16);
+    $data = random_bytes(16);
     $data[6] = chr(ord($data[6]) & 0x0f | 0x40);
     $data[8] = chr(ord($data[8]) & 0x3f | 0x80);
 
-    $uuid = vsprintf('%s%s-%s-%s-%s-%s%s%s', str_split(bin2hex($data), 4));
-
-    return $uuid;
+    return vsprintf('%s%s-%s-%s-%s-%s%s%s', str_split(bin2hex($data), 4));
 }
 function rate_arze(array $requiredSymbols = [])
 {
@@ -710,14 +708,26 @@ function updatePaymentMessageId($response, $orderId)
 function nowPayments($payment, $price_amount, $order_id, $order_description)
 {
     global $domainhosts;
-    $apinowpayments = select("PaySetting", "*", "NamePay", "marchent_tronseller", "select")['ValuePay'];
+    $apinowpayments = trim((string) getPaySettingValue('marchent_tronseller', ''));
+    if ($apinowpayments === '' || $apinowpayments === '0') {
+        return ['error' => 'NOWPayments API key not set'];
+    }
+
     $curl = curl_init();
+    if ($curl === false) {
+        return ['error' => 'Unable to initialize HTTP client'];
+    }
     curl_setopt_array($curl, array(
         CURLOPT_URL => 'https://api.nowpayments.io/v1/' . $payment,
         CURLOPT_RETURNTRANSFER => true,
         CURLOPT_TIMEOUT_MS => 7000,
+        CURLOPT_CONNECTTIMEOUT_MS => 4000,
         CURLOPT_ENCODING => '',
-        CURLOPT_SSL_VERIFYPEER => 1,
+        CURLOPT_MAXREDIRS => 3,
+        CURLOPT_FOLLOWLOCATION => true,
+        CURLOPT_PROTOCOLS => CURLPROTO_HTTPS,
+        CURLOPT_REDIR_PROTOCOLS => CURLPROTO_HTTPS,
+        CURLOPT_SSL_VERIFYPEER => true,
         CURLOPT_SSL_VERIFYHOST => 2,
         CURLOPT_POST => true,
         CURLOPT_HTTPHEADER => array(
@@ -735,14 +745,16 @@ function nowPayments($payment, $price_amount, $order_id, $order_description)
 
     $response = curl_exec($curl);
     $curlError = $response === false ? curl_error($curl) : '';
+    $httpCode = (int) curl_getinfo($curl, CURLINFO_HTTP_CODE);
     curl_close($curl);
 
-    if ($response === false) {
+    if (!is_string($response) || $httpCode < 200 || $httpCode >= 300) {
         bluebotLog('warning', 'NOWPayments invoice request failed', [
             'order_id' => (string) $order_id,
+            'http_code' => $httpCode,
             'error' => $curlError,
         ]);
-        return ['error' => $curlError ?: 'request failed'];
+        return ['error' => $curlError ?: ('HTTP ' . $httpCode)];
     }
 
     $decoded = json_decode($response, true);
@@ -750,8 +762,15 @@ function nowPayments($payment, $price_amount, $order_id, $order_description)
 }
 function StatusPayment($paymentid)
 {
-    $apinowpayments = select("PaySetting", "*", "NamePay", "marchent_tronseller", "select")['ValuePay'];
+    $apinowpayments = trim((string) getPaySettingValue('marchent_tronseller', ''));
+    if ($apinowpayments === '' || $apinowpayments === '0') {
+        return ['payment_status' => 'unknown', 'error' => 'NOWPayments API key not set'];
+    }
+
     $curl = curl_init();
+    if ($curl === false) {
+        return ['payment_status' => 'unknown', 'error' => 'Unable to initialize HTTP client'];
+    }
     curl_setopt_array($curl, array(
         CURLOPT_URL => 'https://api.nowpayments.io/v1/payment/' . rawurlencode((string) $paymentid),
         CURLOPT_RETURNTRANSFER => true,
@@ -773,14 +792,19 @@ function StatusPayment($paymentid)
     ));
     $response = curl_exec($curl);
     $curlError = $response === false ? curl_error($curl) : '';
+    $httpCode = (int) curl_getinfo($curl, CURLINFO_HTTP_CODE);
     curl_close($curl);
 
-    if ($response === false) {
+    if (!is_string($response) || $httpCode < 200 || $httpCode >= 300) {
         bluebotLog('warning', 'NOWPayments status request failed', [
             'payment_id' => (string) $paymentid,
+            'http_code' => $httpCode,
             'error' => $curlError,
         ]);
-        return ['payment_status' => 'unknown', 'error' => $curlError ?: 'request failed'];
+        return [
+            'payment_status' => 'unknown',
+            'error' => $curlError ?: ('HTTP ' . $httpCode),
+        ];
     }
 
     $decoded = json_decode($response, true);
@@ -820,8 +844,7 @@ function invoiceBelongsToUser($invoice, $userId)
 }
 function cubepayFeeValue()
 {
-    $raw = select("PaySetting", "ValuePay", "NamePay", "feeternado", "select")['ValuePay'] ?? '0';
-
+    $raw = getPaySettingValue('feeternado', '0');
     return (float) str_replace([',', '،'], '', (string) $raw);
 }
 function cubepayApplyFee($base, $fee)
@@ -837,7 +860,7 @@ function cubepayApplyFee($base, $fee)
 }
 function cubepayPayableAmount($price)
 {
-    $status = select("PaySetting", "ValuePay", "NamePay", "feestatusternado", "select")['ValuePay'] ?? 'offfeeternado';
+    $status = (string) getPaySettingValue('feestatusternado', 'offfeeternado');
     if ($status !== 'onfeeternado') {
         return intval($price);
     }
@@ -900,16 +923,28 @@ function createPayiranpay4($price, $order_id)
 function trnado($order_id, $price)
 {
     global $domainhosts;
-    $token_cubepay = select("PaySetting", "*", "NamePay", "apiternado", "select")['ValuePay'];
+    $token_cubepay = trim((string) getPaySettingValue('apiternado', ''));
+    if ($token_cubepay === '' || $token_cubepay === '0') {
+        return ['error' => 'CubePay API token not set'];
+    }
+
     $amount_toman = cubepayPayableAmount($price);
     $curl = curl_init();
+    if ($curl === false) {
+        return ['error' => 'Unable to initialize HTTP client'];
+    }
     curl_setopt_array($curl, array(
         CURLOPT_URL => 'https://cubevps.ir/pay/create-order.php',
         CURLOPT_RETURNTRANSFER => true,
         CURLOPT_ENCODING => '',
-        CURLOPT_MAXREDIRS => 10,
+        CURLOPT_MAXREDIRS => 3,
+        CURLOPT_CONNECTTIMEOUT => 5,
         CURLOPT_TIMEOUT => 30,
         CURLOPT_FOLLOWLOCATION => true,
+        CURLOPT_PROTOCOLS => CURLPROTO_HTTPS,
+        CURLOPT_REDIR_PROTOCOLS => CURLPROTO_HTTPS,
+        CURLOPT_SSL_VERIFYPEER => true,
+        CURLOPT_SSL_VERIFYHOST => 2,
         CURLOPT_HTTP_VERSION => CURL_HTTP_VERSION_1_1,
         CURLOPT_CUSTOMREQUEST => 'POST',
         CURLOPT_HTTPHEADER => array(
@@ -925,14 +960,25 @@ function trnado($order_id, $price)
     ], JSON_UNESCAPED_UNICODE));
 
     $response = curl_exec($curl);
+    $curlError = $response === false ? curl_error($curl) : '';
+    $httpCode = (int) curl_getinfo($curl, CURLINFO_HTTP_CODE);
     curl_close($curl);
+
+    if (!is_string($response) || $httpCode < 200 || $httpCode >= 300) {
+        bluebotLog('warning', 'CubePay order request failed', [
+            'order_id' => (string) $order_id,
+            'http_code' => $httpCode,
+            'error' => $curlError,
+        ]);
+        return ['error' => $curlError ?: ('HTTP ' . $httpCode)];
+    }
 
     $decoded = json_decode($response, true);
     if (is_array($decoded) && empty($decoded['payment_link']) && !empty($decoded['pay_page_url'])) {
         $decoded['payment_link'] = $decoded['pay_page_url'];
     }
 
-    return $decoded;
+    return is_array($decoded) ? $decoded : ['error' => 'invalid response'];
 }
 
 function cubepayCardDetailsText($payment)
