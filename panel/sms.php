@@ -219,6 +219,13 @@ $catalog = BluebotSms::catalog();
 $stats = BluebotSms::stats();
 $recent = BluebotSms::recent(100);
 
+$publicSystemHost = strtolower(trim((string) ($_SERVER['HTTP_HOST'] ?? '')));
+$publicSystemHost = preg_replace('/:\d+$/', '', $publicSystemHost) ?: '';
+if (!preg_match('/^(?:[a-z0-9-]+\.)+[a-z]{2,63}$/', $publicSystemHost)) {
+    $publicSystemHost = 'bot.blluepanel.ir';
+}
+$publicSystemUrl = 'https://' . $publicSystemHost . '/';
+
 $patternByCode = [];
 foreach ($providerPatterns as $pattern) {
     if (!empty($pattern['code'])) {
@@ -396,6 +403,25 @@ include __DIR__ . '/inc/layout_head.php';
 <div class="card fade-up" style="margin-bottom:16px">
     <div class="card-head">
         <div>
+            <div class="card-title">بررسی عمومی سامانه</div>
+            <div class="card-subtitle">این همان لینکی است که بازبین ایران‌پیامک باید بدون ورود بتواند باز کند.</div>
+        </div>
+    </div>
+    <div class="card-body" style="padding:16px">
+        <div class="notice notice-ok" style="display:flex;gap:12px;align-items:center;justify-content:space-between;flex-wrap:wrap">
+            <div>
+                <strong>URL سامانه:</strong>
+                <code dir="ltr"><?= htmlspecialchars($publicSystemUrl) ?></code>
+            </div>
+            <a class="btn btn-ghost" href="<?= htmlspecialchars($publicSystemUrl) ?>" target="_blank" rel="noopener noreferrer">باز کردن صفحه عمومی ↗</a>
+        </div>
+        <small style="display:block;margin-top:10px;color:var(--mute)">اگر این لینک بدون لاگین و با HTTPS باز نشود، پترن ممکن است با خطای «لینک ثبت شده قابل بررسی نیست» رد شود.</small>
+    </div>
+</div>
+
+<div class="card fade-up" style="margin-bottom:16px">
+    <div class="card-head">
+        <div>
             <div class="card-title">پترن‌های فراز اس‌ام‌اس / ایران‌پیامک</div>
             <div class="card-subtitle">پترن‌های فعال مستقیماً از API حساب خوانده می‌شوند و بلو پنل موارد سازگار را هوشمند جایگذاری می‌کند.</div>
         </div>
@@ -446,7 +472,7 @@ include __DIR__ . '/inc/layout_head.php';
     <div class="card-head">
         <div>
             <div class="card-title">رویدادها و پترن‌های پیام</div>
-            <div class="card-subtitle">برای تأیید پترن، در ایران‌پیامک سامانه <code>bot.bluepanel.ir</code> را انتخاب کن. دامنه لازم نیست داخل متن پترن تکرار شود.</div>
+            <div class="card-subtitle">برای تأیید پترن، در ایران‌پیامک سامانه <code><?= htmlspecialchars($publicSystemHost) ?></code> را انتخاب کن. دامنه لازم نیست داخل متن پترن تکرار شود.</div>
         </div>
     </div>
     <form method="post">
@@ -466,7 +492,7 @@ include __DIR__ . '/inc/layout_head.php';
                         <td data-label="دسته"><?= htmlspecialchars((string) $template['category']) ?></td>
                         <td data-label="متن پترن" style="min-width:280px">
                             <code class="sms-pattern-copy" style="white-space:pre-wrap;display:block;line-height:1.9"><?= htmlspecialchars((string) ($catalog[$template['event_key']]['body'] ?? $template['body'] ?? '')) ?></code>
-                            <small style="display:block;margin-top:8px;color:var(--mute)">متن را با همین متغیرها ثبت کن و هنگام ساخت پترن، سامانه <strong>bot.bluepanel.ir</strong> را انتخاب کن.</small>
+                            <small style="display:block;margin-top:8px;color:var(--mute)">متن را با همین متغیرها ثبت کن و هنگام ساخت پترن، سامانه <strong><?= htmlspecialchars($publicSystemHost) ?></strong> را انتخاب کن.</small>
                         </td>
                         <td data-label="متغیرها"><?= $renderVariableSpecs((array) ($catalog[$template['event_key']]['vars'] ?? $vars)) ?></td>
                         <td data-label="پترن">
