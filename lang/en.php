@@ -226,6 +226,7 @@ To enable it, the bot owner needs a Telegram Premium subscription, or the bot mu
     The minimum amount for payment via this gateway is 2 TRON',
                         'confirmPaying' => '✅ Confirm payment',
                         'errorLinkPayment' => '❌ An error occurred while creating the payment link. Please contact support to resolve it.',
+                        'errorLinkPaymentDetails' => "❌ Payment link creation failed.\nError code: %s\nReason: %s",
                         'errorprice' => '❌ Error 
 💬 Please enter numbers only',
                         'expired' => 'The payment link has expired and can no longer be processed',

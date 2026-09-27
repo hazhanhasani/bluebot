@@ -226,6 +226,7 @@ return [
     通过此网关支付的最低金额为 2 TRON',
                         'confirmPaying' => '✅ 确认支付',
                         'errorLinkPayment' => '❌ 创建支付链接时出错，请联系客服解决。',
+                        'errorLinkPaymentDetails' => "❌ 无法创建支付链接。\n错误代码：%s\n原因：%s",
                         'errorprice' => '❌ 错误 
 💬 请仅输入数字',
                         'expired' => '支付链接已过期，无法再处理',

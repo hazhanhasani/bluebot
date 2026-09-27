@@ -47,6 +47,8 @@ if (str_contains($callback, '"description" => $Payment_reports')) {
 $index = (string) @file_get_contents($root . '/index.php');
 zarinpalContractContains($index, '$zarinpalAuthority', 'ZarinPal checkout must validate returned authority.', $failures);
 zarinpalContractContains($index, 'Unknown ZarinPal error', 'ZarinPal checkout must normalize gateway errors.', $failures);
+zarinpalContractContains($index, "'-14' => 'دامنه Callback", 'ZarinPal checkout must explain callback-domain mismatch.', $failures);
+zarinpalContractContains($index, "errorLinkPaymentDetails", 'ZarinPal checkout must show a safe gateway error code and reason.', $failures);
 
 if ($failures !== []) {
     fwrite(STDERR, "ZarinPal payment contract failed:\n");

@@ -5740,8 +5740,34 @@ if ($text == "/start" || $datain == "start" || $text == "start") {
                 'code' => $pay['errors']['code'] ?? $zarinpalCode,
                 'message' => $pay['errors']['message'] ?? $pay['error'] ?? 'Unknown ZarinPal error',
             ];
+            $zarinpalErrorCode = (string) $zarinpalError['code'];
+            $zarinpalErrorMessage = trim(strip_tags((string) $zarinpalError['message']));
+            if ($zarinpalErrorMessage === '') {
+                $zarinpalErrorMessage = 'Unknown ZarinPal error';
+            }
+
+            $knownZarinpalErrors = [
+                '-9' => 'اطلاعات درخواست پرداخت معتبر نیست.',
+                '-10' => 'مرچنت‌کد یا دسترسی ترمینال زرین‌پال معتبر نیست.',
+                '-11' => 'ترمینال زرین‌پال فعال نیست.',
+                '-12' => 'تعداد درخواست‌ها در بازه کوتاه بیش از حد مجاز است.',
+                '-14' => 'دامنه Callback با دامنه ثبت‌شده ترمینال زرین‌پال یکسان نیست.',
+                '-15' => 'ترمینال زرین‌پال در وضعیت تعلیق است.',
+                '-16' => 'سطح تأیید پذیرنده برای این عملیات کافی نیست.',
+            ];
+            if (isset($knownZarinpalErrors[$zarinpalErrorCode])) {
+                $zarinpalErrorMessage = $knownZarinpalErrors[$zarinpalErrorCode];
+            }
+
             $text_error = json_encode($zarinpalError, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
-            sendmessage($from_id, $textbotlang['users']['Balance']['errorLinkPayment'], $keyboard, 'HTML');
+            $publicErrorTemplate = $textbotlang['users']['Balance']['errorLinkPaymentDetails']
+                ?? "❌ ساخت لینک پرداخت انجام نشد.\nکد خطا: %s\nدلیل: %s";
+            $publicErrorText = sprintf(
+                $publicErrorTemplate,
+                htmlspecialchars($zarinpalErrorCode, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'),
+                htmlspecialchars($zarinpalErrorMessage, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8')
+            );
+            sendmessage($from_id, $publicErrorText, $keyboard, 'HTML');
             step('home', $from_id);
             $ErrorsLinkPayment = sprintf($textbotlang['Admin']['reportgroup']['errorZarinpalLink'], $text_error, $from_id, $username);
             if (strlen($setting['Channel_Report']) > 0) {
