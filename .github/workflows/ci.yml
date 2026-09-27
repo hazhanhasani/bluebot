@@ -93,6 +93,9 @@ jobs:
       - name: Security hardening contract
         run: php tests/security_hardening_contract.php
 
+      - name: Runtime debug contract
+        run: php tests/runtime_debug_contract.php
+
       - name: Trusted proxy webhook tests
         run: php tests/trusted_proxy_test.php
 
