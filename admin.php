@@ -866,8 +866,14 @@ if ($text === "/debug") {
     sendmessage($from_id, $statisticsall, $keyboardadmin, 'HTML');
 } elseif ($text == $textbotlang['Admin']['btnKeyboard']['addPanel'] && $adminrulecheck['rule'] == "administrator") {
     sendmessage($from_id, $textbotlang['Admin']['managepanel']['Inbound']['getPanelType'], $keyboardtypepanel, 'HTML');
-} elseif (preg_match('/typepanel#(.*)/', $datain, $dataget)) {
-    $typepanel = $dataget[1];
+} elseif (preg_match('/^typepanel#([A-Za-z0-9_-]+)$/', (string) $datain, $dataget)) {
+    $typepanel = (string) ($dataget[1] ?? '');
+    if (!bluebotIsSupportedPanelType($typepanel)) {
+        sendmessage($from_id, $textbotlang['common']['invalidInput'], $keyboardadmin, 'HTML');
+        step('home', $from_id);
+        return;
+    }
+
     sendmessage($from_id, $textbotlang['Admin']['managepanel']['addPanelName'], $backadmin, 'HTML');
     step("add_name_panel", $from_id);
     deletemessage($from_id, $message_id);
@@ -882,8 +888,15 @@ if ($text === "/debug") {
         return;
     }
     $userdata = bluebotJsonArray($user['Processing_value'] ?? '');
+    $panelType = (string) ($userdata['type'] ?? '');
+    if (!bluebotIsSupportedPanelType($panelType)) {
+        sendmessage($from_id, $textbotlang['common']['invalidInput'], $keyboardadmin, 'HTML');
+        step('home', $from_id);
+        return;
+    }
+
     savedata("save", "namepanel", $text);
-    if ($userdata['type'] == "Manualsale") {
+    if ($panelType === "Manualsale") {
         sendmessage($from_id, $textbotlang['Admin']['managepanel']['getLimitedPanel'], $backadmin, 'HTML');
         step('getlimitedpanel', $from_id);
         savedata("save", "url_panel", "null");
@@ -895,19 +908,33 @@ if ($text === "/debug") {
     step('add_link_panel', $from_id);
 } elseif ($user['step'] == "add_link_panel") {
     $text = normalizePanelUrl($text);
-    if (!filter_var($text, FILTER_VALIDATE_URL)) {
+    $panelUrl = filter_var($text, FILTER_VALIDATE_URL) ? parse_url($text) : false;
+    $panelScheme = is_array($panelUrl) ? strtolower((string) ($panelUrl['scheme'] ?? '')) : '';
+    if (!is_array($panelUrl)
+        || empty($panelUrl['host'])
+        || !in_array($panelScheme, ['http', 'https'], true)
+        || isset($panelUrl['user'])
+        || isset($panelUrl['pass'])) {
         sendmessage($from_id, $textbotlang['Admin']['managepanel']['invalidDomain'], $backadmin, 'HTML');
         return;
     }
+
     savedata("save", "url_panel", $text);
     $userdata = bluebotJsonArray($user['Processing_value'] ?? '');
-    if ($userdata['type'] == "hiddify") {
+    $panelType = (string) ($userdata['type'] ?? '');
+    if (!bluebotIsSupportedPanelType($panelType)) {
+        sendmessage($from_id, $textbotlang['common']['invalidInput'], $keyboardadmin, 'HTML');
+        step('home', $from_id);
+        return;
+    }
+
+    if ($panelType === "hiddify") {
         sendmessage($from_id, $textbotlang['Admin']['managepanel']['getLimitedPanel'], $backadmin, 'HTML');
         step('getlimitedpanel', $from_id);
         savedata("save", "username", "null");
         savedata("save", "password", "null");
         return;
-    } elseif ($userdata['type'] == "s_ui" || $userdata['type'] == "WGDashboard" || $userdata['type'] == "x-ui_single" || $userdata['type'] == "mirza_agent" || $userdata['type'] == "rebecca" || $userdata['type'] == "solidlayer") {
+    } elseif (in_array($panelType, ["s_ui", "WGDashboard", "x-ui_single", "alireza_single", "mirza_agent", "rebecca", "solidlayer"], true)) {
         sendmessage($from_id, $textbotlang['Admin']['agentbot']['askToken'], $backadmin, 'HTML');
         step('add_password_panel', $from_id);
         savedata("save", "username", "null");
@@ -926,8 +953,16 @@ if ($text === "/debug") {
 } elseif ($user['step'] == "getlimitedpanel") {
     savedata("save", "limitpanel", $text);
     $userdata = bluebotJsonArray($user['Processing_value'] ?? '');
+    $panelType = (string) ($userdata['type'] ?? '');
+    $panelName = trim((string) ($userdata['namepanel'] ?? ''));
+    if (!bluebotIsSupportedPanelType($panelType) || $panelName === '') {
+        sendmessage($from_id, $textbotlang['common']['invalidInput'], $keyboardadmin, 'HTML');
+        step('home', $from_id);
+        return;
+    }
+
     $randomString = bin2hex(random_bytes(2));
-    if ($userdata['type'] == "x-ui_single" || $userdata['type'] == "alireza") {
+    if ($panelType === "x-ui_single" || $panelType === "alireza_single") {
         $marzbanprotocol = $randomString;
         $protocols = "vmess";
         $settingpanel = json_encode(array(
@@ -977,11 +1012,12 @@ if ($text === "/debug") {
         'n' => '0',
         'n2' => '0'
     ));
-    $version_panel = $userdata['type'] == "pasarguard" ? "1" : "0";
-    $userdata['type'] = $userdata['type'] == "pasarguard" ? "marzban" : $userdata['type'];
+    $version_panel = $panelType === "pasarguard" ? "1" : "0";
+    $panelType = $panelType === "pasarguard" ? "marzban" : $panelType;
+    $userdata['type'] = $panelType;
     $stmt = $pdo->prepare("INSERT INTO marzban_panel (code_panel,name_panel,sublink,config,MethodUsername,TestAccount,status,limit_panel,namecustom,Methodextend,type,conecton,inboundid,agent,inbound_deactive,inboundstatus,url_panel,username_panel,password_panel,time_usertest,val_usertest,linksubx,priceextravolume,priceextratime,pricecustomvolume,pricecustomtime,mainvolume,maxvolume,maintime,maxtime,status_extend,subvip,changeloc,customvolume,on_hold_test,version_panel) VALUES (:code_panel,:name_panel,:sublink,:config,:MethodUsername,:TestAccount,:status,:limit_panel,:namecustom,:Methodextend,:type,:conecton,:inboundid,:agent,:inbound_deactive,'offinbounddisable',:url_panel,:username_panel,:password_panel,:val_usertest,:time_usertest,:linksubx,:priceextravolume,:priceextratime,:pricecustomvolume,:pricecustomtime,:mainvolume,:maxvolume,:maintime,:maxtime,'on_extend','offsubvip',:changeloc,:customvolume,'1',:version_panel)");
     $stmt->bindParam(':code_panel', $randomString);
-    $stmt->bindParam(':name_panel', $userdata['namepanel'], PDO::PARAM_STR);
+    $stmt->bindParam(':name_panel', $panelName, PDO::PARAM_STR);
     $stmt->bindParam(':sublink', $sublink);
     $stmt->bindParam(':config', $configstatus);
     $stmt->bindParam(':MethodUsername', $methodusernameadd);
