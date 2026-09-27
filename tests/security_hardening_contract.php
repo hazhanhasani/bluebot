@@ -36,7 +36,7 @@ $checks = [
     [$index, 'isValidInvitationCode($setting, $from_id, $user[\'verify\'], $affiliatesid);', 'Referral verification must receive the resolved inviter.'],
     [$panelConfig, 'function bluebotPanelIsHttps', 'Panel HTTPS proxy detection is missing.'],
     [$panelConfig, 'function bluebotPanelClientIp', 'Panel trusted client IP resolution is missing.'],
-    [$panelConfig, "hash('sha256', $ip)", 'Panel login rate-limit filenames must not use weak hashes.'],
+    [$panelConfig, "hash('sha256', \$ip)", 'Panel login rate-limit filenames must not use weak hashes.'],
     [$panelConfig, 'flock($handle, LOCK_EX)', 'Panel login rate limiter must serialize concurrent attempts.'],
     [$panelConfig, 'ftruncate($handle, 0)', 'Panel login rate limiter must update its locked state atomically.'],
     [$panelLogin, '$ip = bluebotPanelClientIp();', 'Panel login rate limit must use the resolved client IP.'],
