@@ -53,12 +53,17 @@ $checks = [
     [$panel, "save_templates", 'SMS template management is missing from the panel.'],
     [$panel, "BluebotSms::sampleParams", 'SMS test form must auto-populate event variables.'],
     [$panel, "sms-test-params", 'SMS test parameter editor is missing.'],
+    [$panel, "بررسی عمومی سامانه", 'Public system verification card is missing from the SMS panel.'],
+    [$panel, "\$publicSystemUrl", 'SMS panel must derive the public verification URL from the current deployment host.'],
+    [$bot, "سامانه فعال و قابل بررسی است", 'Public provider verification landing page is missing from root index.'],
+    [$bot, "REQUEST_METHOD", 'Root index must distinguish public GET/HEAD requests from Telegram webhook POSTs.'],
+    [$bot, "bot.blluepanel.ir", 'Provider verification fallback host must match the registered system.'],
     [$panel, "refresh_patterns", 'Pattern refresh action is missing from the panel.'],
     [$panel, "refresh_lines", 'Sender-line refresh action is missing from the panel.'],
     [$panel, 'name="otp_active"', 'OTP enable control is missing from the SMS panel.'],
     [$panel, "متن دقیق برای ثبت در فراز SMS", 'FarazSMS pattern registration guidance is missing from the panel.'],
     [$panel, "bot.bluepanel.ir", 'Registered IranPayamak system guidance is missing from the SMS panel.'],
-    [$farazDocs, "bot.bluepanel.ir", 'IranPayamak system selection must be documented.'],
+    [$farazDocs, "bot.blluepanel.ir", 'IranPayamak system selection must be documented.'],
     [$panel, "broadcast", 'Broadcast SMS action is missing from the panel.'],
     [$layout, 'href="sms.php"', 'SMS center is not linked from the web panel sidebar.'],
     [$jobs, "['job' => 'sms'", 'SMS cron worker is not scheduled.'],
@@ -96,6 +101,12 @@ if (str_contains($sms, 'REQUIRED_PATTERN_SIGNATURE')) {
 }
 if (!str_contains($sms, "\$row['system']") || !str_contains($sms, "\$row['domain']")) {
     $failures[] = 'Provider system/domain metadata must be preserved when present.';
+}
+
+$publicGatePos = strpos($bot, "in_array(\$bluePanelRequestMethod, ['GET', 'HEAD'], true)");
+$configRequirePos = strpos($bot, "require_once __DIR__ . '/config.php'");
+if ($publicGatePos === false || $configRequirePos === false || $publicGatePos > $configRequirePos) {
+    $failures[] = 'Public provider verification GET/HEAD gate must run before loading bot configuration.';
 }
 
 require_once $root . '/src/Support/SmsService.php';
