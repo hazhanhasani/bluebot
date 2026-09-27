@@ -25,6 +25,8 @@ $userPanel = $read('panel/user.php');
 $bot = $read('index.php');
 $farazDocs = $read('docs/FARAZSMS_PATTERNS.md');
 $langFa = $read('lang/fa.php');
+$privacy = $read('privacy.html');
+$terms = $read('terms.html');
 
 $checks = [
     [$tables, "'sms_settings'", 'sms_settings is not registered in the schema.'],
@@ -58,9 +60,17 @@ $checks = [
     [$bot, "سامانه فعال و قابل بررسی است", 'Public provider verification landing page is missing from root index.'],
     [$bot, "trustseal.enamad.ir", 'Enamad trust seal is missing from the public verification page.'],
     [$bot, "HuvEauyphrDRR17dhwoisDFNoMFMkDC0", 'Configured Enamad trust-seal code is missing.'],
-    [$bot, "img-src https://trustseal.enamad.ir", 'CSP must allow the Enamad trust-seal image.'],
+    [$bot, "https://trustseal.enamad.ir", 'CSP must allow the Enamad trust-seal image.'],
     [$bot, "REQUEST_METHOD", 'Root index must distinguish public GET/HEAD requests from Telegram webhook POSTs.'],
     [$bot, "bot.blluepanel.ir", 'Provider verification fallback host must match the registered system.'],
+    [$bot, "زرین‌پال", 'Public landing must expose Zarinpal integration information.'],
+    [$bot, "آقای‌پرداخت", 'Public landing must expose AqayePardakht integration information.'],
+    [$bot, 'href="/privacy.html"', 'Public landing must link to the privacy policy.'],
+    [$bot, 'href="/terms.html"', 'Public landing must link to the terms page.'],
+    [$privacy, "سیاست حریم خصوصی", 'Public privacy policy page is missing.'],
+    [$privacy, "اطلاعات حساس کارت بانکی", 'Privacy policy must describe payment-card handling.'],
+    [$terms, "شرایط استفاده و پرداخت", 'Public terms and payment policy page is missing.'],
+    [$terms, "پرداخت آنلاین", 'Terms page must document online payment behavior.'],
     [$panel, "refresh_patterns", 'Pattern refresh action is missing from the panel.'],
     [$panel, "refresh_lines", 'Sender-line refresh action is missing from the panel.'],
     [$panel, 'name="otp_active"', 'OTP enable control is missing from the SMS panel.'],
