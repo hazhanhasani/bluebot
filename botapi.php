@@ -199,6 +199,7 @@ function telegram($method, $datas = [], $token = null, $allowEmojiFallback = tru
     $rawResponse = curl_exec($ch);
     if ($rawResponse === false) {
         $curlError = curl_error($ch);
+        curl_close($ch);
 
         if ($curlError !== '') {
             error_log('Telegram request failed: ' . $curlError);
@@ -211,6 +212,7 @@ function telegram($method, $datas = [], $token = null, $allowEmojiFallback = tru
     }
 
     $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    curl_close($ch);
 
     $decodedResponse = json_decode($rawResponse, true);
     if (!is_array($decodedResponse)) {
