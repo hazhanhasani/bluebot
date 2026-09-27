@@ -609,6 +609,31 @@ function productNameLocationConflict(string $name, string $location, ?int $exclu
     return (bool) $stmt->fetchColumn();
 }
 
+function bluebotSupportedPanelTypes(): array
+{
+    return [
+        'marzban',
+        'marzneshin',
+        'pasarguard',
+        'mirza_agent',
+        'x-ui_single',
+        'alireza_single',
+        'Manualsale',
+        'hiddify',
+        'WGDashboard',
+        's_ui',
+        'ibsng',
+        'mikrotik',
+        'solidlayer',
+        'rebecca',
+    ];
+}
+
+function bluebotIsSupportedPanelType($type): bool
+{
+    return in_array((string) $type, bluebotSupportedPanelTypes(), true);
+}
+
 function bluebotJsonArray($value, array $default = []): array
 {
     if (is_array($value)) {
