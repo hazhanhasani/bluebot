@@ -161,25 +161,64 @@ function safe_date($ts, string $fmt = 'Y/m/d'): string
         return htmlspecialchars((string) $ts);
     return date($fmt, (int) $ts);
 }
+function login_rate_file(string $ip): string
+{
+    return sys_get_temp_dir() . '/bluebot-panel-login-' . hash('sha256', $ip) . '.json';
+}
+
 function check_login_rate(string $ip): bool
 {
-    $file = sys_get_temp_dir() . '/panel_login_' . md5($ip);
-    $data = @json_decode(@file_get_contents($file) ?: '{}', true) ?: [];
-    $now = time();
-    $data = array_filter($data, fn($t) => ($now - $t) < 900);
-    if (count($data) >= 10)
+    $file = login_rate_file($ip);
+    $handle = @fopen($file, 'c+');
+    if ($handle === false) {
+        // Fail closed when the limiter cannot persist its state.
+        bluebotLog('warning', 'Panel login rate limiter storage unavailable', [
+            'ip' => $ip,
+        ]);
         return false;
-    $data[] = $now;
-    @file_put_contents($file, json_encode(array_values($data)), LOCK_EX);
-    if (is_file($file)) {
-        @chmod($file, 0600);
     }
-    return true;
+
+    if (!flock($handle, LOCK_EX)) {
+        fclose($handle);
+        return false;
+    }
+
+    rewind($handle);
+    $raw = stream_get_contents($handle);
+    $data = json_decode(is_string($raw) ? $raw : '', true);
+    $data = is_array($data) ? $data : [];
+
+    $now = time();
+    $data = array_values(array_filter(
+        $data,
+        static fn($timestamp): bool => is_numeric($timestamp)
+            && $now - (int) $timestamp >= 0
+            && $now - (int) $timestamp < 900
+    ));
+
+    $allowed = count($data) < 10;
+    if ($allowed) {
+        $data[] = $now;
+    }
+
+    $encoded = json_encode($data, JSON_UNESCAPED_SLASHES);
+    rewind($handle);
+    ftruncate($handle, 0);
+    if (is_string($encoded)) {
+        fwrite($handle, $encoded);
+        fflush($handle);
+    }
+
+    @chmod($file, 0600);
+    flock($handle, LOCK_UN);
+    fclose($handle);
+
+    return $allowed;
 }
 
 function clear_login_rate(string $ip): void
 {
-    @unlink(sys_get_temp_dir() . '/panel_login_' . md5($ip));
+    @unlink(login_rate_file($ip));
 }
 
 function user_role_label(string $agent): string
