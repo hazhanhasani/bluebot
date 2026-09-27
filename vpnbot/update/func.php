@@ -13,6 +13,71 @@ function readJsonFileIfExists($path, $default = [])
     $decoded = json_decode($content, true);
     return is_array($decoded) ? $decoded : $default;
 }
+function vpnbotSendTempDocument($chatId, $content, $filename, $caption = ''): bool
+{
+    $path = qrTempPath($filename);
+    if (file_put_contents($path, (string) $content, LOCK_EX) === false) {
+        bluebotLog('warning', 'VPNBot temp document write failed', ['path' => $path]);
+        return false;
+    }
+
+    try {
+        $response = telegram('senddocument', [
+            'chat_id' => $chatId,
+            'document' => new CURLFile($path),
+            'caption' => (string) $caption,
+            'parse_mode' => 'HTML',
+        ]);
+
+        return is_array($response) && !empty($response['ok']);
+    } catch (Throwable $e) {
+        bluebotLog('warning', 'VPNBot temp document send failed', [
+            'error' => $e->getMessage(),
+        ]);
+        return false;
+    } finally {
+        if (is_file($path)) {
+            @unlink($path);
+        }
+    }
+}
+
+function vpnbotSendQrPhoto($chatId, $contents, $filename, $caption, $backgroundPath): bool
+{
+    $qrCode = createqrcode((string) $contents);
+    if ($qrCode === null) {
+        bluebotLog('warning', 'VPNBot QR generation failed');
+        return false;
+    }
+
+    $path = qrTempPath($filename);
+    if (file_put_contents($path, $qrCode->getString(), LOCK_EX) === false) {
+        bluebotLog('warning', 'VPNBot QR temp file write failed', ['path' => $path]);
+        return false;
+    }
+
+    try {
+        addBackgroundImage($path, $qrCode, (string) $backgroundPath);
+        $response = telegram('sendphoto', [
+            'chat_id' => $chatId,
+            'photo' => new CURLFile($path),
+            'caption' => (string) $caption,
+            'parse_mode' => 'HTML',
+        ]);
+
+        return is_array($response) && !empty($response['ok']);
+    } catch (Throwable $e) {
+        bluebotLog('warning', 'VPNBot QR photo send failed', [
+            'error' => $e->getMessage(),
+        ]);
+        return false;
+    } finally {
+        if (is_file($path)) {
+            @unlink($path);
+        }
+    }
+}
+
 function vpnbotUserDataPath($userId): ?string
 {
     $userId = trim((string) $userId);
