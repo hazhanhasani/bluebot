@@ -75,14 +75,14 @@ include __DIR__ . '/inc/layout_head.php';
         </div>
 
         <form method="GET" id="usersForm" class="toolbar-end">
-            <select name="status" class="select" style="width:auto"
+            <select id="filterStatus" name="status" class="select" style="width:auto"
                 onchange="document.getElementById('usersForm').submit()">
                 <option value=""><?= $textbotlang['panel']['usersColBalance'] ?></option>
                 <option value="active" <?= $status === 'active' ? 'selected' : '' ?>><?= $textbotlang['panel']['usersColGroup'] ?></option>
                 <option value="block" <?= $status === 'block' ? 'selected' : '' ?>><?= $textbotlang['panel']['usersColStatus'] ?></option>
             </select>
 
-            <select name="role" class="select" style="width:auto"
+            <select id="filterRole" name="role" class="select" style="width:auto"
                 onchange="document.getElementById('usersForm').submit()">
                 <option value=""><?= $textbotlang['panel']['usersColActions'] ?></option>
                 <option value="f" <?= $role === 'f' ? 'selected' : '' ?>><?= $textbotlang['panel']['usersColJoinDate'] ?></option>
@@ -92,14 +92,14 @@ include __DIR__ . '/inc/layout_head.php';
 
             <div class="search-box" style="min-width:260px">
                 <?= icon('search', 15) ?>
-                <input type="text" name="q" placeholder="<?= $textbotlang['panel']['usersSearchUserPlaceholder'] ?>"
+                <input id="searchInput" type="text" name="q" placeholder="<?= $textbotlang['panel']['usersSearchUserPlaceholder'] ?>"
                     value="<?= htmlspecialchars($search) ?>" autocomplete="off">
-                <button type="button" class="search-clear">✕</button>
+                <button type="button" id="searchClear" class="search-clear">✕</button>
                 <button type="submit" class="search-btn"><?= $textbotlang['panel']['usersAllGroups'] ?></button>
             </div>
 
             <?php if ($search || $status || $role): ?>
-                <a href="users.php" class="btn-link" style="font-size:.78rem;white-space:nowrap"><?= $textbotlang['panel']['usersAllStatuses'] ?></a>
+                <a id="clearAllBtn" href="users.php" class="btn-link" style="font-size:.78rem;white-space:nowrap"><?= $textbotlang['panel']['usersAllStatuses'] ?></a>
             <?php endif; ?>
         </form>
     </div>
@@ -120,7 +120,7 @@ include __DIR__ . '/inc/layout_head.php';
                     <th style="width:72px"></th>
                 </tr>
             </thead>
-            <tbody>
+            <tbody id="usersBody">
                 <?php if (empty($users)): ?>
                     <tr>
                         <td colspan="10">
@@ -206,7 +206,7 @@ include __DIR__ . '/inc/layout_head.php';
         </table>
     </div>
 
-    <div class="tbl-foot">
+    <div class="tbl-foot" id="tblFoot">
         <span><?= number_format($total) ?> <?= $textbotlang['panel']['usersColReferrer'] ?> <?= $page ?> <?= $textbotlang['panel']['usersColAffiliateCount'] ?> <?= $totalPages ?></span>
         <div class="pager">
             <?php
