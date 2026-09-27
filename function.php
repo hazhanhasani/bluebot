@@ -608,6 +608,16 @@ function productNameLocationConflict(string $name, string $location, ?int $exclu
     return (bool) $stmt->fetchColumn();
 }
 
+function selectValue($table, $field, $whereField = null, $whereValue = null, $default = null, $options = [])
+{
+    $row = select($table, $field, $whereField, $whereValue, 'select', $options);
+    if (!is_array($row) || !array_key_exists($field, $row)) {
+        return $default;
+    }
+
+    return $row[$field];
+}
+
 function getPaySettingValue($name, $default = null)
 {
     $rows = select("PaySetting", "*", null, null, "fetchAll");
