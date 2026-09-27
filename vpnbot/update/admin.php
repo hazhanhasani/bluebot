@@ -94,6 +94,15 @@ if ($text == "📞 تنظیم نام کاربری پشتیبانی") {
     }
     $format_price_cart = number_format($Payment_report['price']);
     $Balance_id = select("user", "*", "id", $Payment_report['id_user'], "select");
+    if (!is_array($Balance_id)) {
+        telegram('answerCallbackQuery', [
+            'callback_query_id' => $callback_query_id,
+            'text' => 'کاربر این تراکنش پیدا نشد.',
+            'show_alert' => true,
+        ]);
+        return;
+    }
+
     if ($Payment_report['payment_Status'] == "paid" || $Payment_report['payment_Status'] == "reject") {
         telegram('answerCallbackQuery', array(
             'callback_query_id' => $callback_query_id,
@@ -110,8 +119,16 @@ if ($text == "📞 تنظیم نام کاربری پشتیبانی") {
         Editmessagetext($from_id, $message_id, $textconfrom, $Confirm_pay);
         return;
     }
-    DirectPaymentbot($order_id);
-    $Payment_report['price'] = number_format($Payment_report['price']);
+    if (!DirectPaymentbot($order_id)) {
+        telegram('answerCallbackQuery', [
+            'callback_query_id' => $callback_query_id,
+            'text' => 'پرداخت تأیید شد اما تحویل موجودی کامل نشد؛ لاگ را بررسی کنید.',
+            'show_alert' => true,
+        ]);
+        return;
+    }
+
+    $Payment_report['price'] = number_format((float) $Payment_report['price']);
     $text_report = "📣 نماینده رسیبد پرداخت کارت به کارت را تایید کرد.
         
 اطلاعات :
@@ -128,7 +145,6 @@ if ($text == "📞 تنظیم نام کاربری پشتیبانی") {
             'parse_mode' => "HTML"
         ]);
     }
-    update("Payment_report", "payment_Status", "paid", "id_order", $Payment_report['id_order']);
     update("user", "Processing_value_one", "none", "id", $Balance_id['id']);
     update("user", "Processing_value_tow", "none", "id", $Balance_id['id']);
     update("user", "Processing_value_four", "none", "id", $Balance_id['id']);
@@ -232,12 +248,15 @@ if ($text == "📞 تنظیم نام کاربری پشتیبانی") {
     sendmessage($from_id, $textbotlang['Admin']['manageUser']['getIdUserUnblock'], $backadmin, 'HTML');
     step('show_info', $from_id);
 } elseif ($user['step'] == "show_info" || strpos($text, "/user ") !== false) {
-    if (explode(" ", $text)[0] == "/user") {
-        $id_user = explode(" ", $text)[1];
+    if ($user['step'] == "show_info") {
+        $id_user = trim((string) $text);
+    } elseif (preg_match('/^\/user\s+([^\s]+)$/', trim((string) $text), $userCommand)) {
+        $id_user = trim((string) ($userCommand[1] ?? ''));
     } else {
-        $id_user = $text;
+        $id_user = '';
     }
-    if (!in_array($id_user, $users_ids)) {
+
+    if ($id_user === '' || !in_array((string) $id_user, array_map('strval', $users_ids), true)) {
         sendmessage($from_id, $textbotlang['Admin']['notUser'], null, 'HTML');
         return;
     }
@@ -261,7 +280,7 @@ if ($text == "📞 تنظیم نام کاربری پشتیبانی") {
     $__q31->bindValue(1, $id_user, PDO::PARAM_STR);
     $__q31->bindValue(2, $ApiToken, PDO::PARAM_STR);
     $__q31->execute();
-    $invoicecount = $__q31->fetch(PDO::FETCH_ASSOC)['count(*)'];
+    $invoicecount = (int) $__q31->fetchColumn();
     if ($invoicecount == 0) {
         $sumvolume['SUM(Volume)'] = 0;
     } else {
@@ -328,7 +347,7 @@ if ($text == "📞 تنظیم نام کاربری پشتیبانی") {
             ],
         ]
     ]);
-    $userbalance = number_format(json_decode(file_get_contents("data/$id_user/$id_user.json"), true)['Balance']);
+    $userbalance = number_format((int) (vpnbotReadUserData($id_user)['Balance'] ?? 0));
     if ($suminvoicemonth == null) {
         $suminvoicemonth = "0";
     }
@@ -379,12 +398,17 @@ if ($text == "📞 تنظیم نام کاربری پشتیبانی") {
     $Payment_Method = "add balance by admin";
     $invoice = null;
     $stmt->execute([$user['Processing_value'], $randomString, $dateacc, $text, $payment_Status, $Payment_Method, $invoice, $ApiToken]);
+    $targetUserId = trim((string) ($user['Processing_value'] ?? ''));
+    $newBalance = vpnbotAdjustWallet($targetUserId, (int) $text);
+    if ($newBalance === null) {
+        markPaymentDeliveryError($randomString, 'manual agent wallet credit failed');
+        sendmessage($from_id, '❌ بروزرسانی کیف پول انجام نشد؛ تراکنش برای بررسی ثبت شد.', $keyboardadmin, 'HTML');
+        step('home', $from_id);
+        return;
+    }
+
     sendmessage($from_id, $textbotlang['Admin']['manageUser']['addBalanced'], $keyboardadmin, 'html');
-    $userbalance = json_decode(file_get_contents("data/{$user['Processing_value']}/{$user['Processing_value']}.json"), true);
-    $Balance_add_user = $userbalance['Balance'] + $text;
-    $userbalance['Balance'] = $Balance_add_user;
-    file_put_contents("data/{$user['Processing_value']}/{$user['Processing_value']}.json", json_encode($userbalance));
-    $heibalanceuser = number_format($text, 0);
+    $heibalanceuser = number_format((int) $text, 0);
     $textadd = "💎 کاربر عزیز مبلغ $heibalanceuser تومان به موجودی کیف پول تان اضافه گردید.";
     sendmessage($user['Processing_value'], $textadd, null, 'HTML');
     step('home', $from_id);
@@ -409,33 +433,38 @@ if ($text == "📞 تنظیم نام کاربری پشتیبانی") {
     $Payment_Method = "low balance by admin";
     $invoice = null;
     $stmt->execute([$user['Processing_value'], $randomString, $dateacc, $text, $payment_Status, $Payment_Method, $invoice, $ApiToken]);
+    $targetUserId = trim((string) ($user['Processing_value'] ?? ''));
+    $newBalance = vpnbotAdjustWallet($targetUserId, -((int) $text));
+    if ($newBalance === null) {
+        markPaymentDeliveryError($randomString, 'manual agent wallet debit failed');
+        sendmessage($from_id, '❌ بروزرسانی کیف پول انجام نشد؛ تراکنش برای بررسی ثبت شد.', $keyboardadmin, 'HTML');
+        step('home', $from_id);
+        return;
+    }
+
     sendmessage($from_id, $textbotlang['Admin']['manageUser']['lowBalanced'], $keyboardadmin, 'html');
-    $userbalance = json_decode(file_get_contents("data/{$user['Processing_value']}/{$user['Processing_value']}.json"), true);
-    $Balance_add_user = intval($userbalance['Balance']) - intval($text);
-    $userbalance['Balance'] = $Balance_add_user;
-    file_put_contents("data/{$user['Processing_value']}/{$user['Processing_value']}.json", json_encode($userbalance));
-    $lowbalanceuser = number_format($text, 0);
+    $lowbalanceuser = number_format((int) $text, 0);
     $textkam = "❌ کاربر عزیز مبلغ $lowbalanceuser تومان از  موجودی کیف پول تان کسر گردید.";
     sendmessage($user['Processing_value'], $textkam, null, 'HTML');
     step('home', $from_id);
     $statistics = select("user", "*", "bottype", $ApiToken, "count");
-    $Balance_user_afters = number_format(select("user", "*", "id", $user['Processing_value'], "select")['Balance']);
+    $Balance_user_afters = number_format((int) (vpnbotReadUserData($user['Processing_value'] ?? '')['Balance'] ?? 0));
 } elseif ($text == "📊 آمار ربات") {
     $statistics = select("user", "*", "bottype", $ApiToken, "count");
     $stmt2 = $pdo->prepare("SELECT COUNT( DISTINCT id_user) as count FROM `invoice` WHERE name_product = 'سرویس تست' AND  bottype = :mp1");
     $stmt2->execute([':mp1' => $ApiToken]);
-    $statisticsorder = $stmt2->fetch(PDO::FETCH_ASSOC)['count'];
+    $statisticsorder = (int) $stmt2->fetchColumn();
     $stmt = $pdo->prepare("SELECT * FROM invoice WHERE name_product = 'سرویس تست' AND bottype = :mp1");
     $stmt->execute([':mp1' => $ApiToken]);
     $count_usertest = $stmt->rowCount();
     $sql1 = "SELECT COUNT(*) AS invoice_count FROM invoice WHERE (status = 'active' OR status = 'end_of_time' OR status = 'end_of_volume' OR status = 'sendedwarn' OR status = 'send_on_hold') AND name_product != 'سرویس تست' AND bottype = :mp1";
     $stmt1 = $pdo->prepare($sql1);
     $stmt1->execute([':mp1' => $ApiToken]);
-    $invoice = $stmt1->fetch(PDO::FETCH_ASSOC)['invoice_count'];
+    $invoice = (int) $stmt1->fetchColumn();
     $sql2 = "SELECT SUM(price_product) AS total_price FROM invoice WHERE (status = 'active' OR status = 'end_of_time' OR status = 'end_of_volume' OR status = 'sendedwarn' OR status = 'send_on_hold') AND name_product != 'سرویس تست' AND bottype = :mp1";
     $stmt2 = $pdo->prepare($sql2);
     $stmt2->execute([':mp1' => $ApiToken]);
-    $invoicesum = number_format($stmt2->fetch(PDO::FETCH_ASSOC)['total_price'], 0);
+    $invoicesum = number_format((float) ($stmt2->fetchColumn() ?: 0), 0);
     $statisticsall = "
 📊 آمار کلی ربات  
 
