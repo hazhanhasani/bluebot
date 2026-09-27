@@ -18,7 +18,8 @@ if (!$setting || !isset($setting['scorestatus'])) {
 $midnight_time = date("H:i");
 
 if (intval($setting['scorestatus']) == 1) {
-    $otherreport = select("topicid", "idreport", "report", "otherreport", "select")['idreport'];
+    $topicRow = select("topicid", "idreport", "report", "otherreport", "select");
+$otherreport = is_array($topicRow) ? ($topicRow['idreport'] ?? null) : null;
 
     if ($midnight_time == "00:00") {
         $temp = [];
