@@ -421,12 +421,13 @@ include __DIR__ . '/inc/layout_head.php';
             </div>
             <div class="tbl-wrap" style="max-height:360px;overflow:auto">
                 <table class="tbl-lg sms-mobile-table sms-pattern-table">
-                    <thead><tr><th>Code</th><th>توضیح / متن</th><th>متغیرها</th></tr></thead>
+                    <thead><tr><th>Code</th><th>توضیح / متن</th><th>سامانه</th><th>متغیرها</th></tr></thead>
                     <tbody>
                     <?php foreach ($providerPatterns as $pattern): ?>
                         <tr>
                             <td class="cm" data-label="کد"><?= htmlspecialchars((string) ($pattern['code'] ?? '')) ?></td>
                             <td data-label="متن"><?= htmlspecialchars(trunc((string) (($pattern['description'] ?? '') ?: ($pattern['text'] ?? '')), 100)) ?></td>
+                            <td data-label="سامانه" class="cm"><?= htmlspecialchars((string) (($pattern['system'] ?? '') ?: '—')) ?></td>
                             <td data-label="متغیرها"><?= $renderVariableSpecs(
                                 (array) (($pattern['variable_specs'] ?? []) ?: ($pattern['variables'] ?? []))
                             ) ?></td>
@@ -445,7 +446,7 @@ include __DIR__ . '/inc/layout_head.php';
     <div class="card-head">
         <div>
             <div class="card-title">رویدادها و پترن‌های پیام</div>
-            <div class="card-subtitle">متن‌ها آماده ثبت در پترن هستند. خط برند <code>بلو پنل</code> و خط مستقل <code>bot.bluepanel.ir</code> برای شناسایی فرستنده الزامی‌اند و نباید حذف شوند.</div>
+            <div class="card-subtitle">برای تأیید پترن، در ایران‌پیامک سامانه <code>bot.bluepanel.ir</code> را انتخاب کن. دامنه لازم نیست داخل متن پترن تکرار شود.</div>
         </div>
     </div>
     <form method="post">
@@ -465,7 +466,7 @@ include __DIR__ . '/inc/layout_head.php';
                         <td data-label="دسته"><?= htmlspecialchars((string) $template['category']) ?></td>
                         <td data-label="متن پترن" style="min-width:280px">
                             <code class="sms-pattern-copy" style="white-space:pre-wrap;display:block;line-height:1.9"><?= htmlspecialchars((string) ($catalog[$template['event_key']]['body'] ?? $template['body'] ?? '')) ?></code>
-                            <small style="display:block;margin-top:8px;color:var(--mute)">متن را دقیقاً با همین شکست خط ثبت کن؛ خط <strong>bot.bluepanel.ir</strong> باید به‌صورت مستقل داخل متن پترن باقی بماند.</small>
+                            <small style="display:block;margin-top:8px;color:var(--mute)">متن را با همین متغیرها ثبت کن و هنگام ساخت پترن، سامانه <strong>bot.bluepanel.ir</strong> را انتخاب کن.</small>
                         </td>
                         <td data-label="متغیرها"><?= $renderVariableSpecs((array) ($catalog[$template['event_key']]['vars'] ?? $vars)) ?></td>
                         <td data-label="پترن">
