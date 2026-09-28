@@ -609,7 +609,15 @@ final class BluebotSms
 
         $patternCode = self::ensurePatternForEvent($eventKey);
         if ($patternCode === '') {
-            throw new RuntimeException('پترن سازگار و فعال برای «' . ($spec['title'] ?? $eventKey) . '» پیدا نشد.');
+            // A pattern may have been approved moments ago while the local cache
+            // is still inside its TTL. Force one provider refresh before failing.
+            $patternCode = self::ensurePatternForEvent($eventKey, true);
+        }
+        if ($patternCode === '') {
+            throw new RuntimeException(
+                'پترن فعال برای «' . ($spec['title'] ?? $eventKey)
+                . '» پیدا نشد. فهرست پترن‌ها تازه‌سازی شد؛ انتخاب این رویداد را در بخش پترن‌ها بررسی کنید.'
+            );
         }
 
         return self::sendPattern($phone, $patternCode, self::cleanParams($spec, $params));
@@ -657,7 +665,15 @@ final class BluebotSms
                 'GET',
                 $base . '/patterns?' . $query,
                 $apiKey,
-                $settings
+                $settings,
+                [
+                    // The current IranPayamak/FarazSMS documentation exposes
+                    // this filter as "staus" (provider spelling). Supplying it
+                    // keeps pending/rejected patterns out of the active cache.
+                    'staus' => 'active',
+                    'sort_by' => 'updated_at',
+                    'sort_type' => 'desc',
+                ]
             );
 
             $rows = [];
@@ -1044,6 +1060,8 @@ final class BluebotSms
             return '';
         }
 
+        self::seedTemplates();
+
         $loadCurrent = static function () use ($pdo, $eventKey): string {
             $stmt = $pdo->prepare('SELECT pattern_code FROM sms_templates WHERE event_key=? LIMIT 1');
             $stmt->execute([$eventKey]);
@@ -1051,23 +1069,58 @@ final class BluebotSms
         };
 
         $cache = self::refreshPatterns($forceRefresh);
+        $patterns = (array) ($cache['patterns'] ?? []);
         $byCode = [];
-        foreach ((array) ($cache['patterns'] ?? []) as $pattern) {
+        foreach ($patterns as $pattern) {
             if (is_array($pattern) && !empty($pattern['code'])) {
                 $byCode[(string) $pattern['code']] = $pattern;
             }
         }
 
         $current = $loadCurrent();
-        if ($current !== '' && isset($byCode[$current]) && self::patternCompatibleWithSpec($byCode[$current], $spec)) {
+
+        // Once a template is explicitly/automatically mapped to a code that is
+        // present in the provider's ACTIVE list, that provider state is the
+        // source of truth. Compatibility scoring is only a discovery heuristic;
+        // it must not block an already-selected active pattern at send time.
+        if ($current !== '' && isset($byCode[$current])) {
+            if (!self::patternCompatibleWithSpec($byCode[$current], $spec)) {
+                self::log('SMS mapped pattern metadata differs from local template; provider validation will decide', [
+                    'event' => $eventKey,
+                    'pattern' => $current,
+                    'provider_variables' => $byCode[$current]['variables'] ?? [],
+                    'expected_variables' => array_values(array_filter(array_map(
+                        static fn(array $var): string => (string) ($var['name'] ?? ''),
+                        (array) ($spec['vars'] ?? [])
+                    ))),
+                ]);
+            }
             return $current;
         }
 
-        self::smartAssignPatterns((array) ($cache['patterns'] ?? []), true);
+        // A previously selected code disappeared from the active provider list.
+        // Clear only this stale mapping. Never overwrite unrelated event mappings
+        // just because one event needs to be resolved.
+        if ($current !== '') {
+            $clear = $pdo->prepare(
+                'UPDATE sms_templates SET pattern_code=?,updated_at=? WHERE event_key=? AND pattern_code=?'
+            );
+            $clear->execute(['', time(), $eventKey, $current]);
+        }
+
+        self::smartAssignPatterns($patterns, false);
         $current = $loadCurrent();
-        return $current !== '' && isset($byCode[$current]) && self::patternCompatibleWithSpec($byCode[$current], $spec)
-            ? $current
-            : '';
+        if ($current !== '' && isset($byCode[$current])) {
+            return $current;
+        }
+
+        // If this call used a warm cache, retry once against the provider. This
+        // covers a pattern that was approved just after the last synchronization.
+        if (!$forceRefresh) {
+            return self::ensurePatternForEvent($eventKey, true);
+        }
+
+        return '';
     }
 
     private static function normalizeVariableType(string $type): string
