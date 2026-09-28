@@ -1624,7 +1624,7 @@ function DirectPayment($order_id, $image = null)
         }
         update("invoice", "Status", "active", "username", $get_invoice['username']);
         try {
-            BluebotSms::queueForUser(
+            $smsDelivery = BluebotSms::queueAndDispatchForUser(
                 'service_activated',
                 (string) $Balance_id['id'],
                 [
@@ -1636,6 +1636,14 @@ function DirectPayment($order_id, $image = null)
                 (string) $Payment_report['id_order'],
                 'service-activated:' . (string) $get_invoice['id_invoice']
             );
+            if (empty($smsDelivery['sent'])) {
+                bluebotLog('warning', 'Service activation SMS queued but not sent immediately', [
+                    'invoice_id' => (string) $get_invoice['id_invoice'],
+                    'status' => (string) ($smsDelivery['status'] ?? 'not_queued'),
+                    'message' => (string) ($smsDelivery['message'] ?? ''),
+                    'delivery_id' => (string) ($smsDelivery['delivery_id'] ?? ''),
+                ]);
+            }
         } catch (Throwable $smsError) {
             bluebotLog('warning', 'Service activation SMS failed', [
                 'invoice_id' => (string) $get_invoice['id_invoice'],
@@ -1827,7 +1835,7 @@ function DirectPayment($order_id, $image = null)
             $oldExpireTs = is_numeric($DataUserOut['expire'] ?? null) ? (int) $DataUserOut['expire'] : 0;
             $renewDays = max(0, (int) ($prodcut['Service_time'] ?? 0));
             $newExpireTs = $renewDays > 0 ? max(time(), $oldExpireTs) + ($renewDays * 86400) : 0;
-            BluebotSms::queueForUser(
+            $smsDelivery = BluebotSms::queueAndDispatchForUser(
                 'service_renewed',
                 (string) $Balance_id['id'],
                 [
@@ -1838,6 +1846,14 @@ function DirectPayment($order_id, $image = null)
                 (string) $Payment_report['id_order'],
                 'service-renewed:' . (string) $Payment_report['id_order']
             );
+            if (empty($smsDelivery['sent'])) {
+                bluebotLog('warning', 'Service renewal SMS queued but not sent immediately', [
+                    'invoice_id' => (string) $nameloc['id_invoice'],
+                    'status' => (string) ($smsDelivery['status'] ?? 'not_queued'),
+                    'message' => (string) ($smsDelivery['message'] ?? ''),
+                    'delivery_id' => (string) ($smsDelivery['delivery_id'] ?? ''),
+                ]);
+            }
         } catch (Throwable $smsError) {
             bluebotLog('warning', 'Service renewal SMS failed', [
                 'invoice_id' => (string) $nameloc['id_invoice'],
