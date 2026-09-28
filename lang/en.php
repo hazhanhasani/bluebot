@@ -35,6 +35,10 @@ To enable it, the bot owner needs a Telegram Premium subscription, or the bot mu
                                 'key' => 'textbot.sell',
                         ],
                         [
+                                'label' => 'Button: Digital services',
+                                'key' => 'textbot.digitalServices',
+                        ],
+                        [
                                 'label' => 'Button: My services',
                                 'key' => 'textbot.purchasedServices',
                         ],
@@ -897,6 +901,7 @@ Support account : @%s',
                         'title' => '🔎 Quick search',
                         'usernamgeget' => '📌 Send your username',
                 ],
+                'digitalServices' => '🛍 Digital services',
                 'sell' => [
                         'errorConfig' => '❌ An error occurred while creating the subscription. Please contact support to resolve the issue.',
                         'errorProduct' => '❌ The selected product does not exist',
@@ -3585,6 +3590,18 @@ Follow the steps above, then send the address below:
 
 <code>https://%s/app/</code>',
                 ],
+        ],
+        'digitalServices' => [
+                'title' => '🛍 Digital services',
+                'select' => 'Select a service. Delivery only starts after an administrator manually approves the order.',
+                'empty' => 'No digital services are available right now.',
+                'targetPrompt' => '🎯 Send the destination Telegram username or Telegram User ID.',
+                'confirmTitle' => '📋 Confirm order',
+                'queued' => '✅ Your order was registered and is waiting for administrator approval and delivery.',
+                'insufficient' => '❌ Your wallet balance is not enough for this order.',
+                'notFound' => '❌ The selected service is unavailable or disabled.',
+                'invalidTarget' => '❌ The destination is invalid.',
+                'schemaMissing' => '⚠️ The digital-services database module is not installed yet. Run the database update.',
         ],
         'textbot' => [
                 'accountWallet' => '🏦 Wallet + Top-up',
