@@ -115,6 +115,111 @@ if ($adminrulecheck['rule'] != "administrator") {
         return;
     }
 }
+if (preg_match('/^ds_approve:(\d+)$/', (string) $datain, $digitalApproveMatch)
+    && $adminrulecheck['rule'] === 'administrator') {
+    $orderId = (int) $digitalApproveMatch[1];
+    try {
+        $result = BluebotDigitalServices::approveAndDeliver($pdo, $orderId, (string) $from_id);
+        $order = is_array($result['order'] ?? null)
+            ? $result['order']
+            : BluebotDigitalServices::findOrder($pdo, $orderId);
+
+        if (!empty($result['ok'])) {
+            $doneText = "✅ <b>سفارش تأیید و ارسال شد</b>\n\n"
+                . BluebotDigitalServices::adminOrderText(is_array($order) ? $order : ['id' => $orderId]);
+            Editmessagetext(
+                $from_id,
+                $message_id,
+                $doneText,
+                json_encode(['inline_keyboard' => []], JSON_UNESCAPED_UNICODE)
+            );
+            if ($callback_query_id) {
+                telegram('answerCallbackQuery', [
+                    'callback_query_id' => $callback_query_id,
+                    'text' => !empty($result['already_done']) ? 'قبلاً ارسال شده است.' : 'ارسال انجام شد.',
+                    'show_alert' => false,
+                ]);
+            }
+        } else {
+            $error = trim((string) ($result['error'] ?? 'خطای نامشخص'));
+            $failedText = "⚠️ <b>ارسال انجام نشد</b>\n\n"
+                . BluebotDigitalServices::adminOrderText(is_array($order) ? $order : ['id' => $orderId])
+                . "\n\n<code>"
+                . htmlspecialchars($error, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8')
+                . "</code>\n\nمی‌توانید دوباره «تأیید و ارسال» بزنید یا سفارش را رد و مبلغ را برگردانید.";
+            Editmessagetext(
+                $from_id,
+                $message_id,
+                $failedText,
+                BluebotDigitalServices::adminKeyboard($orderId)
+            );
+            if ($callback_query_id) {
+                telegram('answerCallbackQuery', [
+                    'callback_query_id' => $callback_query_id,
+                    'text' => 'ارسال ناموفق بود؛ سفارش برای بررسی باقی ماند.',
+                    'show_alert' => true,
+                ]);
+            }
+        }
+    } catch (Throwable $e) {
+        bluebotLog('error', 'Digital service approval failed', [
+            'admin_id' => (string) $from_id,
+            'order_id' => $orderId,
+            'error' => $e->getMessage(),
+        ]);
+        if ($callback_query_id) {
+            telegram('answerCallbackQuery', [
+                'callback_query_id' => $callback_query_id,
+                'text' => 'خطا در پردازش سفارش: ' . mb_substr($e->getMessage(), 0, 120, 'UTF-8'),
+                'show_alert' => true,
+            ]);
+        }
+    }
+    return;
+}
+
+if (preg_match('/^ds_reject:(\d+)$/', (string) $datain, $digitalRejectMatch)
+    && $adminrulecheck['rule'] === 'administrator') {
+    $orderId = (int) $digitalRejectMatch[1];
+    try {
+        $result = BluebotDigitalServices::rejectAndRefund($pdo, $orderId, (string) $from_id);
+        $order = is_array($result['order'] ?? null)
+            ? $result['order']
+            : BluebotDigitalServices::findOrder($pdo, $orderId);
+
+        $textRejected = "❌ <b>سفارش رد شد</b>\n\n"
+            . "💰 مبلغ سفارش به کیف پول کاربر برگشت داده شد.\n\n"
+            . BluebotDigitalServices::adminOrderText(is_array($order) ? $order : ['id' => $orderId]);
+        Editmessagetext(
+            $from_id,
+            $message_id,
+            $textRejected,
+            json_encode(['inline_keyboard' => []], JSON_UNESCAPED_UNICODE)
+        );
+        if ($callback_query_id) {
+            telegram('answerCallbackQuery', [
+                'callback_query_id' => $callback_query_id,
+                'text' => !empty($result['already_done']) ? 'قبلاً رد شده است.' : 'رد شد و وجه برگشت داده شد.',
+                'show_alert' => false,
+            ]);
+        }
+    } catch (Throwable $e) {
+        bluebotLog('error', 'Digital service rejection failed', [
+            'admin_id' => (string) $from_id,
+            'order_id' => $orderId,
+            'error' => $e->getMessage(),
+        ]);
+        if ($callback_query_id) {
+            telegram('answerCallbackQuery', [
+                'callback_query_id' => $callback_query_id,
+                'text' => 'خطا در رد سفارش: ' . mb_substr($e->getMessage(), 0, 120, 'UTF-8'),
+                'show_alert' => true,
+            ]);
+        }
+    }
+    return;
+}
+
 $isGatewayOptionClick = preg_match('/^paygwopt-(\w+)$/', $datain, $gatewayOption);
 if ($isGatewayOptionClick) {
     $text = $textbotlang['keyboard'][$gatewayOption[1]] ?? '';
