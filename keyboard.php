@@ -35,7 +35,8 @@ $replacements = [
     'text_wheel_luck' => $textbotlang['textbot']['wheelLuck'],
     'text_extend' => $textbotlang['textbot']['extend'],
     'text_agentpanel' => $textbotlang['textbot']['agentPanel'],
-    'text_requestagent' => $textbotlang['textbot']['requestAgent']
+    'text_requestagent' => $textbotlang['textbot']['requestAgent'],
+    'text_digital_services' => $textbotlang['textbot']['digitalServices']
 ];
 $admin_idss = select("admin", "*", "id_admin", $from_id, "count");
 $temp_addtional_key = [];
@@ -117,6 +118,9 @@ if (($setting['inlinebtnmain'] ?? '') === "oninline" && !empty($keyboardRows)) {
             }
             if ($keyboard['text'] == "text_requestagent") {
                 $trace_keyboard[$key][$keyboard_key]['callback_data'] = "requestagent";
+            }
+            if ($keyboard['text'] == "text_digital_services") {
+                $trace_keyboard[$key][$keyboard_key]['callback_data'] = "digitalservices";
             }
         }
     }
