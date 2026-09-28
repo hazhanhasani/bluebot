@@ -73,6 +73,9 @@ jobs:
       - name: SMS panel contract
         run: php tests/sms_panel_contract.php
 
+      - name: Digital services contract
+        run: php tests/digital_services_contract.php
+
       - name: Telegram Mini App bootstrap tests
         run: node tests/telegram_bootstrap_test.js
 
