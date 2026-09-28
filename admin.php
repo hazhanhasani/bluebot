@@ -2,6 +2,7 @@
 require_once __DIR__ . '/src/Support/Diagnostics.php';
 require_once __DIR__ . '/src/Support/UpdateManager.php';
 require_once __DIR__ . '/src/Support/ApiToken.php';
+require_once __DIR__ . '/src/Services/DigitalServiceManager.php';
 require_once __DIR__ . '/src/Support/MiniApp.php';
 #----------------[  admin section  ]------------------#
 $version = file_get_contents('version');
