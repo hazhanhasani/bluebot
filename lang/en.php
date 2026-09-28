@@ -35,6 +35,10 @@ To enable it, the bot owner needs a Telegram Premium subscription, or the bot mu
                                 'key' => 'textbot.sell',
                         ],
                         [
+                                'label' => 'Button: Digital services',
+                                'key' => 'textbot.digitalServices',
+                        ],
+                        [
                                 'label' => 'Button: My services',
                                 'key' => 'textbot.purchasedServices',
                         ],
@@ -3586,6 +3590,18 @@ Follow the steps above, then send the address below:
 <code>https://%s/app/</code>',
                 ],
         ],
+        'digitalServices' => [
+                'title' => '🛍 Digital services',
+                'select' => 'Select a service. Delivery only starts after an administrator manually approves the order.',
+                'empty' => 'No digital services are available right now.',
+                'targetPrompt' => '🎯 Send the destination Telegram username or Telegram User ID.',
+                'confirmTitle' => '📋 Confirm order',
+                'queued' => '✅ Your order was registered and is waiting for administrator approval and delivery.',
+                'insufficient' => '❌ Your wallet balance is not enough for this order.',
+                'notFound' => '❌ The selected service is unavailable or disabled.',
+                'invalidTarget' => '❌ The destination is invalid.',
+                'schemaMissing' => '⚠️ The digital-services database module is not installed yet. Run the database update.',
+        ],
         'textbot' => [
                 'accountWallet' => '🏦 Wallet + Top-up',
                 'addBalance' => '💰 Increase balance',
@@ -3727,6 +3743,7 @@ After joining, click the check membership button',
     
 ',
                 'selectLocation' => '📌 Select the service location.',
+                'digitalServices' => '🛍 Digital services',
                 'sell' => '🔐 Buy subscription',
                 'starTelegram' => '💫 Star Telegram',
                 'support' => '☎️ Support',

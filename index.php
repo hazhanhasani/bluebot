@@ -396,6 +396,7 @@ require_once __DIR__ . '/botapi.php';
 require_once __DIR__ . '/src/Support/JalaliDate.php';
 require_once __DIR__ . '/src/Support/MiniApp.php';
 require_once __DIR__ . '/function.php';
+require_once __DIR__ . '/src/Services/DigitalServiceManager.php';
 bluebotEnsureInstallerRemoved();
 require_once __DIR__ . '/keyboard.php';
 require_once __DIR__ . '/vendor/autoload.php';
@@ -472,7 +473,7 @@ $firstKeyboardText = is_array($keyboard_check)
     : '';
 if ($firstKeyboardText !== ''
     && preg_match('/[\x{600}-\x{6FF}\x{FB50}-\x{FDFF}]/u', $firstKeyboardText)) {
-    $keyboardmain = '{"keyboard":[[{"text":"text_sell"},{"text":"text_extend"}],[{"text":"text_usertest"},{"text":"text_wheel_luck"}],[{"text":"text_Purchased_services"},{"text":"accountwallet"}],[{"text":"text_affiliates"},{"text":"text_Tariff_list"}],[{"text":"text_support"},{"text":"text_help"}],[{"text":"text_agentpanel"},{"text":"text_requestagent"}]]}';
+    $keyboardmain = '{"keyboard":[[{"text":"text_sell"},{"text":"text_extend"}],[{"text":"text_digital_services"}],[{"text":"text_usertest"},{"text":"text_wheel_luck"}],[{"text":"text_Purchased_services"},{"text":"accountwallet"}],[{"text":"text_affiliates"},{"text":"text_Tariff_list"}],[{"text":"text_support"},{"text":"text_help"}],[{"text":"text_agentpanel"},{"text":"text_requestagent"}]]}';
     update("setting", "keyboardmain", $keyboardmain, null, null);
 }
 
@@ -912,6 +913,199 @@ if ($text == "/start" || $datain == "start" || $text == "start") {
     update("user", "Processing_value_one", "0", "id", $from_id);
     update("user", "Processing_value_tow", "0", "id", $from_id);
     update("user", "Processing_value_four", "0", "id", $from_id);
+    return;
+} elseif ($text == ($textbotlang['textbot']['digitalServices'] ?? '🛍 فروش خدمات')
+    || $datain === 'digitalservices'
+    || $datain === 'ds_home') {
+    if (!check_active_btn($setting['keyboardmain'], 'text_digital_services')) {
+        sendmessage($from_id, $textbotlang['users']['buttonDisabled'], null, 'HTML');
+        return;
+    }
+
+    if (!BluebotDigitalServices::isAvailable($pdo)) {
+        sendmessage($from_id, $textbotlang['digitalServices']['schemaMissing'], $keyboard, 'HTML');
+        return;
+    }
+
+    $products = BluebotDigitalServices::listActive($pdo);
+    if ($products === []) {
+        sendmessage($from_id, $textbotlang['digitalServices']['empty'], $keyboard, 'HTML');
+        step('home', $from_id);
+        return;
+    }
+
+    $catalogKeyboard = BluebotDigitalServices::catalogKeyboard($pdo, $textbotlang['users']['backbtn']);
+    $catalogText = "<b>" . htmlspecialchars($textbotlang['digitalServices']['title'], ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . "</b>\n\n"
+        . htmlspecialchars($textbotlang['digitalServices']['select'], ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+
+    if ($datain === 'ds_home' || $datain === 'digitalservices') {
+        Editmessagetext($from_id, $message_id, $catalogText, $catalogKeyboard);
+    } else {
+        sendmessage($from_id, $catalogText, $catalogKeyboard, 'HTML');
+    }
+    step('home', $from_id);
+    return;
+} elseif (preg_match('/^ds_product:(\d+)$/', (string) $datain, $digitalProductMatch)) {
+    if (!check_active_btn($setting['keyboardmain'], 'text_digital_services')) {
+        sendmessage($from_id, $textbotlang['users']['buttonDisabled'], null, 'HTML');
+        return;
+    }
+
+    $product = BluebotDigitalServices::findProduct($pdo, (int) $digitalProductMatch[1]);
+    if (!is_array($product)) {
+        telegram('answerCallbackQuery', [
+            'callback_query_id' => $callback_query_id,
+            'text' => $textbotlang['digitalServices']['notFound'],
+            'show_alert' => true,
+        ]);
+        return;
+    }
+
+    $serviceValue = max(1, (int) ($product['service_value'] ?? 1));
+    $typeLabel = match ((string) ($product['type'] ?? '')) {
+        'telegram_stars' => number_format($serviceValue) . ' Telegram Stars',
+        'telegram_premium' => $serviceValue . ' ماه Telegram Premium',
+        default => 'خدمت دیجیتال',
+    };
+    $description = trim((string) ($product['description'] ?? ''));
+    $productText = "🛍 <b>" . htmlspecialchars((string) $product['name'], ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . "</b>\n\n"
+        . "📦 " . htmlspecialchars($typeLabel, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . "\n"
+        . "💳 <b>" . number_format((float) $product['price']) . " تومان</b>";
+    if ($description !== '') {
+        $productText .= "\n\n" . htmlspecialchars($description, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+    }
+    $productText .= "\n\n🔐 ارسال فقط بعد از تأیید دستی ادمین انجام می‌شود.";
+
+    Editmessagetext(
+        $from_id,
+        $message_id,
+        $productText,
+        BluebotDigitalServices::productKeyboard($product, $textbotlang['users']['backbtn'])
+    );
+    return;
+} elseif (preg_match('/^ds_buy:(\d+)$/', (string) $datain, $digitalBuyMatch)) {
+    $product = BluebotDigitalServices::findProduct($pdo, (int) $digitalBuyMatch[1]);
+    if (!is_array($product)) {
+        telegram('answerCallbackQuery', [
+            'callback_query_id' => $callback_query_id,
+            'text' => $textbotlang['digitalServices']['notFound'],
+            'show_alert' => true,
+        ]);
+        return;
+    }
+
+    savedata('clear', 'digital_service_id', (string) $product['id']);
+    step('digital_service_target', $from_id);
+    Editmessagetext(
+        $from_id,
+        $message_id,
+        "<b>" . htmlspecialchars((string) $product['name'], ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . "</b>\n\n"
+            . htmlspecialchars($textbotlang['digitalServices']['targetPrompt'], ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'),
+        $backuser
+    );
+    return;
+} elseif ($user['step'] === 'digital_service_target') {
+    $digitalData = bluebotJsonArray($user['Processing_value'] ?? '');
+    $productId = (int) ($digitalData['digital_service_id'] ?? 0);
+    $product = BluebotDigitalServices::findProduct($pdo, $productId);
+    if (!is_array($product)) {
+        step('home', $from_id);
+        sendmessage($from_id, $textbotlang['digitalServices']['notFound'], $keyboard, 'HTML');
+        return;
+    }
+
+    [$targetValid, $targetValue] = BluebotDigitalServices::validateTarget($product, (string) $text);
+    if (!$targetValid) {
+        sendmessage(
+            $from_id,
+            htmlspecialchars((string) $targetValue, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'),
+            $backuser,
+            'HTML'
+        );
+        return;
+    }
+
+    savedata('save', 'digital_service_target', (string) $targetValue);
+    step('digital_service_confirm', $from_id);
+
+    $confirmText = "<b>" . htmlspecialchars($textbotlang['digitalServices']['confirmTitle'], ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . "</b>\n\n"
+        . "📦 " . htmlspecialchars((string) $product['name'], ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . "\n"
+        . "🎯 <code>" . htmlspecialchars((string) $targetValue, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . "</code>\n"
+        . "💳 <b>" . number_format((float) $product['price']) . " تومان</b>\n\n"
+        . "پس از ثبت، مبلغ از کیف پول کم می‌شود و سفارش تا تأیید دستی ادمین ارسال نخواهد شد.";
+
+    sendmessage(
+        $from_id,
+        $confirmText,
+        BluebotDigitalServices::confirmKeyboard((int) $product['id'], $textbotlang['users']['backbtn']),
+        'HTML'
+    );
+    return;
+} elseif (preg_match('/^ds_confirm:(\d+)$/', (string) $datain, $digitalConfirmMatch)) {
+    if ($user['step'] !== 'digital_service_confirm') {
+        telegram('answerCallbackQuery', [
+            'callback_query_id' => $callback_query_id,
+            'text' => 'این سفارش منقضی شده است؛ دوباره ثبت سفارش کنید.',
+            'show_alert' => true,
+        ]);
+        return;
+    }
+
+    $digitalData = bluebotJsonArray($user['Processing_value'] ?? '');
+    $productId = (int) ($digitalData['digital_service_id'] ?? 0);
+    $target = trim((string) ($digitalData['digital_service_target'] ?? ''));
+    if ($productId !== (int) $digitalConfirmMatch[1] || $target === '') {
+        step('home', $from_id);
+        sendmessage($from_id, $textbotlang['digitalServices']['invalidTarget'], $keyboard, 'HTML');
+        return;
+    }
+
+    $product = BluebotDigitalServices::findProduct($pdo, $productId);
+    if (!is_array($product)) {
+        step('home', $from_id);
+        sendmessage($from_id, $textbotlang['digitalServices']['notFound'], $keyboard, 'HTML');
+        return;
+    }
+
+    try {
+        $order = BluebotDigitalServices::createWalletOrder($pdo, $user, $product, $target);
+    } catch (DomainException $e) {
+        if ($e->getMessage() === 'INSUFFICIENT_BALANCE') {
+            sendmessage($from_id, $textbotlang['digitalServices']['insufficient'], $keyboard, 'HTML');
+            return;
+        }
+        throw $e;
+    } catch (InvalidArgumentException $e) {
+        sendmessage(
+            $from_id,
+            htmlspecialchars($e->getMessage(), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'),
+            $backuser,
+            'HTML'
+        );
+        return;
+    } catch (Throwable $e) {
+        bluebotLog('error', 'Digital service order creation failed', [
+            'user_id' => (string) $from_id,
+            'product_id' => $productId,
+            'error' => $e->getMessage(),
+        ]);
+        sendmessage($from_id, '❌ ثبت سفارش انجام نشد. لطفاً دوباره تلاش کنید.', $keyboard, 'HTML');
+        return;
+    }
+
+    step('home', $from_id);
+    update('user', 'Processing_value', '0', 'id', $from_id);
+    BluebotDigitalServices::notifyAdmins($pdo, $order);
+
+    sendmessage(
+        $from_id,
+        $textbotlang['digitalServices']['queued']
+            . "\n\n🧾 کد سفارش: <code>"
+            . htmlspecialchars((string) ($order['order_code'] ?? ''), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8')
+            . "</code>",
+        $keyboard,
+        'HTML'
+    );
     return;
 } elseif ($user['step'] == 'get_number') {
     if (empty($user_phone)) {
