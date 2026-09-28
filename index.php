@@ -396,6 +396,7 @@ require_once __DIR__ . '/botapi.php';
 require_once __DIR__ . '/src/Support/JalaliDate.php';
 require_once __DIR__ . '/src/Support/MiniApp.php';
 require_once __DIR__ . '/function.php';
+require_once __DIR__ . '/src/Services/DigitalServiceManager.php';
 bluebotEnsureInstallerRemoved();
 require_once __DIR__ . '/keyboard.php';
 require_once __DIR__ . '/vendor/autoload.php';
@@ -472,7 +473,7 @@ $firstKeyboardText = is_array($keyboard_check)
     : '';
 if ($firstKeyboardText !== ''
     && preg_match('/[\x{600}-\x{6FF}\x{FB50}-\x{FDFF}]/u', $firstKeyboardText)) {
-    $keyboardmain = '{"keyboard":[[{"text":"text_sell"},{"text":"text_extend"}],[{"text":"text_usertest"},{"text":"text_wheel_luck"}],[{"text":"text_Purchased_services"},{"text":"accountwallet"}],[{"text":"text_affiliates"},{"text":"text_Tariff_list"}],[{"text":"text_support"},{"text":"text_help"}],[{"text":"text_agentpanel"},{"text":"text_requestagent"}]]}';
+    $keyboardmain = '{"keyboard":[[{"text":"text_sell"},{"text":"text_extend"}],[{"text":"text_digital_services"}],[{"text":"text_usertest"},{"text":"text_wheel_luck"}],[{"text":"text_Purchased_services"},{"text":"accountwallet"}],[{"text":"text_affiliates"},{"text":"text_Tariff_list"}],[{"text":"text_support"},{"text":"text_help"}],[{"text":"text_agentpanel"},{"text":"text_requestagent"}]]}';
     update("setting", "keyboardmain", $keyboardmain, null, null);
 }
 
