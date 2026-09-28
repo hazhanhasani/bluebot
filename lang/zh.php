@@ -35,6 +35,10 @@ return [
                                 'key' => 'textbot.sell',
                         ],
                         [
+                                'label' => '按钮：数字服务',
+                                'key' => 'textbot.digitalServices',
+                        ],
+                        [
                                 'label' => '按钮：我的服务',
                                 'key' => 'textbot.purchasedServices',
                         ],
@@ -897,6 +901,7 @@ https://t.me/%s?start=%s',
                         'title' => '🔎 快速搜索',
                         'usernamgeget' => '📌 请发送您的用户名',
                 ],
+                'digitalServices' => '🛍 数字服务',
                 'sell' => [
                         'errorConfig' => '❌ 创建订阅时出错，请联系客服解决问题。',
                         'errorProduct' => '❌ 所选产品不存在',
@@ -3585,6 +3590,18 @@ f,n.n2',
 
 <code>https://%s/app/</code>',
                 ],
+        ],
+        'digitalServices' => [
+                'title' => '🛍 数字服务',
+                'select' => '请选择服务。只有管理员手动确认后才会开始发送。',
+                'empty' => '当前没有可用的数字服务。',
+                'targetPrompt' => '🎯 请发送目标 Telegram 用户名或 Telegram User ID。',
+                'confirmTitle' => '📋 确认订单',
+                'queued' => '✅ 订单已登记，正在等待管理员确认并发送。',
+                'insufficient' => '❌ 钱包余额不足。',
+                'notFound' => '❌ 所选服务不可用或已停用。',
+                'invalidTarget' => '❌ 目标无效。',
+                'schemaMissing' => '⚠️ 数字服务数据库模块尚未安装，请运行数据库更新。',
         ],
         'textbot' => [
                 'accountWallet' => '🏦 钱包 + 充值',
