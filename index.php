@@ -2923,6 +2923,37 @@ if ($text == "/start" || $datain == "start" || $text == "start") {
     $balanceformatsellbefore = number_format($user['Balance'], 0);
     $textextend = sprintf($textbotlang['users']['extend']['success'], $nameloc['username'], $prodcut['name_product'], $priceproductformat);
     sendmessage($from_id, $textextend, $keyboardextendfnished, 'HTML');
+    try {
+        $oldExpireTs = is_numeric($DataUserOut['expire'] ?? null) ? (int) $DataUserOut['expire'] : 0;
+        $renewDays = max(0, (int) ($prodcut['Service_time'] ?? 0));
+        $newExpireTs = $renewDays > 0 ? max(time(), $oldExpireTs) + ($renewDays * 86400) : 0;
+        $smsDelivery = BluebotSms::queueAndDispatchForUser(
+            'service_renewed',
+            (string) $from_id,
+            [
+                'username' => (string) $nameloc['username'],
+                'expire_date' => BluebotSms::formatDate($newExpireTs),
+            ],
+            (string) $nameloc['id_invoice'],
+            null,
+            'service-renewed-wallet:' . (string) $randomString
+        );
+        if (empty($smsDelivery['sent'])) {
+            bluebotLog('warning', 'Direct renewal SMS not sent immediately', [
+                'user_id' => (string) $from_id,
+                'invoice_id' => (string) $nameloc['id_invoice'],
+                'status' => (string) ($smsDelivery['status'] ?? 'not_queued'),
+                'message' => (string) ($smsDelivery['message'] ?? ''),
+                'delivery_id' => (string) ($smsDelivery['delivery_id'] ?? ''),
+            ]);
+        }
+    } catch (Throwable $smsError) {
+        bluebotLog('warning', 'Direct renewal SMS failed', [
+            'user_id' => (string) $from_id,
+            'invoice_id' => (string) $nameloc['id_invoice'],
+            'error' => $smsError->getMessage(),
+        ]);
+    }
     $timejalali = jdate('Y/m/d H:i:s');
     $Response = json_encode([
         'inline_keyboard' => [
@@ -5075,6 +5106,35 @@ if ($text == "/start" || $datain == "start" || $text == "start") {
         update("invoice", "user_info", $dataoutput['subscription_url'], "id_invoice", $randomString);
     }
     sendMessageService($marzban_list_get, $dataoutput['configs'], $output_config_link, $dataoutput['username'], $Shoppinginfo, $textcreatuser, $randomString);
+    try {
+        $smsDelivery = BluebotSms::queueAndDispatchForUser(
+            'service_activated',
+            (string) $from_id,
+            [
+                'service' => (string) $info_product['name_product'],
+                'username' => (string) $dataoutput['username'],
+                'expire_date' => BluebotSms::formatDate((int) $datetimestep),
+            ],
+            (string) $randomString,
+            null,
+            'service-activated:' . (string) $randomString
+        );
+        if (empty($smsDelivery['sent'])) {
+            bluebotLog('warning', 'Direct purchase activation SMS not sent immediately', [
+                'user_id' => (string) $from_id,
+                'invoice_id' => (string) $randomString,
+                'status' => (string) ($smsDelivery['status'] ?? 'not_queued'),
+                'message' => (string) ($smsDelivery['message'] ?? ''),
+                'delivery_id' => (string) ($smsDelivery['delivery_id'] ?? ''),
+            ]);
+        }
+    } catch (Throwable $smsError) {
+        bluebotLog('warning', 'Direct purchase activation SMS failed', [
+            'user_id' => (string) $from_id,
+            'invoice_id' => (string) $randomString,
+            'error' => $smsError->getMessage(),
+        ]);
+    }
     sendmessage($from_id, $textbotlang['users']['selectoption'], $keyboard, 'HTML');
     if (in_array(usernameMethodKey($marzban_list_get['MethodUsername']), ['customTextSequential', 'usernameSequential', 'numericIdSequential', 'agentCustomTextSequential'], true)) {
         $value = intval($user['number_username']) + 1;
