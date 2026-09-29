@@ -16,6 +16,14 @@ $digitalServicesCron = file_get_contents($root . '/cronbot/digital_services.php'
 $settings = file_get_contents($root . '/db/tables/digital_service_settings.php');
 $langFa = file_get_contents($root . '/lang/fa.php');
 
+$buyStart = strpos($index, "} elseif (preg_match('/^ds_buy:");
+$buyEnd = $buyStart === false
+    ? false
+    : strpos($index, "} elseif (\$user['step'] === 'digital_service_target')", $buyStart);
+$buyRoute = ($buyStart !== false && $buyEnd !== false)
+    ? substr($index, $buyStart, $buyEnd - $buyStart)
+    : '';
+
 $checks = [
     [str_contains($providerCatalog, "syncDueProviders"), 'provider catalog scheduler missing'],
     [str_contains($providerCatalog, "syncProvider"), 'provider catalog synchronizer missing'],
@@ -44,13 +52,19 @@ $checks = [
     [str_contains($manager, "tgtools_ton_toman_rate"), 'TGTools TON-to-Toman rate setting missing'],
     [str_contains($manager, "calculateSellingPrice"), 'TGTools automatic margin pricing missing'],
     [str_contains($manager, "category_label"), 'dynamic provider category labels missing'],
+    [str_contains($manager, "targetKeyboard"), 'dedicated inline target keyboard missing'],
+    [str_contains($manager, "ORDER_STATE_INVALID"), 'order confirmation idempotency guard missing'],
+    [str_contains($manager, "digital_service_processing"), 'atomic order-intent claim missing'],
+    [str_contains($manager, "SELECT * FROM user WHERE id = ? FOR UPDATE"), 'user order-intent row lock missing'],
     [str_contains($manager, "provider_service_code = NULL"), 'TGTools products must not require provider service codes'],
     [str_contains($manager, "reconcileTgToolsProcessing"), 'TGTools async reconciliation missing'],
     [str_contains($manager, "failAndRefundProviderOrder"), 'TGTools provider failure refund missing'],
+    [substr_count($manager, "failAndRefundProviderOrder(") >= 4, 'all provider delivery failure paths must refund automatically'],
     [str_contains($tgTools, "https://api.tg-tools.shop"), 'TGTools host allowlist missing'],
     [str_contains($tgTools, "/api/purchase/stars"), 'TGTools Stars endpoint missing'],
     [str_contains($tgTools, "/api/purchase/premium"), 'TGTools Premium endpoint missing'],
     [str_contains($tgTools, "/api/purchase/prices"), 'TGTools live prices endpoint missing'],
+    [str_contains($tgTools, "/api/transaction/"), 'TGTools documented transaction status endpoint missing'],
     [str_contains($tgTools, "X-Api-Key"), 'TGTools API key authentication missing'],
     [str_contains($tgTools, "trackingCode"), 'TGTools idempotency tracking code missing'],
     [str_contains($cronJobs, "'job' => 'digital_services'"), 'TGTools reconciliation cron is not scheduled'],
@@ -73,6 +87,9 @@ $checks = [
     [str_contains($manager, "https://api.ozvinoo.xyz"), 'OZVinoo host allowlist missing'],
     [str_contains($manager, "CURLOPT_PROTOCOLS => CURLPROTO_HTTPS"), 'OZVinoo must be HTTPS-only'],
     [str_contains($index, "ds_confirm:"), 'user order confirmation route missing'],
+    [str_contains($buyRoute, "BluebotDigitalServices::targetKeyboard(\$product)"), 'order target screen must use an inline keyboard'],
+    [!str_contains($buyRoute, '\$backuser'), 'order target edit must not pass ReplyKeyboardMarkup to editMessageText'],
+    [str_contains($index, "ORDER_STATE_INVALID"), 'duplicate/stale confirmation handling missing'],
     [str_contains($index, "ds_category:"), 'customer category navigation route missing'],
     [str_contains($index, "categoryKeyboard"), 'customer category landing screen missing'],
     [str_contains($index, "notifyAdmins"), 'admin notification missing'],

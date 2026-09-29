@@ -944,6 +944,7 @@ if ($text == "/start" || $datain == "start" || $text == "start") {
         sendmessage($from_id, $categoryText, $categoryKeyboard, 'HTML');
     }
     step('home', $from_id);
+    update('user', 'Processing_value', '0', 'id', $from_id);
     return;
 } elseif (preg_match('/^ds_category:([a-z0-9_-]{1,40})$/', (string) $datain, $digitalCategoryMatch)) {
     if (!check_active_btn($setting['keyboardmain'], 'text_digital_services')) {
@@ -961,6 +962,8 @@ if ($text == "/start" || $datain == "start" || $text == "start") {
     $categoryText = "<b>" . htmlspecialchars($categoryTitle, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . "</b>\n\n"
         . htmlspecialchars($textbotlang['digitalServices']['select'] ?? 'سرویس موردنظر را انتخاب کنید 👇', ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
 
+    step('home', $from_id);
+    update('user', 'Processing_value', '0', 'id', $from_id);
     Editmessagetext($from_id, $message_id, $categoryText, $categoryKeyboard);
     return;
 } elseif (preg_match('/^ds_product:(\d+)$/', (string) $datain, $digitalProductMatch)) {
@@ -990,6 +993,8 @@ if ($text == "/start" || $datain == "start" || $text == "start") {
         . "💳 قیمت: <b>" . number_format((float) $product['price']) . " تومان</b>\n\n"
         . "برای ثبت سفارش روی دکمه زیر بزنید 👇";
 
+    step('home', $from_id);
+    update('user', 'Processing_value', '0', 'id', $from_id);
     Editmessagetext(
         $from_id,
         $message_id,
@@ -1008,21 +1013,33 @@ if ($text == "/start" || $datain == "start" || $text == "start") {
         return;
     }
 
+    if (!empty($callback_query_id)) {
+        telegram('answerCallbackQuery', [
+            'callback_query_id' => $callback_query_id,
+            'text' => 'اطلاعات سفارش را وارد کنید.',
+            'show_alert' => false,
+            'cache_time' => 0,
+        ]);
+    }
+
     savedata('clear', 'digital_service_id', (string) $product['id']);
     step('digital_service_target', $from_id);
 
     $targetPrompt = $textbotlang['digitalServices']['targetPrompt'];
     if (($product['provider'] ?? '') === 'tgtools'
         && in_array((string) ($product['type'] ?? ''), ['telegram_stars', 'telegram_premium'], true)) {
-        $targetPrompt = '👤 یوزرنیم تلگرام دریافت‌کننده را ارسال کنید.\nمثال: <code>@username</code>';
+        $targetPrompt = "👤 یوزرنیم تلگرام دریافت‌کننده را ارسال کنید.\nمثال: <code>@username</code>";
     }
 
+    // editMessageText only accepts InlineKeyboardMarkup. $backuser becomes a
+    // ReplyKeyboardMarkup when the main menu uses reply buttons, which made
+    // Telegram reject this edit and left the customer with no visible order form.
     Editmessagetext(
         $from_id,
         $message_id,
         "<b>" . htmlspecialchars((string) $product['name'], ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . "</b>\n\n"
             . $targetPrompt,
-        $backuser
+        BluebotDigitalServices::targetKeyboard($product)
     );
     return;
 } elseif ($user['step'] === 'digital_service_target') {
@@ -1092,7 +1109,22 @@ if ($text == "/start" || $datain == "start" || $text == "start") {
         $order = BluebotDigitalServices::createWalletOrder($pdo, $user, $product, $target);
     } catch (DomainException $e) {
         if ($e->getMessage() === 'INSUFFICIENT_BALANCE') {
+            step('home', $from_id);
+            update('user', 'Processing_value', '0', 'id', $from_id);
             sendmessage($from_id, $textbotlang['digitalServices']['insufficient'], $keyboard, 'HTML');
+            return;
+        }
+        if ($e->getMessage() === 'ORDER_STATE_INVALID') {
+            if (!empty($callback_query_id)) {
+                telegram('answerCallbackQuery', [
+                    'callback_query_id' => $callback_query_id,
+                    'text' => 'این سفارش قبلاً ثبت شده یا منقضی شده است.',
+                    'show_alert' => true,
+                    'cache_time' => 0,
+                ]);
+            } else {
+                sendmessage($from_id, '⚠️ این سفارش قبلاً ثبت شده یا منقضی شده است.', $keyboard, 'HTML');
+            }
             return;
         }
         throw $e;
@@ -1114,9 +1146,15 @@ if ($text == "/start" || $datain == "start" || $text == "start") {
         return;
     }
 
-    step('home', $from_id);
-    update('user', 'Processing_value', '0', 'id', $from_id);
-    BluebotDigitalServices::notifyAdmins($pdo, $order);
+    try {
+        BluebotDigitalServices::notifyAdmins($pdo, $order);
+    } catch (Throwable $notifyError) {
+        bluebotLog('warning', 'Digital service admin notification failed after order creation', [
+            'order_id' => (int) ($order['id'] ?? 0),
+            'order_code' => (string) ($order['order_code'] ?? ''),
+            'error' => $notifyError->getMessage(),
+        ]);
+    }
 
     sendmessage(
         $from_id,
