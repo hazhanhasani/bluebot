@@ -37,4 +37,5 @@ return [
     'sms_templates',
     'sms_deliveries',
     'sms_otp_challenges',
+    'external_panel_sms_state',
 ];
