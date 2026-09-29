@@ -692,10 +692,44 @@ final class BluebotDigitalServices
         // application exposed by the documented /web API, then every country
         // available for that application. V2 Telegram countries are only a
         // fallback when the application catalog is unavailable.
-        $applicationsResponse = $client->applications();
-        $applicationItems = !empty($applicationsResponse['ok'])
-            ? self::ozvinooResponseList($applicationsResponse)
+        $applicationsGetResponse = $client->applications('GET');
+        $applicationGetItems = !empty($applicationsGetResponse['ok'])
+            ? self::ozvinooResponseList($applicationsGetResponse)
             : [];
+
+        $applicationsPostResponse = [];
+        $applicationPostItems = [];
+        $applicationPostAttempted = count($applicationGetItems) <= 1;
+        if ($applicationPostAttempted) {
+            $applicationsPostResponse = $client->applications('POST');
+            $applicationPostItems = !empty($applicationsPostResponse['ok'])
+                ? self::ozvinooResponseList($applicationsPostResponse)
+                : [];
+        }
+
+        $applicationItemsById = [];
+        foreach ([$applicationGetItems, $applicationPostItems] as $candidateItems) {
+            foreach ($candidateItems as $candidate) {
+                if (!is_array($candidate)) {
+                    continue;
+                }
+                $candidateServiceId = self::ozvinooPositiveInt(
+                    self::findScalarByKeys($candidate, ['id', 'service_id', 'serviceId', 'application_id'])
+                );
+                if ($candidateServiceId <= 0) {
+                    continue;
+                }
+                // POST may contain a richer object than GET, so later data wins.
+                $applicationItemsById[$candidateServiceId] = isset($applicationItemsById[$candidateServiceId])
+                    ? array_replace($applicationItemsById[$candidateServiceId], $candidate)
+                    : $candidate;
+            }
+        }
+        $applicationItems = array_values($applicationItemsById);
+        $applicationsResponse = !empty($applicationsGetResponse['ok'])
+            ? $applicationsGetResponse
+            : $applicationsPostResponse;
+
         $applicationPriceFailures = 0;
         $applicationPriceSuccesses = 0;
         $applicationCatalogReady = false;
@@ -730,14 +764,29 @@ final class BluebotDigitalServices
                 $applicationCode = 'app_' . $serviceId;
             }
 
-            $pricesResponse = $client->prices($serviceId);
-            if (empty($pricesResponse['ok'])) {
+            $pricesResponse = $client->prices($serviceId, 'GET');
+            $priceItems = !empty($pricesResponse['ok'])
+                ? self::ozvinooResponseList($pricesResponse)
+                : [];
+
+            if ($priceItems === []) {
+                $pricesPostResponse = $client->prices($serviceId, 'POST');
+                $pricePostItems = !empty($pricesPostResponse['ok'])
+                    ? self::ozvinooResponseList($pricesPostResponse)
+                    : [];
+                if ($pricePostItems !== []) {
+                    $pricesResponse = $pricesPostResponse;
+                    $priceItems = $pricePostItems;
+                }
+            }
+
+            if (empty($pricesResponse['ok']) || $priceItems === []) {
                 $applicationPriceFailures++;
                 continue;
             }
             $applicationPriceSuccesses++;
 
-            foreach (self::ozvinooResponseList($pricesResponse) as $item) {
+            foreach ($priceItems as $item) {
                 if (!is_array($item)) {
                     continue;
                 }
@@ -803,6 +852,21 @@ final class BluebotDigitalServices
         $applicationCatalogReady = !empty($applicationsResponse['ok'])
             && $applicationItems !== []
             && $applicationPriceSuccesses > 0;
+
+        if ($applicationPostAttempted && count($applicationItems) <= 1) {
+            $onlyApplicationName = '';
+            if (isset($applicationItems[0]) && is_array($applicationItems[0])) {
+                $onlyApplicationName = trim((string) (self::findScalarByKeys(
+                    $applicationItems[0],
+                    ['title', 'name', 'application', 'app_name', 'appName', 'label']
+                ) ?? ''));
+            }
+            $messages[] = 'Applications API exposed only '
+                . count($applicationItems)
+                . ' platform(s): GET ' . count($applicationGetItems)
+                . ' / POST ' . count($applicationPostItems)
+                . ($onlyApplicationName !== '' ? ' · ' . $onlyApplicationName : '');
+        }
 
         if ($numberDefinitionCount > 0) {
             if (!in_array('virtual_number', $successfulTypes, true)) {
@@ -1025,12 +1089,17 @@ final class BluebotDigitalServices
             'stars' => count($seenByType['telegram_stars'] ?? []),
             'premium' => count($seenByType['telegram_premium'] ?? []),
             'number_apps' => count($virtualNumberApplicationIds),
+            'number_apps_get' => count($applicationGetItems),
+            'number_apps_post' => count($applicationPostItems),
+            'number_apps_post_attempted' => $applicationPostAttempted ? 1 : 0,
             'numbers' => count($seenByType['virtual_number'] ?? []),
         ];
         $summary = 'Stars ' . $typeCounts['stars']
             . ' · Premium ' . $typeCounts['premium']
             . ' · Number apps ' . $typeCounts['number_apps']
-            . ' · Numbers ' . $typeCounts['numbers'];
+            . ' (GET ' . $typeCounts['number_apps_get']
+            . ($applicationPostAttempted ? ' / POST ' . $typeCounts['number_apps_post'] : ' / POST n/a')
+            . ') · Numbers ' . $typeCounts['numbers'];
         $message = $messages === []
             ? 'Official OZVinoo catalogs synchronized. ' . $summary
             : 'Partial sync: ' . $summary . ' | ' . implode(' | ', $messages);
