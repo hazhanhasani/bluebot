@@ -958,6 +958,27 @@ if ($text == "/start" || $datain == "start" || $text == "start") {
     }
 
     $category = (string) $digitalCategoryMatch[1];
+
+    if ($category === 'virtual_number') {
+        $applications = BluebotDigitalServices::virtualNumberApplications($pdo);
+        $categoryKeyboard = BluebotDigitalServices::virtualNumberApplicationsKeyboard(
+            $pdo,
+            $textbotlang['users']['backbtn']
+        );
+        $categoryTitle = BluebotDigitalServices::categoryLabel($category, $pdo);
+        $categoryText = "<b>" . htmlspecialchars($categoryTitle, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . "</b>\n\n"
+            . "پلتفرم موردنظر را انتخاب کنید 👇\n"
+            . "📱 " . number_format(count($applications)) . " پلتفرم فعال";
+
+        step('home', $from_id);
+        update('user', 'Processing_value', '0', 'id', $from_id);
+        if (!empty($callback_query_id)) {
+            telegram('answerCallbackQuery', ['callback_query_id' => $callback_query_id]);
+        }
+        Editmessagetext($from_id, $message_id, $categoryText, $categoryKeyboard);
+        return;
+    }
+
     $categoryKeyboard = BluebotDigitalServices::catalogKeyboard(
         $pdo,
         $textbotlang['users']['backbtn'],
@@ -970,6 +991,57 @@ if ($text == "/start" || $datain == "start" || $text == "start") {
     step('home', $from_id);
     update('user', 'Processing_value', '0', 'id', $from_id);
     Editmessagetext($from_id, $message_id, $categoryText, $categoryKeyboard);
+    return;
+} elseif (preg_match('/^ds_vn_app:(\d+):(\d+)$/', (string) $datain, $virtualNumberApplicationMatch)) {
+    if (!check_active_btn($setting['keyboardmain'], 'text_digital_services')) {
+        sendmessage($from_id, $textbotlang['users']['buttonDisabled'], null, 'HTML');
+        return;
+    }
+
+    $applicationId = max(0, (int) $virtualNumberApplicationMatch[1]);
+    $requestedPage = max(1, (int) $virtualNumberApplicationMatch[2]);
+    $catalog = BluebotDigitalServices::virtualNumberApplicationCatalog(
+        $pdo,
+        $applicationId,
+        $requestedPage
+    );
+    $application = is_array($catalog['application'] ?? null)
+        ? $catalog['application']
+        : null;
+
+    if ($application === null || (int) ($catalog['count'] ?? 0) <= 0) {
+        if (!empty($callback_query_id)) {
+            telegram('answerCallbackQuery', [
+                'callback_query_id' => $callback_query_id,
+                'text' => 'شماره‌ای برای این پلتفرم موجود نیست.',
+                'show_alert' => true,
+            ]);
+        }
+        return;
+    }
+
+    $title = trim(
+        (string) ($application['icon'] ?? '📱')
+        . ' '
+        . (string) ($application['name'] ?? 'شماره مجازی')
+    );
+    $countryText = "<b>" . htmlspecialchars($title, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . "</b>\n\n"
+        . "کشور موردنظر را انتخاب کنید 👇\n"
+        . "🌍 " . number_format((int) ($catalog['count'] ?? 0)) . " کشور"
+        . " · صفحه " . number_format((int) ($catalog['page'] ?? 1))
+        . " از " . number_format((int) ($catalog['pages'] ?? 1));
+
+    step('home', $from_id);
+    update('user', 'Processing_value', '0', 'id', $from_id);
+    if (!empty($callback_query_id)) {
+        telegram('answerCallbackQuery', ['callback_query_id' => $callback_query_id]);
+    }
+    Editmessagetext(
+        $from_id,
+        $message_id,
+        $countryText,
+        (string) ($catalog['keyboard'] ?? '')
+    );
     return;
 } elseif (preg_match('/^ds_product:(\d+)$/', (string) $datain, $digitalProductMatch)) {
     if (!check_active_btn($setting['keyboardmain'], 'text_digital_services')) {
@@ -991,6 +1063,7 @@ if ($text == "/start" || $datain == "start" || $text == "start") {
     $typeLabel = match ((string) ($product['type'] ?? '')) {
         'telegram_stars' => number_format($serviceValue) . ' Telegram Stars',
         'telegram_premium' => $serviceValue . ' ماه Telegram Premium',
+        'virtual_number' => 'شماره مجازی',
         default => 'خدمت دیجیتال',
     };
     $productText = "🎁 <b>" . htmlspecialchars((string) $product['name'], ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . "</b>\n\n"
