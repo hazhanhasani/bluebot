@@ -332,33 +332,171 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 
     if ($action === 'save_ozvinoo') {
+        $baseUrl = 'https://api.ozvinoo.xyz';
         $orderPath = trim((string) ($_POST['ozvinoo_order_path'] ?? ''));
+        $catalogPath = trim((string) ($_POST['ozvinoo_catalog_path'] ?? ''));
         $apiKey = trim((string) ($_POST['ozvinoo_api_key'] ?? ''));
         $authHeader = trim((string) ($_POST['ozvinoo_auth_header'] ?? 'Authorization'));
         $authPrefix = trim((string) ($_POST['ozvinoo_auth_prefix'] ?? 'Bearer'));
+        $profitPercent = (float) ($_POST['ozvinoo_profit_percent'] ?? 0);
+        $currency = strtolower(trim((string) ($_POST['ozvinoo_currency'] ?? 'toman')));
+        $exchangeRate = (float) ($_POST['ozvinoo_exchange_rate_toman'] ?? 1);
+        $syncInterval = max(1, min(1440, (int) ($_POST['ozvinoo_sync_interval_minutes'] ?? 15)));
 
-        if ($orderPath !== '' && !str_starts_with($orderPath, '/')) {
-            $orderPath = '/' . $orderPath;
+        foreach (['orderPath' => &$orderPath, 'catalogPath' => &$catalogPath] as &$path) {
+            if ($path !== '' && !str_starts_with($path, '/')) {
+                $path = '/' . $path;
+            }
+            if ($path !== '' && !preg_match('#^/[A-Za-z0-9_./{}?=&-]+$#', $path)) {
+                flash('error', 'مسیر API معتبر نیست.');
+                header('Location: digital_services.php#ozvinoo');
+                exit;
+            }
         }
-        if ($orderPath !== '' && !preg_match('#^/[A-Za-z0-9_./{}-]+$#', $orderPath)) {
-            flash('error', 'مسیر API معتبر نیست.');
-            header('Location: digital_services.php#ozvinoo');
-            exit;
-        }
+        unset($path);
+
         if (!preg_match('/^[A-Za-z0-9-]{1,80}$/', $authHeader)) {
             flash('error', 'نام هدر احراز هویت معتبر نیست.');
             header('Location: digital_services.php#ozvinoo');
             exit;
         }
-
-        ds_panel_set_setting($pdo, 'ozvinoo_base_url', 'https://api.ozvinoo.xyz');
-        ds_panel_set_setting($pdo, 'ozvinoo_order_path', $orderPath);
-        if ($apiKey !== '') {
-            ds_panel_set_setting($pdo, 'ozvinoo_api_key', $apiKey, true);
+        if ($profitPercent < 0 || $profitPercent > 1000) {
+            flash('error', 'درصد سود عضوینو باید بین ۰ تا ۱۰۰۰ باشد.');
+            header('Location: digital_services.php#ozvinoo');
+            exit;
         }
-        ds_panel_set_setting($pdo, 'ozvinoo_auth_header', $authHeader);
-        ds_panel_set_setting($pdo, 'ozvinoo_auth_prefix', $authPrefix);
-        flash('success', 'تنظیمات OZVinoo ذخیره شد.');
+        if (!in_array($currency, ['toman', 'rial', 'usd', 'ton', 'other'], true)) {
+            flash('error', 'ارز قیمت عضوینو معتبر نیست.');
+            header('Location: digital_services.php#ozvinoo');
+            exit;
+        }
+        if (!in_array($currency, ['toman', 'rial'], true) && $exchangeRate <= 0) {
+            flash('error', 'نرخ تبدیل ارز عضوینو باید بزرگ‌تر از صفر باشد.');
+            header('Location: digital_services.php#ozvinoo');
+            exit;
+        }
+
+        $effectiveApiKey = $apiKey !== '' ? $apiKey : ds_panel_setting($pdo, 'ozvinoo_api_key');
+        $candidatePaths = [];
+        if ($catalogPath !== '') {
+            $candidatePaths[] = $catalogPath;
+        }
+        foreach ([
+            '/api/services',
+            '/services',
+            '/api/v1/services',
+            '/v1/services',
+            '/api/products',
+            '/products',
+            '/api/v1/products',
+            '/v1/products',
+        ] as $candidatePath) {
+            if (!in_array($candidatePath, $candidatePaths, true)) {
+                $candidatePaths[] = $candidatePath;
+            }
+        }
+        $candidateUrls = array_map(
+            static fn (string $path): string => $baseUrl . $path,
+            $candidatePaths
+        );
+
+        try {
+            $discovery = BluebotProviderCatalogService::discoverCatalogUrl(
+                $candidateUrls,
+                $effectiveApiKey,
+                $authHeader,
+                $authPrefix
+            );
+
+            ds_panel_set_setting($pdo, 'ozvinoo_base_url', $baseUrl);
+            ds_panel_set_setting($pdo, 'ozvinoo_order_path', $orderPath);
+            if ($apiKey !== '') {
+                ds_panel_set_setting($pdo, 'ozvinoo_api_key', $apiKey, true);
+            }
+            ds_panel_set_setting($pdo, 'ozvinoo_auth_header', $authHeader);
+            ds_panel_set_setting($pdo, 'ozvinoo_auth_prefix', $authPrefix);
+            ds_panel_set_setting($pdo, 'ozvinoo_profit_percent', (string) $profitPercent);
+            ds_panel_set_setting($pdo, 'ozvinoo_currency', $currency);
+            ds_panel_set_setting($pdo, 'ozvinoo_exchange_rate_toman', (string) $exchangeRate);
+            ds_panel_set_setting($pdo, 'ozvinoo_sync_interval_minutes', (string) $syncInterval);
+
+            if (empty($discovery['ok'])) {
+                if ($catalogPath !== '') {
+                    ds_panel_set_setting($pdo, 'ozvinoo_catalog_path', $catalogPath);
+                }
+                flash(
+                    'warning',
+                    'تنظیمات عضوینو ذخیره شد، اما کاتالوگ محصولات خودکار پیدا نشد: '
+                    . (string) ($discovery['message'] ?? 'endpoint نامشخص')
+                );
+                header('Location: digital_services.php#ozvinoo');
+                exit;
+            }
+
+            $catalogUrl = (string) $discovery['url'];
+            $detectedPath = (string) parse_url($catalogUrl, PHP_URL_PATH);
+            ds_panel_set_setting($pdo, 'ozvinoo_catalog_path', $detectedPath);
+
+            BluebotProviderCatalogService::saveProvider($pdo, [
+                'provider_key' => 'ozvinoo',
+                'name' => 'OZVinoo',
+                'catalog_url' => $catalogUrl,
+                'api_key' => $effectiveApiKey,
+                'auth_header' => $authHeader,
+                'auth_prefix' => $authPrefix,
+                'products_path' => (string) ($discovery['products_path'] ?? 'auto'),
+                'id_field' => (string) ($discovery['id_field'] ?? 'auto'),
+                'name_field' => (string) ($discovery['name_field'] ?? 'auto'),
+                'category_field' => (string) ($discovery['category_field'] ?? 'auto'),
+                'price_field' => (string) ($discovery['price_field'] ?? 'auto'),
+                'currency' => $currency,
+                'exchange_rate_toman' => $exchangeRate,
+                'profit_percent' => $profitPercent,
+                'sync_interval_minutes' => $syncInterval,
+            ]);
+
+            $sync = BluebotProviderCatalogService::syncProvider($pdo, 'ozvinoo');
+            if (!empty($sync['ok'])) {
+                flash(
+                    'success',
+                    'عضوینو ذخیره و همگام شد: '
+                    . (int) ($sync['created'] ?? 0) . ' محصول جدید، '
+                    . (int) ($sync['updated'] ?? 0) . ' بروزرسانی. '
+                    . 'سود ' . rtrim(rtrim(number_format($profitPercent, 2, '.', ''), '0'), '.') . '٪ اعمال شد.'
+                );
+            } else {
+                flash('warning', 'عضوینو ذخیره شد ولی همگام‌سازی محصولات ناموفق بود: ' . (string) ($sync['message'] ?? 'خطای نامشخص'));
+            }
+        } catch (Throwable $e) {
+            flash('error', 'ذخیره/همگام‌سازی عضوینو انجام نشد: ' . $e->getMessage());
+        }
+
+        header('Location: digital_services.php#ozvinoo');
+        exit;
+    }
+
+    if ($action === 'sync_ozvinoo_catalog') {
+        try {
+            $provider = BluebotProviderCatalogService::findProvider($pdo, 'ozvinoo');
+            if (!is_array($provider)) {
+                flash('warning', 'ابتدا تنظیمات عضوینو را ذخیره کنید تا کاتالوگ آن شناسایی شود.');
+            } else {
+                $sync = BluebotProviderCatalogService::syncProvider($pdo, 'ozvinoo');
+                if (!empty($sync['ok'])) {
+                    flash(
+                        'success',
+                        'محصولات عضوینو بروزرسانی شدند: '
+                        . (int) ($sync['created'] ?? 0) . ' جدید، '
+                        . (int) ($sync['updated'] ?? 0) . ' بروزرسانی، '
+                        . (int) ($sync['disabled'] ?? 0) . ' غیرفعال.'
+                    );
+                } else {
+                    flash('error', 'همگام‌سازی عضوینو ناموفق بود: ' . (string) ($sync['message'] ?? 'خطای نامشخص'));
+                }
+            }
+        } catch (Throwable $e) {
+            flash('error', 'همگام‌سازی عضوینو انجام نشد: ' . $e->getMessage());
+        }
         header('Location: digital_services.php#ozvinoo');
         exit;
     }
@@ -411,9 +549,15 @@ $tgPremiumProfit = (float) ds_panel_setting($pdo, 'tgtools_premium_profit_percen
 $tgTonRateToman = (float) ds_panel_setting($pdo, 'tgtools_ton_toman_rate', '0');
 $providerCatalogs = BluebotProviderCatalogService::listProviders($pdo);
 $ozOrderPath = ds_panel_setting($pdo, 'ozvinoo_order_path');
+$ozCatalogPath = ds_panel_setting($pdo, 'ozvinoo_catalog_path');
 $ozApiKey = ds_panel_setting($pdo, 'ozvinoo_api_key');
 $ozAuthHeader = ds_panel_setting($pdo, 'ozvinoo_auth_header', 'Authorization');
 $ozAuthPrefix = ds_panel_setting($pdo, 'ozvinoo_auth_prefix', 'Bearer');
+$ozProfitPercent = (float) ds_panel_setting($pdo, 'ozvinoo_profit_percent', '0');
+$ozCurrency = ds_panel_setting($pdo, 'ozvinoo_currency', 'toman');
+$ozExchangeRate = (float) ds_panel_setting($pdo, 'ozvinoo_exchange_rate_toman', '1');
+$ozSyncInterval = (int) ds_panel_setting($pdo, 'ozvinoo_sync_interval_minutes', '15');
+$ozProvider = BluebotProviderCatalogService::findProvider($pdo, 'ozvinoo');
 
 $pageTitle = 'فروش خدمات';
 $pageLede = 'فروش Stars و Telegram Premium با TGTools و تأیید دستی قبل از ارسال';
@@ -545,41 +689,106 @@ include __DIR__ . '/inc/layout_head.php';
     <div class="card fade-up d1" id="ozvinoo">
         <div class="card-head">
             <div>
-                <div class="card-title">OZVinoo API</div>
-                <div class="card-subtitle">ارسال API نیز فقط پس از تأیید دستی ادمین انجام می‌شود.</div>
+                <div class="card-title">عضوینو / OZVinoo</div>
+                <div class="card-subtitle">محصولات، دسته‌بندی و قیمت فروش به‌صورت خودکار از API همگام می‌شوند.</div>
             </div>
         </div>
         <form method="post" class="card-body" style="display:grid;gap:12px">
             <input type="hidden" name="_csrf" value="<?= htmlspecialchars(csrf_token()) ?>">
             <input type="hidden" name="action" value="save_ozvinoo">
+
             <div class="field">
                 <label>Base URL</label>
                 <input class="input" value="https://api.ozvinoo.xyz" disabled dir="ltr">
             </div>
-            <div class="field">
-                <label>Order endpoint path</label>
-                <input class="input" name="ozvinoo_order_path" value="<?= htmlspecialchars($ozOrderPath) ?>" dir="ltr" placeholder="/api/...">
-                <small class="field-hint">مسیر دقیق را مطابق مستندات حساب OZVinoo خود وارد کنید؛ Host برای امنیت ثابت است.</small>
-            </div>
+
             <div class="field">
                 <label>API Key</label>
                 <input class="input" type="password" name="ozvinoo_api_key" autocomplete="new-password"
                     placeholder="<?= $ozApiKey !== '' ? '•••••••• (ذخیره شده؛ برای تغییر وارد کنید)' : 'API key' ?>">
             </div>
+
             <div class="two-col" style="gap:10px">
                 <div class="field">
-                    <label>Auth header</label>
-                    <input class="input" name="ozvinoo_auth_header" value="<?= htmlspecialchars($ozAuthHeader) ?>" dir="ltr">
+                    <label>درصد سود همه محصولات عضوینو</label>
+                    <input class="input" type="number" name="ozvinoo_profit_percent" min="0" max="1000" step="0.1"
+                        value="<?= htmlspecialchars((string) $ozProfitPercent) ?>" required>
+                    <small class="field-hint">همین درصد روی قیمت عمده تمام محصولات عضوینو اعمال می‌شود.</small>
                 </div>
                 <div class="field">
-                    <label>Prefix</label>
-                    <input class="input" name="ozvinoo_auth_prefix" value="<?= htmlspecialchars($ozAuthPrefix) ?>" dir="ltr">
+                    <label>بروزرسانی خودکار (دقیقه)</label>
+                    <input class="input" type="number" name="ozvinoo_sync_interval_minutes" min="1" max="1440"
+                        value="<?= htmlspecialchars((string) $ozSyncInterval) ?>" required>
                 </div>
             </div>
-            <button class="btn btn-primary" type="submit"><?= icon('check', 14) ?> ذخیره تنظیمات</button>
+
+            <div class="two-col" style="gap:10px">
+                <div class="field">
+                    <label>ارز قیمت عمده</label>
+                    <select class="select" name="ozvinoo_currency" required>
+                        <?php foreach (['toman' => 'تومان', 'rial' => 'ریال', 'usd' => 'USD', 'ton' => 'TON', 'other' => 'سایر'] as $currencyKey => $currencyLabel): ?>
+                            <option value="<?= htmlspecialchars($currencyKey) ?>" <?= $ozCurrency === $currencyKey ? 'selected' : '' ?>>
+                                <?= htmlspecialchars($currencyLabel) ?>
+                            </option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+                <div class="field">
+                    <label>نرخ هر واحد ارز به تومان</label>
+                    <input class="input" type="number" name="ozvinoo_exchange_rate_toman" min="0.000001" step="0.000001"
+                        value="<?= htmlspecialchars((string) $ozExchangeRate) ?>" required>
+                    <small class="field-hint">برای تومان ۱ و برای ریال ۰.۱ در محاسبه اعمال می‌شود.</small>
+                </div>
+            </div>
+
+            <div class="two-col" style="gap:10px">
+                <div class="field">
+                    <label>Catalog endpoint (اختیاری)</label>
+                    <input class="input" name="ozvinoo_catalog_path" value="<?= htmlspecialchars($ozCatalogPath) ?>" dir="ltr" placeholder="Auto detect">
+                    <small class="field-hint">خالی بگذارید؛ BlueBot چند endpoint رایج را تست و لیست محصولات را خودش تشخیص می‌دهد.</small>
+                </div>
+                <div class="field">
+                    <label>Order endpoint path</label>
+                    <input class="input" name="ozvinoo_order_path" value="<?= htmlspecialchars($ozOrderPath) ?>" dir="ltr" placeholder="/api/...">
+                </div>
+            </div>
+
+            <details>
+                <summary style="cursor:pointer;font-weight:700">تنظیمات احراز هویت API</summary>
+                <div class="two-col" style="gap:10px;margin-top:12px">
+                    <div class="field">
+                        <label>Auth header</label>
+                        <input class="input" name="ozvinoo_auth_header" value="<?= htmlspecialchars($ozAuthHeader) ?>" dir="ltr">
+                    </div>
+                    <div class="field">
+                        <label>Prefix</label>
+                        <input class="input" name="ozvinoo_auth_prefix" value="<?= htmlspecialchars($ozAuthPrefix) ?>" dir="ltr">
+                    </div>
+                </div>
+            </details>
+
+            <div class="notice notice-info">
+                قیمت فروش = قیمت عمده عضوینو × نرخ تبدیل × (۱ + درصد سود).
+                BlueBot لیست محصولات و فیلدهای ID، نام، دسته و قیمت را نیز تا حد ممکن خودکار تشخیص می‌دهد.
+            </div>
+
+            <?php if (is_array($ozProvider)): ?>
+                <div class="notice <?= (($ozProvider['last_sync_status'] ?? '') === 'success') ? 'notice-info' : 'notice-warn' ?>">
+                    کاتالوگ: <code><?= htmlspecialchars((string) ($ozProvider['catalog_url'] ?? '—')) ?></code>
+                    · آخرین Sync: <?= htmlspecialchars((string) ($ozProvider['last_sync_at'] ?? '—')) ?>
+                    · وضعیت: <?= htmlspecialchars((string) ($ozProvider['last_sync_status'] ?? '—')) ?>
+                </div>
+            <?php endif; ?>
+
+            <button class="btn btn-primary" type="submit"><?= icon('check', 14) ?> ذخیره + شناسایی و همگام‌سازی محصولات</button>
+        </form>
+
+        <form method="post" class="card-body" style="padding-top:0">
+            <input type="hidden" name="_csrf" value="<?= htmlspecialchars(csrf_token()) ?>">
+            <input type="hidden" name="action" value="sync_ozvinoo_catalog">
+            <button class="btn btn-ghost" type="submit">↻ همگام‌سازی محصولات عضوینو</button>
         </form>
     </div>
-</div>
 
 <div class="card fade-up d1" id="providers" style="margin-top:16px">
     <div class="card-head">
@@ -657,34 +866,34 @@ include __DIR__ . '/inc/layout_head.php';
                 <div class="two-col" style="gap:10px">
                     <div class="field">
                         <label>Products path</label>
-                        <input class="input" name="products_path" value="data" dir="ltr" placeholder="data.items">
+                        <input class="input" name="products_path" value="auto" dir="ltr" placeholder="data.items">
                     </div>
                     <div class="field">
                         <label>Product ID field</label>
-                        <input class="input" name="id_field" value="id" dir="ltr">
+                        <input class="input" name="id_field" value="auto" dir="ltr">
                     </div>
                 </div>
                 <div class="two-col" style="gap:10px">
                     <div class="field">
                         <label>Name field</label>
-                        <input class="input" name="name_field" value="name" dir="ltr">
+                        <input class="input" name="name_field" value="auto" dir="ltr">
                     </div>
                     <div class="field">
                         <label>Category field</label>
-                        <input class="input" name="category_field" value="category" dir="ltr">
+                        <input class="input" name="category_field" value="auto" dir="ltr">
                     </div>
                 </div>
                 <div class="two-col" style="gap:10px">
                     <div class="field">
                         <label>Price field</label>
-                        <input class="input" name="price_field" value="price" dir="ltr">
+                        <input class="input" name="price_field" value="auto" dir="ltr">
                     </div>
                     <div class="field">
                         <label>فاصله همگام‌سازی (دقیقه)</label>
                         <input class="input" type="number" name="sync_interval_minutes" min="1" max="1440" value="15">
                     </div>
                 </div>
-                <small class="field-hint">فیلدهای تو در تو با نقطه پشتیبانی می‌شوند؛ مثال: <code>service.id</code> یا <code>category.name</code>.</small>
+                <small class="field-hint">پیش‌فرض <code>auto</code> است؛ BlueBot ساختار رایج JSON را خودش تشخیص می‌دهد. برای APIهای خاص می‌توانید مسیرهایی مثل <code>service.id</code> وارد کنید.</small>
             </div>
         </details>
 
