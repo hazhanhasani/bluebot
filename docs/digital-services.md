@@ -4,6 +4,17 @@ BlueBot sells Telegram Stars, Telegram Premium, virtual numbers and other
 digital services. Orders are charged from the customer wallet and remain in
 `pending_approval` until an administrator clicks **Approve & Send**.
 
+## Admin architecture
+
+Digital-service administration is intentionally split across the existing BlueBot panel:
+
+- **Digital Services / فروش خدمات**: API keys, provider wallet status, profit margins and catalog sync only.
+- **Services / سرویس‌ها → فروش خدمات**: create, edit, activate, categorize and delete digital products.
+- **Orders / سفارش‌ها → فروش خدمات**: approve, retry, reject/refund and inspect provider references.
+- **Categories / دسته‌بندی‌ها → فروش خدمات**: create, rename, order, hide and delete customer-facing categories.
+
+This avoids duplicate product/order management screens and keeps each resource in the panel section where administrators already expect it.
+
 ## Providers
 
 - `tgtools`: Stars and Premium through TGTools.
@@ -28,6 +39,10 @@ Official endpoints used by BlueBot:
 - `GET /telegram-services/status/`
 - `GET/POST /telegram-numbers/numbers/`
 - `GET/POST /telegram-numbers/number-services/`
+- `GET /web/{token}/applications` (virtual-number fallback)
+- `GET /web/{token}/get-prices/{service_id}` (virtual-number fallback)
+- `POST /web/{token}/getNumber/{service_id}/{country}` (virtual-number fallback)
+- `GET /web/{token}/getCode/{request_id}` (virtual-number fallback)
 - `GET /numbers/getAllOrders/`
 - `GET /numbers/getOpenOrders/`
 - `GET /numbers/getOrder/`
@@ -62,5 +77,8 @@ The module uses:
 
 - `digital_service_products`
 - `digital_service_orders`
+- `digital_service_categories`
 - `digital_service_settings`
 - `digital_service_providers`
+
+The category schema is also created defensively at runtime for upgraded installations, so an existing host does not lose the new Categories UI if a database migration step was skipped.
