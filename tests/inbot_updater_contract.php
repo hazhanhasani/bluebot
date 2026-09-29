@@ -178,8 +178,8 @@ foreach ([
 }
 
 $keyboard = @file_get_contents($root . '/keyboard.php');
-if ($keyboard === false || !str_contains($keyboard, "'web_app' => ['url' => \$miniAppUrl]")) {
-    $failures[] = 'Direct Mini App web_app button is missing.';
+if ($keyboard !== false && str_contains($keyboard, "'web_app' => ['url' =>")) {
+    $failures[] = 'Main customer keyboard must not inject a direct Mini App web_app button.';
 }
 
 $appHtaccess = @file_get_contents($root . '/app/.htaccess');
