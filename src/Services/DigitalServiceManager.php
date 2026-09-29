@@ -436,10 +436,17 @@ final class BluebotDigitalServices
         }
 
         $catalogUrl = (string) $discovery['url'];
+        $apiStyle = strtolower(trim((string) ($discovery['api_style'] ?? 'rest')));
         $detectedPath = (string) parse_url($catalogUrl, PHP_URL_PATH);
         if ($detectedPath !== '') {
             self::setSetting($pdo, 'ozvinoo_catalog_path', $detectedPath, false);
+            if ($apiStyle === 'smm') {
+                // Standard SMM APIs use the same endpoint for
+                // action=services and action=add.
+                self::setSetting($pdo, 'ozvinoo_order_path', $detectedPath, false);
+            }
         }
+        self::setSetting($pdo, 'ozvinoo_api_style', $apiStyle === 'smm' ? 'smm' : 'rest', false);
 
         BluebotProviderCatalogService::saveProvider($pdo, [
             'provider_key' => 'ozvinoo',
@@ -799,7 +806,7 @@ final class BluebotDigitalServices
             $insert = $pdo->prepare(
                 "INSERT INTO digital_service_orders
                 (order_code, user_id, service_id, service_code, service_name, target, amount, quantity, provider, status)
-                VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?)"
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
             );
             $insert->execute([
                 $orderCode,
@@ -809,6 +816,7 @@ final class BluebotDigitalServices
                 (string) $freshProduct['name'],
                 $target,
                 $freshPrice,
+                max(1, (int) ($freshProduct['service_value'] ?? 1)),
                 (string) ($freshProduct['provider'] ?? 'manual'),
                 self::STATUS_PENDING,
             ]);
@@ -1502,12 +1510,19 @@ final class BluebotDigitalServices
         $apiKey = trim(self::setting($pdo, 'ozvinoo_api_key', ''));
         $authHeader = trim(self::setting($pdo, 'ozvinoo_auth_header', 'Authorization'));
         $authPrefix = trim(self::setting($pdo, 'ozvinoo_auth_prefix', 'Bearer'));
+        $apiStyle = strtolower(trim(self::setting($pdo, 'ozvinoo_api_style', 'rest')));
         $serviceCode = trim((string) ($product['provider_service_code'] ?? ''));
+        $metadata = self::productMetadata($product);
+
+        if (($metadata['api_style'] ?? '') === 'smm') {
+            $apiStyle = 'smm';
+        }
 
         if ($orderPath === '' || $serviceCode === '') {
             return [
                 'ok' => false,
-                'error' => 'OZVinoo provider is not configured: order path or service code is missing.',
+                'retryable' => true,
+                'error' => 'تنظیمات عضوینو کامل نیست: مسیر ثبت سفارش یا کد سرویس پیدا نشده است.',
             ];
         }
 
@@ -1520,6 +1535,18 @@ final class BluebotDigitalServices
             return ['ok' => false, 'error' => 'OZVinoo endpoint is outside the allowed host.'];
         }
 
+        if ($apiStyle === 'smm') {
+            return self::deliverOZVinooSmm(
+                $url,
+                $apiKey,
+                $authHeader,
+                $authPrefix,
+                $order,
+                $product,
+                $serviceCode
+            );
+        }
+
         $payload = [
             'service' => $serviceCode,
             'target' => (string) $order['target'],
@@ -1529,13 +1556,13 @@ final class BluebotDigitalServices
 
         $headers = ['Content-Type: application/json', 'Accept: application/json'];
         if ($apiKey !== '') {
-            $headerValue = trim($authPrefix . ' ' . $apiKey);
+            $headerValue = trim(($authPrefix !== '' ? $authPrefix . ' ' : '') . $apiKey);
             $headers[] = $authHeader . ': ' . $headerValue;
         }
 
         $ch = curl_init($url);
         if ($ch === false) {
-            return ['ok' => false, 'error' => 'Unable to initialise OZVinoo request.'];
+            return ['ok' => false, 'retryable' => true, 'error' => 'Unable to initialise OZVinoo request.'];
         }
 
         curl_setopt_array($ch, [
@@ -1556,14 +1583,19 @@ final class BluebotDigitalServices
         curl_close($ch);
 
         if ($raw === false) {
-            return ['ok' => false, 'error' => $error !== '' ? $error : 'OZVinoo request failed.'];
+            return [
+                'ok' => false,
+                'retryable' => true,
+                'error' => $error !== '' ? $error : 'OZVinoo request failed.',
+            ];
         }
 
         $decoded = json_decode((string) $raw, true);
         $response = is_array($decoded) ? $decoded : ['raw' => mb_substr((string) $raw, 0, 2000, 'UTF-8')];
         $success = $http >= 200 && $http < 300
             && (!isset($response['success']) || (bool) $response['success'])
-            && (!isset($response['ok']) || (bool) $response['ok']);
+            && (!isset($response['ok']) || (bool) $response['ok'])
+            && empty($response['error']);
 
         $reference = '';
         foreach (['id', 'order_id', 'orderId', 'reference'] as $key) {
@@ -1575,9 +1607,108 @@ final class BluebotDigitalServices
 
         return [
             'ok' => $success,
+            'retryable' => !$success && ($http === 0 || $http >= 500),
             'reference' => $reference,
             'response' => ['http_status' => $http, 'body' => $response],
-            'error' => $success ? '' : ('OZVinoo returned HTTP ' . $http),
+            'error' => $success
+                ? ''
+                : trim((string) ($response['error'] ?? $response['message'] ?? ('OZVinoo returned HTTP ' . $http))),
+        ];
+    }
+
+    private static function deliverOZVinooSmm(
+        string $url,
+        string $apiKey,
+        string $authHeader,
+        string $authPrefix,
+        array $order,
+        array $product,
+        string $serviceCode
+    ): array {
+        if ($apiKey === '') {
+            return ['ok' => false, 'retryable' => true, 'error' => 'API Key عضوینو تنظیم نشده است.'];
+        }
+
+        $headers = [
+            'Accept: application/json',
+            'Content-Type: application/x-www-form-urlencoded',
+        ];
+        $headerValue = trim(($authPrefix !== '' ? $authPrefix . ' ' : '') . $apiKey);
+        if ($headerValue !== '') {
+            $headers[] = $authHeader . ': ' . $headerValue;
+        }
+
+        $payload = http_build_query([
+            'key' => $apiKey,
+            'action' => 'add',
+            'service' => $serviceCode,
+            'link' => (string) $order['target'],
+            'quantity' => max(1, (int) ($product['service_value'] ?? $order['quantity'] ?? 1)),
+        ], '', '&', PHP_QUERY_RFC3986);
+
+        $ch = curl_init($url);
+        if ($ch === false) {
+            return ['ok' => false, 'retryable' => true, 'error' => 'Unable to initialise OZVinoo SMM request.'];
+        }
+
+        curl_setopt_array($ch, [
+            CURLOPT_POST => true,
+            CURLOPT_POSTFIELDS => $payload,
+            CURLOPT_HTTPHEADER => $headers,
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_CONNECTTIMEOUT => 5,
+            CURLOPT_TIMEOUT => 20,
+            CURLOPT_SSL_VERIFYHOST => 2,
+            CURLOPT_SSL_VERIFYPEER => true,
+            CURLOPT_PROTOCOLS => CURLPROTO_HTTPS,
+            CURLOPT_FOLLOWLOCATION => false,
+            CURLOPT_USERAGENT => 'BlueBot/0.5.31 OZVinoo',
+        ]);
+
+        $raw = curl_exec($ch);
+        $error = curl_error($ch);
+        $http = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        curl_close($ch);
+
+        if ($raw === false) {
+            return [
+                'ok' => false,
+                'retryable' => true,
+                'error' => $error !== '' ? $error : 'OZVinoo SMM request failed.',
+            ];
+        }
+
+        $decoded = json_decode((string) $raw, true);
+        if (!is_array($decoded)) {
+            return [
+                'ok' => false,
+                'retryable' => $http === 0 || $http >= 500,
+                'response' => ['http_status' => $http, 'raw' => mb_substr((string) $raw, 0, 2000, 'UTF-8')],
+                'error' => 'پاسخ عضوینو JSON معتبر نبود.',
+            ];
+        }
+
+        $errorText = trim((string) ($decoded['error'] ?? $decoded['message'] ?? ''));
+        $reference = '';
+        foreach (['order', 'order_id', 'orderId', 'id', 'reference'] as $key) {
+            if (isset($decoded[$key]) && is_scalar($decoded[$key])) {
+                $reference = trim((string) $decoded[$key]);
+                if ($reference !== '') {
+                    break;
+                }
+            }
+        }
+
+        $success = $http >= 200 && $http < 300 && $errorText === '' && $reference !== '';
+
+        return [
+            'ok' => $success,
+            'retryable' => !$success && ($http === 0 || $http >= 500),
+            'reference' => $reference,
+            'response' => ['http_status' => $http, 'body' => $decoded],
+            'error' => $success
+                ? ''
+                : ($errorText !== '' ? $errorText : 'عضوینو شناسه سفارش برنگرداند.'),
         ];
     }
 
