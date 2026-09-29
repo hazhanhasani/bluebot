@@ -339,6 +339,9 @@ final class BluebotProviderCatalogService
             $name = trim((string) self::valueAtPath($item, (string) $provider['name_field']));
             $categoryRaw = trim((string) self::valueAtPath($item, (string) $provider['category_field']));
             $costRaw = self::valueAtPath($item, (string) $provider['price_field']);
+            if (is_string($costRaw)) {
+                $costRaw = str_replace([',', ' ', '٬'], '', trim($costRaw));
+            }
 
             if ($providerId === '' || $name === '' || !is_numeric($costRaw)) {
                 continue;
@@ -574,7 +577,9 @@ final class BluebotProviderCatalogService
             if (!is_array($items) || $items === []) {
                 continue;
             }
-            if (self::isAssoc($items)) {
+
+            $items = self::normaliseItemCollection($items);
+            if ($items === []) {
                 continue;
             }
 
@@ -590,16 +595,20 @@ final class BluebotProviderCatalogService
             }
 
             $idField = self::firstMatchingField($sample, [
-                'id', 'service_id', 'serviceId', 'service', 'code', 'service_code', 'serviceCode', 'sku',
+                '__bluebot_key', 'id', 'service_id', 'serviceId', 'service.id',
+                'service', 'code', 'service_code', 'serviceCode', 'sku',
             ]);
             $nameField = self::firstMatchingField($sample, [
-                'name', 'title', 'service_name', 'serviceName', 'label',
+                'name', 'title', 'service_name', 'serviceName', 'service.name', 'label',
             ]);
             $priceField = self::firstMatchingField($sample, [
-                'price', 'cost', 'rate', 'amount', 'base_price', 'basePrice', 'wholesale_price', 'wholesalePrice',
+                'price', 'cost', 'rate', 'amount', 'base_price', 'basePrice',
+                'wholesale_price', 'wholesalePrice', 'pricing.price', 'pricing.amount',
+                'price.amount',
             ]);
             $categoryField = self::firstMatchingField($sample, [
-                'category', 'category_name', 'categoryName', 'group', 'type',
+                'category_name', 'categoryName', 'category.name', 'category.title',
+                'group_name', 'groupName', 'group.name', 'category', 'group', 'type',
             ]);
 
             if ($idField === '' || $nameField === '' || $priceField === '') {
@@ -618,6 +627,24 @@ final class BluebotProviderCatalogService
         }
 
         return ['ok' => false, 'message' => 'BlueBot could not auto-detect the provider product list/fields.'];
+    }
+
+    private static function normaliseItemCollection(array $items): array
+    {
+        if (!self::isAssoc($items)) {
+            return array_values(array_filter($items, 'is_array'));
+        }
+
+        $normalised = [];
+        foreach ($items as $key => $value) {
+            if (!is_array($value) || $value === []) {
+                continue;
+            }
+            $value['__bluebot_key'] = (string) $key;
+            $normalised[] = $value;
+        }
+
+        return $normalised;
     }
 
     private static function firstMatchingField(array $item, array $candidates): string
