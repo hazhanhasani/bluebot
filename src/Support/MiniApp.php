@@ -4,13 +4,22 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/RuntimeIdentity.php';
 
+function bluebotMiniAppBuildVersion(): string
+{
+    $versionFile = dirname(__DIR__, 2) . '/app/version';
+    $version = is_file($versionFile) ? trim((string) @file_get_contents($versionFile)) : '';
+    return preg_match('/^[0-9]+(?:\.[0-9]+){1,3}$/', $version) ? $version : '';
+}
+
 function bluebotMiniAppUrl(): string
 {
     // The active bot/domain is authoritative. This prevents an old Worker/CDN
     // override from being inherited when BlueBot is moved to a new bot/domain.
     $host = bluebotPublicDomain();
     if ($host !== '') {
-        return 'https://' . $host . '/app/';
+        $url = 'https://' . $host . '/app/';
+        $version = bluebotMiniAppBuildVersion();
+        return $version !== '' ? $url . '?v=' . rawurlencode($version) : $url;
     }
 
     // Legacy edge/CDN override is fallback-only when BlueBot cannot determine
@@ -19,7 +28,9 @@ function bluebotMiniAppUrl(): string
     if ($override !== '' && filter_var($override, FILTER_VALIDATE_URL) !== false) {
         $parts = parse_url($override);
         if (is_array($parts) && strtolower((string) ($parts['scheme'] ?? '')) === 'https') {
-            return rtrim($override, '/') . '/';
+            $url = rtrim($override, '/') . '/';
+            $version = bluebotMiniAppBuildVersion();
+            return $version !== '' ? $url . '?v=' . rawurlencode($version) : $url;
         }
     }
 

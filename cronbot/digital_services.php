@@ -17,6 +17,22 @@ try {
         return;
     }
 
+    $catalog = BluebotDigitalServices::maybeSyncTgToolsCatalog($pdo, 900);
+    if (empty($catalog['skipped'])) {
+        if (empty($catalog['remote_ok'])) {
+            bluebotLog('warning', 'TGTools live catalog refresh used fallback data', [
+                'created' => (int) ($catalog['created'] ?? 0),
+                'updated' => (int) ($catalog['updated'] ?? 0),
+                'error' => (string) ($catalog['remote_error'] ?? ''),
+            ]);
+        } elseif (($catalog['created'] ?? 0) > 0 || ($catalog['updated'] ?? 0) > 0) {
+            bluebotLog('info', 'TGTools live catalog synchronized', [
+                'created' => (int) ($catalog['created'] ?? 0),
+                'updated' => (int) ($catalog['updated'] ?? 0),
+            ]);
+        }
+    }
+
     $stats = BluebotDigitalServices::reconcileTgToolsProcessing($pdo, 25);
     if (($stats['completed'] ?? 0) > 0 || ($stats['failed'] ?? 0) > 0 || ($stats['errors'] ?? 0) > 0) {
         bluebotLog('info', 'TGTools digital service reconciliation completed', $stats);

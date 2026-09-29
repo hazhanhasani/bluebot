@@ -10,6 +10,11 @@ final class TgToolsClient
     {
     }
 
+    public function prices(): array
+    {
+        return $this->request('GET', '/api/purchase/prices', null, false);
+    }
+
     public function lookupUser(string $username): array
     {
         $username = ltrim(trim($username), '@');
@@ -94,7 +99,7 @@ final class TgToolsClient
             CURLOPT_SSL_VERIFYHOST => 2,
             CURLOPT_SSL_VERIFYPEER => true,
             CURLOPT_PROTOCOLS => CURLPROTO_HTTPS,
-            CURLOPT_USERAGENT => 'BlueBot/0.5.22 TGToolsClient',
+            CURLOPT_USERAGENT => 'BlueBot/0.5.23 TGToolsClient',
         ];
 
         if ($method === 'POST') {

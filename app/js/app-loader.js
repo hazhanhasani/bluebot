@@ -4,9 +4,10 @@
   var bootKey = '__BLUEBOT_MINIAPP_BOOT__';
   var previousBoot = window[bootKey];
 
-  // Telegram WebView/CDN retries can evaluate the bootstrap more than once.
-  // A second React Router mount in the same document triggers the nested
-  // <Router> invariant, so startup must be single-flight.
+  // Keep exactly one canonical module URL for the Vite entry. App chunks import
+  // ./index-C-2a0Dur.js without a query string; loading the entry with ?v=...
+  // creates a second module identity and can mount React Router twice.
+  // Bootstrap is also single-flight for Telegram WebView retries.
   if (previousBoot && previousBoot.started) {
     console.warn('BlueBot Mini App duplicate bootstrap ignored', previousBoot);
     return;
@@ -16,7 +17,7 @@
     started: true,
     loaded: false,
     failed: false,
-    version: '0.1.6',
+    version: '0.1.7',
     startedAt: Date.now()
   };
   window[bootKey] = bootState;
@@ -93,7 +94,7 @@
     }
   }, 10000);
 
-  import('../assets/index-C-2a0Dur.js?v=0.1.6')
+  import('../assets/index-C-2a0Dur.js')
     .then(function () {
       finished = true;
       bootState.loaded = true;

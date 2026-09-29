@@ -9,27 +9,30 @@ $appIndex = @file_get_contents($root . '/app/index.php');
 if ($appIndex !== false && str_contains($appIndex, 'https://telegram.org/js/telegram-web-app.js')) {
     $failures[] = 'Mini App startup must not block on the external Telegram SDK.';
 }
-if ($appIndex === false || !str_contains($appIndex, './js/telegram-bootstrap.js?v=0.1.6')) {
+if ($appIndex === false || !str_contains($appIndex, './js/telegram-bootstrap.js?v=0.1.7')) {
     $failures[] = 'Mini App compatibility bootstrap is not loaded with the current cache key.';
 }
-if ($appIndex === false || !str_contains($appIndex, './js/telegram-web-app.js?v=0.1.6')) {
+if ($appIndex === false || !str_contains($appIndex, './js/telegram-web-app.js?v=0.1.7')) {
     $failures[] = 'Local Telegram SDK is not loaded first.';
 }
 
-if ($appIndex === false || !str_contains($appIndex, 'script defer src="./js/telegram-web-app.js?v=0.1.6"')) {
+if ($appIndex === false || !str_contains($appIndex, 'script defer src="./js/telegram-web-app.js?v=0.1.7"')) {
     $failures[] = 'Mini App Telegram SDK must load with defer for non-blocking first paint.';
 }
 if ($appIndex === false || !str_contains($appIndex, 'bluebot-boot')) {
     $failures[] = 'Mini App must provide an immediate boot/loading surface.';
 }
 
-if ($appIndex === false || !str_contains($appIndex, './js/app-loader.js?v=0.1.6')) {
+if ($appIndex === false || !str_contains($appIndex, './js/app-loader.js?v=0.1.7')) {
     $failures[] = 'Mini App ordered application loader is missing.';
 }
 
 $appLoader = @file_get_contents($root . '/app/js/app-loader.js');
-if ($appLoader === false || !str_contains($appLoader, "import('../assets/index-C-2a0Dur.js?v=0.1.6')")) {
-    $failures[] = 'Mini App loader does not start the production bundle.';
+if ($appLoader === false || !str_contains($appLoader, "import('../assets/index-C-2a0Dur.js')")) {
+    $failures[] = 'Mini App loader does not start the canonical production bundle URL.';
+}
+if ($appLoader !== false && str_contains($appLoader, "index-C-2a0Dur.js?v=")) {
+    $failures[] = 'Mini App entry module must not use a query string; route chunks import the canonical URL and a second module identity can mount Router twice.';
 }
 
 if ($appLoader === false || !str_contains($appLoader, '__BLUEBOT_MINIAPP_BOOT__')) {
@@ -62,6 +65,9 @@ if ($appHtaccess === false || !str_contains($appHtaccess, 'Cloudflare-CDN-Cache-
 if ($appHtaccess === false || !str_contains($appHtaccess, 'app-loader|telegram-bootstrap|telegram-web-app')) {
     $failures[] = 'Mini App runtime bootstrap scripts need an explicit non-immutable cache policy.';
 }
+if ($appHtaccess === false || !str_contains($appHtaccess, 'JS/CSS filenames in this legacy Mini App build')) {
+    $failures[] = 'Mini App JS/CSS must be revalidated to prevent mixed cached bundle generations.';
+}
 
 $apiHtaccess = @file_get_contents($root . '/api/.htaccess');
 if ($apiHtaccess === false || !str_contains($apiHtaccess, 'CDN-Cache-Control "no-store"')) {
@@ -80,6 +86,9 @@ if ($keyboard !== false && str_contains($keyboard, '$miniAppHost = trim((string)
 }
 if ($miniAppSupport === false || !str_contains($miniAppSupport, '$host = bluebotPublicDomain();')) {
     $failures[] = 'Mini App URL must resolve through the current runtime domain.';
+}
+if ($miniAppSupport === false || !str_contains($miniAppSupport, "bluebotMiniAppBuildVersion")) {
+    $failures[] = 'Mini App URL must include the build version so Telegram opens a fresh WebView after updates.';
 }
 if ($miniAppSupport !== false) {
     $runtimePos = strpos($miniAppSupport, '$host = bluebotPublicDomain();');
@@ -112,7 +121,7 @@ if ($verify === false || !str_contains($verify, "hash_equals")) {
 }
 
 $version = trim((string) @file_get_contents($root . '/app/version'));
-if ($version !== '0.1.6') {
+if ($version !== '0.1.7') {
     $failures[] = 'Unexpected Mini App version: ' . $version;
 }
 

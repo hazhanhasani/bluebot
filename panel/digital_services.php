@@ -55,6 +55,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $allowedTypes = ['telegram_stars', 'telegram_premium', 'ozvinoo_service', 'custom'];
         $allowedProviders = ['manual', 'telegram_bot', 'tgtools', 'ozvinoo'];
 
+        if ($provider === 'tgtools' && in_array($type, ['telegram_stars', 'telegram_premium'], true)) {
+            $providerCode = '';
+            if ($code === '') {
+                $code = BluebotDigitalServices::generatedProviderProductCode($type, $serviceValue);
+            }
+            if ($name === '') {
+                $name = BluebotDigitalServices::generatedProviderProductName($type, $serviceValue);
+            }
+        }
+
         if (!preg_match('/^[a-z0-9][a-z0-9_-]{2,79}$/', $code)
             || $name === ''
             || !in_array($type, $allowedTypes, true)
@@ -112,9 +122,38 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     if ($action === 'toggle_product') {
         $id = max(0, (int) ($_POST['id'] ?? 0));
+        $check = $pdo->prepare("SELECT price, active FROM digital_service_products WHERE id = ? LIMIT 1");
+        $check->execute([$id]);
+        $currentProduct = $check->fetch(PDO::FETCH_ASSOC);
+        if (is_array($currentProduct)
+            && (int) ($currentProduct['active'] ?? 0) !== 1
+            && (int) ($currentProduct['price'] ?? 0) <= 0) {
+            flash('warning', 'قبل از فعال‌سازی، قیمت فروش سرویس را تعیین کنید.');
+            header('Location: digital_services.php');
+            exit;
+        }
+
         $stmt = $pdo->prepare("UPDATE digital_service_products SET active = IF(active = 1, 0, 1) WHERE id = ?");
         $stmt->execute([$id]);
         flash('success', 'وضعیت سرویس تغییر کرد.');
+        header('Location: digital_services.php');
+        exit;
+    }
+
+    if ($action === 'set_product_price') {
+        $id = max(0, (int) ($_POST['id'] ?? 0));
+        $price = max(0, (int) ($_POST['price'] ?? 0));
+        if ($id <= 0 || $price <= 0) {
+            flash('error', 'قیمت فروش معتبر وارد کنید.');
+            header('Location: digital_services.php');
+            exit;
+        }
+
+        $stmt = $pdo->prepare(
+            "UPDATE digital_service_products SET price = ?, active = 1, updated_at = NOW() WHERE id = ?"
+        );
+        $stmt->execute([$price, $id]);
+        flash('success', 'قیمت ذخیره شد و سرویس فعال شد.');
         header('Location: digital_services.php');
         exit;
     }
@@ -156,7 +195,33 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         );
         $migrateProducts->execute();
 
-        flash('success', 'تنظیمات TGTools ذخیره شد و Provider سرویس‌های Stars/Premium روی TGTools قرار گرفت.');
+        $catalog = BluebotDigitalServices::ensureTgToolsCatalog($pdo);
+        $catalogMessage = 'تنظیمات TGTools ذخیره شد. محصولات Stars/Premium همگام شدند: '
+            . (int) ($catalog['created'] ?? 0) . ' جدید، '
+            . (int) ($catalog['updated'] ?? 0) . ' بروزرسانی.';
+        if (!empty($catalog['remote_ok'])) {
+            flash('success', $catalogMessage . ' قیمت‌های زنده TGTools نیز دریافت شد.');
+        } else {
+            flash('warning', $catalogMessage . ' دریافت قیمت زنده موقتاً ممکن نبود و کاتالوگ جایگزین استفاده شد.');
+        }
+        header('Location: digital_services.php#tgtools');
+        exit;
+    }
+
+    if ($action === 'sync_tgtools_catalog') {
+        $catalog = BluebotDigitalServices::ensureTgToolsCatalog($pdo);
+        if (!empty($catalog['ok'])) {
+            $catalogMessage = 'محصولات Stars/Premium آماده شدند: '
+                . (int) ($catalog['created'] ?? 0) . ' جدید، '
+                . (int) ($catalog['updated'] ?? 0) . ' بروزرسانی.';
+            if (!empty($catalog['remote_ok'])) {
+                flash('success', $catalogMessage . ' قیمت‌های زنده TGTools دریافت شد.');
+            } else {
+                flash('warning', $catalogMessage . ' قیمت زنده در دسترس نبود؛ کاتالوگ جایگزین استفاده شد.');
+            }
+        } else {
+            flash('error', 'همگام‌سازی محصولات انجام نشد.');
+        }
         header('Location: digital_services.php#tgtools');
         exit;
     }
@@ -261,11 +326,13 @@ include __DIR__ . '/inc/layout_head.php';
 
             <div class="field">
                 <label>نام سرویس</label>
-                <input class="input" name="name" required maxlength="190" placeholder="مثلاً Telegram Premium 3 Months">
+                <input class="input" name="name" maxlength="190" placeholder="برای TGTools می‌تواند خالی باشد">
+                <small class="field-hint">برای Stars/Premium با TGTools نام به‌صورت خودکار ساخته می‌شود.</small>
             </div>
             <div class="field">
                 <label>کد داخلی</label>
-                <input class="input" name="code" required maxlength="80" dir="ltr" placeholder="tg-premium-3m">
+                <input class="input" name="code" maxlength="80" dir="ltr" placeholder="خودکار برای TGTools">
+                <small class="field-hint">نیازی نیست کد محصولات Provider را بدانید؛ BlueBot کد داخلی یکتا می‌سازد.</small>
             </div>
             <div class="two-col" style="gap:10px">
                 <div class="field">
@@ -300,7 +367,8 @@ include __DIR__ . '/inc/layout_head.php';
             </div>
             <div class="field">
                 <label>Provider Service Code</label>
-                <input class="input" name="provider_service_code" maxlength="190" dir="ltr" placeholder="برای OZVinoo؛ TGTools نیازی ندارد">
+                <input class="input" name="provider_service_code" maxlength="190" dir="ltr" placeholder="فقط Providerهایی که واقعاً Service Code دارند">
+                <small class="field-hint">برای TGTools/Stars/Premium خالی بگذارید؛ مقدار و مدت سرویس ملاک است.</small>
             </div>
             <div class="field">
                 <label>توضیحات</label>
@@ -335,9 +403,15 @@ include __DIR__ . '/inc/layout_head.php';
                 <small class="field-hint">کلید از Settings → API Keys در TGTools ساخته می‌شود و در پیام‌های ربات نمایش داده نمی‌شود.</small>
             </div>
             <div class="notice notice-info">
-                Stars با <code>amount</code> و Premium با پلن‌های ۳، ۶ یا ۱۲ ماه ارسال می‌شود. پرداخت Provider از موجودی TON حساب TGTools انجام می‌شود.
+                BlueBot بسته‌های Stars و قیمت‌های Premium را از <code>/api/purchase/prices</code> می‌خواند و خودکار همگام می‌کند.
+                هیچ کد محصول خارجی لازم نیست؛ کد داخلی از نوع سرویس و مقدار آن ساخته می‌شود و Provider Service Code خالی می‌ماند.
             </div>
             <button class="btn btn-primary" type="submit"><?= icon('check', 14) ?> ذخیره TGTools</button>
+        </form>
+        <form method="post" class="card-body" style="padding-top:0">
+            <input type="hidden" name="_csrf" value="<?= htmlspecialchars(csrf_token()) ?>">
+            <input type="hidden" name="action" value="sync_tgtools_catalog">
+            <button class="btn btn-ghost" type="submit">↻ ساخت/همگام‌سازی خودکار محصولات</button>
         </form>
     </div>
 
@@ -412,7 +486,33 @@ include __DIR__ . '/inc/layout_head.php';
                     <td class="cell-mono"><?= htmlspecialchars($product['type']) ?></td>
                     <td class="cell-mono"><?= htmlspecialchars($product['provider']) ?></td>
                     <td><?= number_format((int) $product['service_value']) ?></td>
-                    <td><?= number_format((float) $product['price']) ?> تومان</td>
+                    <td>
+                        <?php if (($product['provider'] ?? '') === 'tgtools'): ?>
+                            <form method="post" style="display:flex;gap:6px;align-items:center;min-width:210px">
+                                <input type="hidden" name="_csrf" value="<?= htmlspecialchars(csrf_token()) ?>">
+                                <input type="hidden" name="action" value="set_product_price">
+                                <input type="hidden" name="id" value="<?= (int) $product['id'] ?>">
+                                <input class="input" style="min-width:120px" type="number" name="price" min="1"
+                                    value="<?= (int) $product['price'] ?>" placeholder="قیمت فروش">
+                                <button class="btn btn-primary btn-sm" type="submit">ذخیره</button>
+                            </form>
+                            <?php
+                            $tgMeta = json_decode((string) ($product['metadata'] ?? ''), true);
+                            $tgWholesaleTon = is_array($tgMeta) ? ($tgMeta['wholesale_ton'] ?? null) : null;
+                            $tgWholesaleUsd = is_array($tgMeta) ? ($tgMeta['wholesale_usd'] ?? null) : null;
+                            ?>
+                            <?php if (is_numeric($tgWholesaleTon)): ?>
+                                <div class="field-hint" style="margin-top:4px">
+                                    عمده TGTools: <?= htmlspecialchars((string) $tgWholesaleTon) ?> TON
+                                    <?php if (is_numeric($tgWholesaleUsd)): ?>
+                                        · $<?= htmlspecialchars((string) $tgWholesaleUsd) ?>
+                                    <?php endif; ?>
+                                </div>
+                            <?php endif; ?>
+                        <?php else: ?>
+                            <?= number_format((float) $product['price']) ?> تومان
+                        <?php endif; ?>
+                    </td>
                     <td>
                         <span class="tag <?= (int) $product['active'] === 1 ? 'tag-ok' : 'tag-plain' ?>">
                             <?= (int) $product['active'] === 1 ? 'فعال' : 'غیرفعال' ?>
