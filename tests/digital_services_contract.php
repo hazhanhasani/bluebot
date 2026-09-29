@@ -16,6 +16,14 @@ $digitalServicesCron = file_get_contents($root . '/cronbot/digital_services.php'
 $settings = file_get_contents($root . '/db/tables/digital_service_settings.php');
 $langFa = file_get_contents($root . '/lang/fa.php');
 
+$buyStart = strpos($index, "} elseif (preg_match('/^ds_buy:");
+$buyEnd = $buyStart === false
+    ? false
+    : strpos($index, "} elseif (\$user['step'] === 'digital_service_target')", $buyStart);
+$buyRoute = ($buyStart !== false && $buyEnd !== false)
+    ? substr($index, $buyStart, $buyEnd - $buyStart)
+    : '';
+
 $checks = [
     [str_contains($providerCatalog, "syncDueProviders"), 'provider catalog scheduler missing'],
     [str_contains($providerCatalog, "syncProvider"), 'provider catalog synchronizer missing'],
@@ -79,8 +87,8 @@ $checks = [
     [str_contains($manager, "https://api.ozvinoo.xyz"), 'OZVinoo host allowlist missing'],
     [str_contains($manager, "CURLOPT_PROTOCOLS => CURLPROTO_HTTPS"), 'OZVinoo must be HTTPS-only'],
     [str_contains($index, "ds_confirm:"), 'user order confirmation route missing'],
-    [str_contains($index, "BluebotDigitalServices::targetKeyboard(\$product)"), 'order target screen must use an inline keyboard'],
-    [!str_contains($index, "Editmessagetext(\n        \$from_id,\n        \$message_id,\n        \"<b>\" . htmlspecialchars((string) \$product['name']"), 'legacy order target edit pattern unexpectedly present'],
+    [str_contains($buyRoute, "BluebotDigitalServices::targetKeyboard(\$product)"), 'order target screen must use an inline keyboard'],
+    [!str_contains($buyRoute, '\$backuser'), 'order target edit must not pass ReplyKeyboardMarkup to editMessageText'],
     [str_contains($index, "ORDER_STATE_INVALID"), 'duplicate/stale confirmation handling missing'],
     [str_contains($index, "ds_category:"), 'customer category navigation route missing'],
     [str_contains($index, "categoryKeyboard"), 'customer category landing screen missing'],
