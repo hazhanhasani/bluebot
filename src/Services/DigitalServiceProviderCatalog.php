@@ -567,9 +567,10 @@ final class BluebotProviderCatalogService
     private static function autoDiscoverCatalogMapping(array $body): array
     {
         $paths = [
-            'data.services', 'data.products', 'data.items',
-            'result.services', 'result.products', 'result.items',
-            'services', 'products', 'items', 'data', 'result', '.',
+            'data.services', 'data.products', 'data.items', 'data.list', 'data.results', 'data.rows',
+            'result.services', 'result.products', 'result.items', 'result.list', 'result.results',
+            'response.services', 'response.products', 'response.items', 'response.data',
+            'services', 'products', 'items', 'list', 'results', 'rows', 'data', 'result', 'response', '.',
         ];
 
         foreach ($paths as $productsPath) {
