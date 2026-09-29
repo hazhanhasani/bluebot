@@ -5,6 +5,10 @@ declare(strict_types=1);
 final class BluebotProviderCatalogService
 {
     private const RESERVED_KEYS = ['manual', 'telegram_bot', 'tgtools'];
+    private const DISCOVERY_MAX_ATTEMPTS = 12;
+    private const DISCOVERY_BUDGET_SECONDS = 10.0;
+    private const DISCOVERY_CONNECT_TIMEOUT_SECONDS = 2;
+    private const DISCOVERY_REQUEST_TIMEOUT_SECONDS = 5;
 
     public static function ensureStorage(PDO $pdo): void
     {
@@ -66,27 +70,38 @@ final class BluebotProviderCatalogService
         $errors = [];
         $candidates = array_values(array_unique(array_filter(array_map('trim', $urls))));
         $authProfiles = self::authProfiles($apiKey, $authHeader, $authPrefix);
+        $startedAt = microtime(true);
+        $attempts = 0;
+        $budgetExhausted = false;
 
-        // Try REST/JSON GET catalogs with the configured auth first, then
-        // common API-key header conventions. This is intentionally read-only.
+        $canProbe = static function () use (&$attempts, $startedAt, &$budgetExhausted): bool {
+            if ($attempts >= self::DISCOVERY_MAX_ATTEMPTS
+                || microtime(true) - $startedAt >= self::DISCOVERY_BUDGET_SECONDS) {
+                $budgetExhausted = true;
+                return false;
+            }
+            $attempts++;
+            return true;
+        };
+
+        // Fast pass: try one configured REST request per endpoint before
+        // multiplying requests across every authentication style.
+        $primaryProfile = $authProfiles[0] ?? ['header' => '', 'prefix' => '', 'label' => 'none'];
         foreach ($candidates as $url) {
             if (!self::isSafeHttpsUrl($url)) {
                 continue;
             }
+            if (!$canProbe()) {
+                break;
+            }
 
-            foreach ($authProfiles as $profile) {
-                $response = self::requestCatalogUrl(
-                    $url,
-                    $apiKey,
-                    (string) $profile['header'],
-                    (string) $profile['prefix']
-                );
-                if (empty($response['ok'])) {
-                    $errors[] = $url . ' [GET/' . $profile['label'] . ']: '
-                        . (string) ($response['message'] ?? 'request failed');
-                    continue;
-                }
-
+            $response = self::requestCatalogUrl(
+                $url,
+                $apiKey,
+                (string) $primaryProfile['header'],
+                (string) $primaryProfile['prefix']
+            );
+            if (!empty($response['ok'])) {
                 $body = is_array($response['data'] ?? null) ? $response['data'] : [];
                 $mapping = self::autoDiscoverCatalogMapping($body);
                 if (!empty($mapping['ok'])) {
@@ -94,8 +109,8 @@ final class BluebotProviderCatalogService
                         'ok' => true,
                         'api_style' => 'rest',
                         'url' => $url,
-                        'auth_header' => (string) $profile['header'],
-                        'auth_prefix' => (string) $profile['prefix'],
+                        'auth_header' => (string) $primaryProfile['header'],
+                        'auth_prefix' => (string) $primaryProfile['prefix'],
                         'products_path' => (string) $mapping['products_path'],
                         'id_field' => (string) $mapping['id_field'],
                         'name_field' => (string) $mapping['name_field'],
@@ -103,21 +118,22 @@ final class BluebotProviderCatalogService
                         'price_field' => (string) $mapping['price_field'],
                     ];
                 }
-
-                $errors[] = $url . ' [GET/' . $profile['label'] . ']: JSON found but no product list was detected';
+                $errors[] = $url . ' [GET/' . $primaryProfile['label'] . ']: JSON found but no product list was detected';
+            } else {
+                $errors[] = $url . ' [GET/' . $primaryProfile['label'] . ']: '
+                    . (string) ($response['message'] ?? 'request failed');
             }
         }
 
-        // SMM-compatible panels publish catalogs with POST action=services.
-        // Probe it with the same safe auth variants; the API key is also sent
-        // in the standard form body as "key".
-        if (trim($apiKey) !== '') {
+        // SMM fast pass: API panels usually expose action=services on a short
+        // list of well-known endpoints. Body-only auth is intentionally tried
+        // first because many SMM panels put the key only in the POST body.
+        if (!$budgetExhausted && trim($apiKey) !== '') {
             $smmCandidates = [];
             foreach ($candidates as $url) {
                 if (!self::isSafeHttpsUrl($url)) {
                     continue;
                 }
-                $smmCandidates[] = $url;
                 $parts = parse_url($url);
                 if (!is_array($parts)) {
                     continue;
@@ -132,14 +148,24 @@ final class BluebotProviderCatalogService
                 foreach (['/api/v2', '/api/v1', '/api', '/v2', '/v1', '/'] as $path) {
                     $smmCandidates[] = rtrim($origin, '/') . $path;
                 }
+                break;
             }
 
-            foreach (array_values(array_unique($smmCandidates)) as $url) {
-                if (!self::isSafeHttpsUrl($url)) {
-                    continue;
+            $smmProfiles = [];
+            foreach ($authProfiles as $profile) {
+                if ((string) ($profile['label'] ?? '') === 'body-only') {
+                    $smmProfiles[] = $profile;
+                    break;
                 }
+            }
+            $smmProfiles[] = $primaryProfile;
 
-                foreach ($authProfiles as $profile) {
+            foreach (array_values(array_unique($smmCandidates)) as $url) {
+                foreach ($smmProfiles as $profile) {
+                    if (!$canProbe()) {
+                        break 2;
+                    }
+
                     $response = self::requestSmmServices(
                         $url,
                         $apiKey,
@@ -174,11 +200,63 @@ final class BluebotProviderCatalogService
             }
         }
 
+        // Final bounded pass: try alternate auth headers on the first few REST
+        // endpoints only. This keeps a button click deterministic instead of
+        // blocking PHP for minutes when the provider is unavailable.
+        if (!$budgetExhausted && count($authProfiles) > 1) {
+            foreach (array_slice($candidates, 0, 4) as $url) {
+                if (!self::isSafeHttpsUrl($url)) {
+                    continue;
+                }
+                foreach (array_slice($authProfiles, 1) as $profile) {
+                    if (!$canProbe()) {
+                        break 2;
+                    }
+
+                    $response = self::requestCatalogUrl(
+                        $url,
+                        $apiKey,
+                        (string) $profile['header'],
+                        (string) $profile['prefix']
+                    );
+                    if (empty($response['ok'])) {
+                        $errors[] = $url . ' [GET/' . $profile['label'] . ']: '
+                            . (string) ($response['message'] ?? 'request failed');
+                        continue;
+                    }
+
+                    $body = is_array($response['data'] ?? null) ? $response['data'] : [];
+                    $mapping = self::autoDiscoverCatalogMapping($body);
+                    if (!empty($mapping['ok'])) {
+                        return [
+                            'ok' => true,
+                            'api_style' => 'rest',
+                            'url' => $url,
+                            'auth_header' => (string) $profile['header'],
+                            'auth_prefix' => (string) $profile['prefix'],
+                            'products_path' => (string) $mapping['products_path'],
+                            'id_field' => (string) $mapping['id_field'],
+                            'name_field' => (string) $mapping['name_field'],
+                            'category_field' => (string) $mapping['category_field'],
+                            'price_field' => (string) $mapping['price_field'],
+                        ];
+                    }
+                }
+            }
+        }
+
+        $summary = $errors !== []
+            ? implode(' | ', array_slice($errors, 0, 6))
+            : 'No compatible catalog endpoint was detected.';
+        if ($budgetExhausted) {
+            $summary .= ' | Discovery stopped after the safe time/request budget; no long-running probe was allowed.';
+        }
+
         return [
             'ok' => false,
-            'message' => $errors !== []
-                ? implode(' | ', array_slice($errors, 0, 8))
-                : 'No compatible catalog endpoint was detected.',
+            'attempts' => $attempts,
+            'timed_out' => $budgetExhausted,
+            'message' => $summary,
         ];
     }
 
@@ -967,13 +1045,13 @@ final class BluebotProviderCatalogService
         curl_setopt_array($ch, [
             CURLOPT_RETURNTRANSFER => true,
             CURLOPT_HTTPHEADER => $headers,
-            CURLOPT_CONNECTTIMEOUT => 5,
-            CURLOPT_TIMEOUT => 20,
+            CURLOPT_CONNECTTIMEOUT => self::DISCOVERY_CONNECT_TIMEOUT_SECONDS,
+            CURLOPT_TIMEOUT => self::DISCOVERY_REQUEST_TIMEOUT_SECONDS,
             CURLOPT_SSL_VERIFYHOST => 2,
             CURLOPT_SSL_VERIFYPEER => true,
             CURLOPT_PROTOCOLS => CURLPROTO_HTTPS,
             CURLOPT_FOLLOWLOCATION => false,
-            CURLOPT_USERAGENT => 'BlueBot/0.5.32 ProviderCatalog',
+            CURLOPT_USERAGENT => 'BlueBot/0.5.34 ProviderCatalog',
         ]);
 
         $raw = curl_exec($ch);
@@ -1033,13 +1111,13 @@ final class BluebotProviderCatalogService
             CURLOPT_POSTFIELDS => $payload,
             CURLOPT_RETURNTRANSFER => true,
             CURLOPT_HTTPHEADER => $headers,
-            CURLOPT_CONNECTTIMEOUT => 5,
-            CURLOPT_TIMEOUT => 20,
+            CURLOPT_CONNECTTIMEOUT => self::DISCOVERY_CONNECT_TIMEOUT_SECONDS,
+            CURLOPT_TIMEOUT => self::DISCOVERY_REQUEST_TIMEOUT_SECONDS,
             CURLOPT_SSL_VERIFYHOST => 2,
             CURLOPT_SSL_VERIFYPEER => true,
             CURLOPT_PROTOCOLS => CURLPROTO_HTTPS,
             CURLOPT_FOLLOWLOCATION => false,
-            CURLOPT_USERAGENT => 'BlueBot/0.5.32 ProviderCatalog',
+            CURLOPT_USERAGENT => 'BlueBot/0.5.34 ProviderCatalog',
         ]);
 
         $raw = curl_exec($ch);
