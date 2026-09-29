@@ -8,6 +8,9 @@ $admin = file_get_contents($root . '/admin.php');
 $keyboard = file_get_contents($root . '/keyboard.php');
 $setting = file_get_contents($root . '/db/tables/setting.php');
 $panel = file_get_contents($root . '/panel/digital_services.php');
+$tgTools = file_get_contents($root . '/src/Services/TgToolsClient.php');
+$cronJobs = file_get_contents($root . '/cronbot/jobs.php');
+$settings = file_get_contents($root . '/db/tables/digital_service_settings.php');
 
 $checks = [
     [str_contains($manager, "pending_approval"), 'orders must enter pending approval'],
@@ -15,6 +18,18 @@ $checks = [
     [str_contains($manager, "rejectAndRefund"), 'reject/refund action missing'],
     [str_contains($manager, "UPDATE user SET Balance = Balance + ?"), 'refund must credit wallet'],
     [str_contains($manager, "giftPremiumSubscription"), 'Telegram Premium provider missing'],
+    [str_contains($manager, "provider === 'tgtools'"), 'TGTools provider dispatch missing'],
+    [str_contains($manager, "reconcileTgToolsProcessing"), 'TGTools async reconciliation missing'],
+    [str_contains($manager, "failAndRefundProviderOrder"), 'TGTools provider failure refund missing'],
+    [str_contains($tgTools, "https://api.tg-tools.shop"), 'TGTools host allowlist missing'],
+    [str_contains($tgTools, "/api/purchase/stars"), 'TGTools Stars endpoint missing'],
+    [str_contains($tgTools, "/api/purchase/premium"), 'TGTools Premium endpoint missing'],
+    [str_contains($tgTools, "X-Api-Key"), 'TGTools API key authentication missing'],
+    [str_contains($tgTools, "trackingCode"), 'TGTools idempotency tracking code missing'],
+    [str_contains($cronJobs, "'job' => 'digital_services'"), 'TGTools reconciliation cron is not scheduled'],
+    [str_contains($settings, "tgtools_api_key"), 'TGTools API key setting missing'],
+    [str_contains($panel, "save_tgtools"), 'TGTools admin settings UI missing'],
+    [str_contains($panel, 'value="tgtools"'), 'TGTools product provider option missing'],
     [str_contains($manager, "https://api.ozvinoo.xyz"), 'OZVinoo host allowlist missing'],
     [str_contains($manager, "CURLOPT_PROTOCOLS => CURLPROTO_HTTPS"), 'OZVinoo must be HTTPS-only'],
     [str_contains($index, "ds_confirm:"), 'user order confirmation route missing'],

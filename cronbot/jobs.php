@@ -7,6 +7,7 @@ function mirza_cron_jobs(): array
         ['job' => 'NotificationsService', 'schedule' => '*/1 * * * *', 'title' => 'ارسال اعلان‌های ربات'],
         ['job' => 'sms', 'schedule' => '*/1 * * * *', 'title' => 'صف پیامک و اعلان‌های سرویس'],
         ['job' => 'panel_sms_sync', 'schedule' => '*/1 * * * *', 'title' => 'همگام‌سازی پیامک کاربران دستی پنل'],
+        ['job' => 'digital_services', 'schedule' => '*/1 * * * *', 'title' => 'پیگیری سفارش‌های TGTools'],
         ['job' => 'sendmessage', 'schedule' => '*/1 * * * *', 'title' => 'صف ارسال پیام همگانی'],
         ['job' => 'activeconfig', 'schedule' => '*/1 * * * *', 'title' => 'فعال‌سازی سرویس‌های خریداری‌شده'],
         ['job' => 'disableconfig', 'schedule' => '*/1 * * * *', 'title' => 'غیرفعال‌سازی سرویس‌های منقضی'],

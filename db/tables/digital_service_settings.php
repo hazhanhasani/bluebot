@@ -10,6 +10,9 @@ return [
         SQL,
     'ensureUtf8mb4' => true,
     'seed' => [
+        ['setting_key' => 'tgtools_base_url', 'setting_value' => 'https://api.tg-tools.shop', 'is_secret' => 0],
+        ['setting_key' => 'tgtools_api_key', 'setting_value' => '', 'is_secret' => 1],
+        ['setting_key' => 'tgtools_payment_method', 'setting_value' => 'ton', 'is_secret' => 0],
         ['setting_key' => 'ozvinoo_base_url', 'setting_value' => 'https://api.ozvinoo.xyz', 'is_secret' => 0],
         ['setting_key' => 'ozvinoo_order_path', 'setting_value' => '', 'is_secret' => 0],
         ['setting_key' => 'ozvinoo_api_key', 'setting_value' => '', 'is_secret' => 1],

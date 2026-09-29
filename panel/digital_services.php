@@ -53,7 +53,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $sortOrder = (int) ($_POST['sort_order'] ?? 0);
 
         $allowedTypes = ['telegram_stars', 'telegram_premium', 'ozvinoo_service', 'custom'];
-        $allowedProviders = ['manual', 'telegram_bot', 'ozvinoo'];
+        $allowedProviders = ['manual', 'telegram_bot', 'tgtools', 'ozvinoo'];
 
         if (!preg_match('/^[a-z0-9][a-z0-9_-]{2,79}$/', $code)
             || $name === ''
@@ -66,12 +66,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
 
         if ($type === 'telegram_stars' && $provider === 'telegram_bot') {
-            flash('error', 'ارسال مستقیم Stars با Bot API پشتیبانی نمی‌شود؛ Provider را Manual یا OZVinoo انتخاب کنید.');
+            flash('error', 'ارسال مستقیم Stars با Bot API پشتیبانی نمی‌شود؛ Provider را TGTools، Manual یا OZVinoo انتخاب کنید.');
             header('Location: digital_services.php');
             exit;
         }
 
-        if ($type === 'telegram_premium' && $provider === 'telegram_bot'
+        if ($provider === 'tgtools' && !in_array($type, ['telegram_stars', 'telegram_premium'], true)) {
+            flash('error', 'TGTools فقط برای Telegram Stars و Telegram Premium قابل استفاده است.');
+            header('Location: digital_services.php');
+            exit;
+        }
+
+        if ($type === 'telegram_premium' && in_array($provider, ['telegram_bot', 'tgtools'], true)
             && !in_array($serviceValue, [3, 6, 12], true)) {
             flash('error', 'Premium خودکار فقط برای ۳، ۶ یا ۱۲ ماه قابل ارسال است.');
             header('Location: digital_services.php');
@@ -128,6 +134,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         exit;
     }
 
+    if ($action === 'save_tgtools') {
+        $apiKey = trim((string) ($_POST['tgtools_api_key'] ?? ''));
+        if ($apiKey !== '' && (strlen($apiKey) > 512 || preg_match('/[\r\n]/', $apiKey))) {
+            flash('error', 'API Key واردشده معتبر نیست.');
+            header('Location: digital_services.php#tgtools');
+            exit;
+        }
+
+        ds_panel_set_setting($pdo, 'tgtools_base_url', 'https://api.tg-tools.shop');
+        ds_panel_set_setting($pdo, 'tgtools_payment_method', 'ton');
+        if ($apiKey !== '') {
+            ds_panel_set_setting($pdo, 'tgtools_api_key', $apiKey, true);
+        }
+        flash('success', 'تنظیمات TGTools ذخیره شد.');
+        header('Location: digital_services.php#tgtools');
+        exit;
+    }
+
     if ($action === 'save_ozvinoo') {
         $orderPath = trim((string) ($_POST['ozvinoo_order_path'] ?? ''));
         $apiKey = trim((string) ($_POST['ozvinoo_api_key'] ?? ''));
@@ -171,6 +195,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 );
                 if (empty($result['ok'])) {
                     flash('error', 'ارسال ناموفق بود: ' . (string) ($result['error'] ?? 'خطای Provider'));
+                } elseif (!empty($result['pending'])) {
+                    flash('success', 'سفارش به TGTools ارسال شد و در حال پردازش است.');
                 } else {
                     flash('success', 'سفارش تأیید و ارسال شد.');
                 }
@@ -200,13 +226,14 @@ $pendingCount = db_count(
     $pdo,
     "SELECT COUNT(*) FROM digital_service_orders WHERE status IN ('pending_approval', 'failed')"
 );
+$tgApiKey = ds_panel_setting($pdo, 'tgtools_api_key');
 $ozOrderPath = ds_panel_setting($pdo, 'ozvinoo_order_path');
 $ozApiKey = ds_panel_setting($pdo, 'ozvinoo_api_key');
 $ozAuthHeader = ds_panel_setting($pdo, 'ozvinoo_auth_header', 'Authorization');
 $ozAuthPrefix = ds_panel_setting($pdo, 'ozvinoo_auth_prefix', 'Bearer');
 
 $pageTitle = 'فروش خدمات';
-$pageLede = 'فروش Stars، Telegram Premium و سرویس‌های Provider با تأیید دستی قبل از ارسال';
+$pageLede = 'فروش Stars و Telegram Premium با TGTools و تأیید دستی قبل از ارسال';
 $activeNav = 'digital-services';
 include __DIR__ . '/inc/layout_head.php';
 ?>
@@ -246,6 +273,7 @@ include __DIR__ . '/inc/layout_head.php';
                     <select class="select" name="provider" required>
                         <option value="manual">Manual</option>
                         <option value="telegram_bot">Telegram Bot API</option>
+                        <option value="tgtools">TGTools API</option>
                         <option value="ozvinoo">OZVinoo API</option>
                     </select>
                 </div>
@@ -263,7 +291,7 @@ include __DIR__ . '/inc/layout_head.php';
             </div>
             <div class="field">
                 <label>Provider Service Code</label>
-                <input class="input" name="provider_service_code" maxlength="190" dir="ltr" placeholder="برای OZVinoo">
+                <input class="input" name="provider_service_code" maxlength="190" dir="ltr" placeholder="برای OZVinoo؛ TGTools نیازی ندارد">
             </div>
             <div class="field">
                 <label>توضیحات</label>
@@ -274,6 +302,33 @@ include __DIR__ . '/inc/layout_head.php';
                 <input class="input" type="number" name="sort_order" value="0">
             </div>
             <button class="btn btn-primary" type="submit"><?= icon('plus', 14) ?> افزودن سرویس</button>
+        </form>
+    </div>
+
+    <div class="card fade-up d1" id="tgtools">
+        <div class="card-head">
+            <div>
+                <div class="card-title">TGTools API</div>
+                <div class="card-subtitle">ارسال Stars و Premium پس از تأیید دستی ادمین؛ وضعیت سفارش خودکار پیگیری می‌شود.</div>
+            </div>
+        </div>
+        <form method="post" class="card-body" style="display:grid;gap:12px">
+            <input type="hidden" name="_csrf" value="<?= htmlspecialchars(csrf_token()) ?>">
+            <input type="hidden" name="action" value="save_tgtools">
+            <div class="field">
+                <label>Base URL</label>
+                <input class="input" value="https://api.tg-tools.shop" disabled dir="ltr">
+            </div>
+            <div class="field">
+                <label>API Key</label>
+                <input class="input" type="password" name="tgtools_api_key" autocomplete="new-password"
+                    placeholder="<?= $tgApiKey !== '' ? '•••••••• (ذخیره شده؛ برای تغییر وارد کنید)' : 'tgt_...' ?>">
+                <small class="field-hint">کلید از Settings → API Keys در TGTools ساخته می‌شود و در پیام‌های ربات نمایش داده نمی‌شود.</small>
+            </div>
+            <div class="notice notice-info">
+                Stars با <code>amount</code> و Premium با پلن‌های ۳، ۶ یا ۱۲ ماه ارسال می‌شود. پرداخت Provider از موجودی TON حساب TGTools انجام می‌شود.
+            </div>
+            <button class="btn btn-primary" type="submit"><?= icon('check', 14) ?> ذخیره TGTools</button>
         </form>
     </div>
 
