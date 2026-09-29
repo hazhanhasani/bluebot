@@ -181,8 +181,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             exit;
         }
 
+        $starsProfit = (float) ($_POST['tgtools_stars_profit_percent'] ?? 0);
+        $premiumProfit = (float) ($_POST['tgtools_premium_profit_percent'] ?? 0);
+        $tonRateToman = (float) ($_POST['tgtools_ton_toman_rate'] ?? 0);
+
+        if ($starsProfit < 0 || $starsProfit > 1000 || $premiumProfit < 0 || $premiumProfit > 1000) {
+            flash('error', 'درصد سود باید بین ۰ تا ۱۰۰۰ باشد.');
+            header('Location: digital_services.php#tgtools');
+            exit;
+        }
+        if ($tonRateToman < 0) {
+            flash('error', 'نرخ TON معتبر نیست.');
+            header('Location: digital_services.php#tgtools');
+            exit;
+        }
+
         ds_panel_set_setting($pdo, 'tgtools_base_url', 'https://api.tg-tools.shop');
         ds_panel_set_setting($pdo, 'tgtools_payment_method', 'ton');
+        ds_panel_set_setting($pdo, 'tgtools_stars_profit_percent', (string) $starsProfit);
+        ds_panel_set_setting($pdo, 'tgtools_premium_profit_percent', (string) $premiumProfit);
+        ds_panel_set_setting($pdo, 'tgtools_ton_toman_rate', (string) $tonRateToman);
         if ($apiKey !== '') {
             ds_panel_set_setting($pdo, 'tgtools_api_key', $apiKey, true);
         }
@@ -223,6 +241,93 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             flash('error', 'همگام‌سازی محصولات انجام نشد.');
         }
         header('Location: digital_services.php#tgtools');
+        exit;
+    }
+
+    if ($action === 'save_provider_catalog') {
+        try {
+            $provider = BluebotProviderCatalogService::saveProvider($pdo, [
+                'provider_key' => $_POST['provider_key'] ?? '',
+                'name' => $_POST['provider_name'] ?? '',
+                'catalog_url' => $_POST['catalog_url'] ?? '',
+                'api_key' => $_POST['provider_api_key'] ?? '',
+                'auth_header' => $_POST['provider_auth_header'] ?? 'Authorization',
+                'auth_prefix' => $_POST['provider_auth_prefix'] ?? 'Bearer',
+                'products_path' => $_POST['products_path'] ?? 'data',
+                'id_field' => $_POST['id_field'] ?? 'id',
+                'name_field' => $_POST['name_field'] ?? 'name',
+                'category_field' => $_POST['category_field'] ?? 'category',
+                'price_field' => $_POST['price_field'] ?? 'price',
+                'currency' => $_POST['provider_currency'] ?? 'toman',
+                'exchange_rate_toman' => $_POST['exchange_rate_toman'] ?? 1,
+                'profit_percent' => $_POST['profit_percent'] ?? 0,
+                'sync_interval_minutes' => $_POST['sync_interval_minutes'] ?? 15,
+            ]);
+
+            $sync = BluebotProviderCatalogService::syncProvider($pdo, (string) ($provider['provider_key'] ?? ''));
+            if (!empty($sync['ok'])) {
+                flash(
+                    'success',
+                    'ارائه‌دهنده ذخیره و محصولات همگام شدند: '
+                    . (int) ($sync['created'] ?? 0) . ' جدید، '
+                    . (int) ($sync['updated'] ?? 0) . ' بروزرسانی.'
+                );
+            } else {
+                flash('warning', 'ارائه‌دهنده ذخیره شد اما دریافت محصولات ناموفق بود: ' . (string) ($sync['message'] ?? 'خطای نامشخص'));
+            }
+        } catch (Throwable $e) {
+            flash('error', 'ذخیره ارائه‌دهنده انجام نشد: ' . $e->getMessage());
+        }
+
+        header('Location: digital_services.php#providers');
+        exit;
+    }
+
+    if ($action === 'sync_provider_catalog') {
+        $providerKey = strtolower(trim((string) ($_POST['provider_key'] ?? '')));
+        try {
+            $sync = BluebotProviderCatalogService::syncProvider($pdo, $providerKey);
+            if (!empty($sync['ok'])) {
+                flash(
+                    'success',
+                    'کاتالوگ بروزرسانی شد: '
+                    . (int) ($sync['created'] ?? 0) . ' جدید، '
+                    . (int) ($sync['updated'] ?? 0) . ' بروزرسانی، '
+                    . (int) ($sync['disabled'] ?? 0) . ' غیرفعال.'
+                );
+            } else {
+                flash('error', 'همگام‌سازی ناموفق بود: ' . (string) ($sync['message'] ?? 'خطای نامشخص'));
+            }
+        } catch (Throwable $e) {
+            flash('error', 'همگام‌سازی انجام نشد: ' . $e->getMessage());
+        }
+        header('Location: digital_services.php#providers');
+        exit;
+    }
+
+    if ($action === 'toggle_provider_catalog') {
+        $providerKey = strtolower(trim((string) ($_POST['provider_key'] ?? '')));
+        $provider = BluebotProviderCatalogService::findProvider($pdo, $providerKey);
+        if (is_array($provider)) {
+            BluebotProviderCatalogService::setActive($pdo, $providerKey, (int) ($provider['active'] ?? 0) !== 1);
+            flash('success', 'وضعیت ارائه‌دهنده تغییر کرد.');
+        }
+        header('Location: digital_services.php#providers');
+        exit;
+    }
+
+    if ($action === 'delete_provider_catalog') {
+        $providerKey = strtolower(trim((string) ($_POST['provider_key'] ?? '')));
+        try {
+            if (BluebotProviderCatalogService::deleteProvider($pdo, $providerKey)) {
+                flash('success', 'ارائه‌دهنده و محصولات بدون سفارش آن حذف شدند.');
+            } else {
+                flash('warning', 'این ارائه‌دهنده سفارش ثبت‌شده دارد و حذف نشد؛ آن را غیرفعال کنید.');
+            }
+        } catch (Throwable $e) {
+            flash('error', 'حذف ارائه‌دهنده انجام نشد: ' . $e->getMessage());
+        }
+        header('Location: digital_services.php#providers');
         exit;
     }
 
@@ -301,6 +406,10 @@ $pendingCount = db_count(
     "SELECT COUNT(*) FROM digital_service_orders WHERE status IN ('pending_approval', 'failed')"
 );
 $tgApiKey = ds_panel_setting($pdo, 'tgtools_api_key');
+$tgStarsProfit = (float) ds_panel_setting($pdo, 'tgtools_stars_profit_percent', '0');
+$tgPremiumProfit = (float) ds_panel_setting($pdo, 'tgtools_premium_profit_percent', '0');
+$tgTonRateToman = (float) ds_panel_setting($pdo, 'tgtools_ton_toman_rate', '0');
+$providerCatalogs = BluebotProviderCatalogService::listProviders($pdo);
 $ozOrderPath = ds_panel_setting($pdo, 'ozvinoo_order_path');
 $ozApiKey = ds_panel_setting($pdo, 'ozvinoo_api_key');
 $ozAuthHeader = ds_panel_setting($pdo, 'ozvinoo_auth_header', 'Authorization');
@@ -402,9 +511,27 @@ include __DIR__ . '/inc/layout_head.php';
                     placeholder="<?= $tgApiKey !== '' ? '•••••••• (ذخیره شده؛ برای تغییر وارد کنید)' : 'tgt_...' ?>">
                 <small class="field-hint">کلید از Settings → API Keys در TGTools ساخته می‌شود و در پیام‌های ربات نمایش داده نمی‌شود.</small>
             </div>
+            <div class="two-col" style="gap:10px">
+                <div class="field">
+                    <label>حاشیه سود Stars (%)</label>
+                    <input class="input" type="number" name="tgtools_stars_profit_percent" min="0" max="1000" step="0.1"
+                        value="<?= htmlspecialchars((string) $tgStarsProfit) ?>" required>
+                </div>
+                <div class="field">
+                    <label>حاشیه سود Premium (%)</label>
+                    <input class="input" type="number" name="tgtools_premium_profit_percent" min="0" max="1000" step="0.1"
+                        value="<?= htmlspecialchars((string) $tgPremiumProfit) ?>" required>
+                </div>
+            </div>
+            <div class="field">
+                <label>نرخ هر 1 TON به تومان</label>
+                <input class="input" type="number" name="tgtools_ton_toman_rate" min="0" step="1"
+                    value="<?= htmlspecialchars((string) $tgTonRateToman) ?>" placeholder="مثلاً 350000">
+                <small class="field-hint">قیمت فروش TGTools = قیمت عمده TON × نرخ تومان × (۱ + درصد سود). در پایان به هزار تومان رو به بالا گرد می‌شود.</small>
+            </div>
             <div class="notice notice-info">
-                BlueBot بسته‌های Stars و قیمت‌های Premium را از <code>/api/purchase/prices</code> می‌خواند و خودکار همگام می‌کند.
-                هیچ کد محصول خارجی لازم نیست؛ کد داخلی از نوع سرویس و مقدار آن ساخته می‌شود و Provider Service Code خالی می‌ماند.
+                BlueBot بسته‌های Stars و Premium را از <code>/api/purchase/prices</code> می‌خواند، قیمت عمده را دریافت می‌کند و قیمت فروش را خودکار می‌سازد.
+                حاشیه سود Stars و Premium مستقل است؛ نیازی به واردکردن قیمت تک‌تک محصولات یا Provider Service Code نیست.
             </div>
             <button class="btn btn-primary" type="submit"><?= icon('check', 14) ?> ذخیره TGTools</button>
         </form>
@@ -454,6 +581,166 @@ include __DIR__ . '/inc/layout_head.php';
     </div>
 </div>
 
+<div class="card fade-up d1" id="providers" style="margin-top:16px">
+    <div class="card-head">
+        <div>
+            <div class="card-title">ارائه‌دهندگان و کاتالوگ خودکار</div>
+            <div class="card-subtitle">هر Provider را یک‌بار تعریف کنید؛ تمام محصولاتش خودکار وارد ربات، دسته‌بندی و قیمت‌گذاری می‌شوند.</div>
+        </div>
+    </div>
+
+    <form method="post" class="card-body" style="display:grid;gap:12px">
+        <input type="hidden" name="_csrf" value="<?= htmlspecialchars(csrf_token()) ?>">
+        <input type="hidden" name="action" value="save_provider_catalog">
+
+        <div class="two-col" style="gap:10px">
+            <div class="field">
+                <label>نام ارائه‌دهنده</label>
+                <input class="input" name="provider_name" maxlength="190" required placeholder="مثلاً SocialProvider">
+            </div>
+            <div class="field">
+                <label>کلید داخلی</label>
+                <input class="input" name="provider_key" maxlength="50" required dir="ltr" placeholder="socialprovider">
+                <small class="field-hint">حروف انگلیسی کوچک، عدد، خط تیره یا زیرخط. <code>tgtools</code> رزرو شده است.</small>
+            </div>
+        </div>
+
+        <div class="field">
+            <label>Catalog URL</label>
+            <input class="input" name="catalog_url" type="url" required dir="ltr" placeholder="https://provider.example/api/products">
+            <small class="field-hint">فقط HTTPS عمومی پذیرفته می‌شود. پاسخ باید JSON باشد.</small>
+        </div>
+
+        <div class="two-col" style="gap:10px">
+            <div class="field">
+                <label>API Key (اختیاری)</label>
+                <input class="input" type="password" name="provider_api_key" autocomplete="new-password" dir="ltr">
+            </div>
+            <div class="field">
+                <label>حاشیه سود Provider (%)</label>
+                <input class="input" type="number" name="profit_percent" min="0" max="1000" step="0.1" required placeholder="20">
+            </div>
+        </div>
+
+        <div class="two-col" style="gap:10px">
+            <div class="field">
+                <label>Auth Header</label>
+                <input class="input" name="provider_auth_header" value="Authorization" dir="ltr">
+            </div>
+            <div class="field">
+                <label>Auth Prefix</label>
+                <input class="input" name="provider_auth_prefix" value="Bearer" dir="ltr">
+            </div>
+        </div>
+
+        <div class="two-col" style="gap:10px">
+            <div class="field">
+                <label>ارز قیمت عمده</label>
+                <select class="select" name="provider_currency" required>
+                    <option value="toman">تومان</option>
+                    <option value="rial">ریال</option>
+                    <option value="usd">USD</option>
+                    <option value="ton">TON</option>
+                    <option value="other">سایر</option>
+                </select>
+            </div>
+            <div class="field">
+                <label>نرخ هر واحد ارز به تومان</label>
+                <input class="input" type="number" name="exchange_rate_toman" min="0.000001" step="0.000001" value="1" required>
+                <small class="field-hint">برای تومان ۱ و برای ریال ۰.۱ خودکار اعمال می‌شود.</small>
+            </div>
+        </div>
+
+        <details>
+            <summary style="cursor:pointer;font-weight:700">تنظیم ساختار JSON کاتالوگ</summary>
+            <div style="display:grid;gap:10px;margin-top:12px">
+                <div class="two-col" style="gap:10px">
+                    <div class="field">
+                        <label>Products path</label>
+                        <input class="input" name="products_path" value="data" dir="ltr" placeholder="data.items">
+                    </div>
+                    <div class="field">
+                        <label>Product ID field</label>
+                        <input class="input" name="id_field" value="id" dir="ltr">
+                    </div>
+                </div>
+                <div class="two-col" style="gap:10px">
+                    <div class="field">
+                        <label>Name field</label>
+                        <input class="input" name="name_field" value="name" dir="ltr">
+                    </div>
+                    <div class="field">
+                        <label>Category field</label>
+                        <input class="input" name="category_field" value="category" dir="ltr">
+                    </div>
+                </div>
+                <div class="two-col" style="gap:10px">
+                    <div class="field">
+                        <label>Price field</label>
+                        <input class="input" name="price_field" value="price" dir="ltr">
+                    </div>
+                    <div class="field">
+                        <label>فاصله همگام‌سازی (دقیقه)</label>
+                        <input class="input" type="number" name="sync_interval_minutes" min="1" max="1440" value="15">
+                    </div>
+                </div>
+                <small class="field-hint">فیلدهای تو در تو با نقطه پشتیبانی می‌شوند؛ مثال: <code>service.id</code> یا <code>category.name</code>.</small>
+            </div>
+        </details>
+
+        <div class="notice notice-info">
+            قیمت فروش تمام محصولات این Provider به‌صورت خودکار از قیمت عمده + درصد سود ساخته می‌شود. محصول حذف‌شده از API نیز در ربات خودکار غیرفعال می‌شود.
+        </div>
+
+        <button class="btn btn-primary" type="submit"><?= icon('plus', 14) ?> افزودن/بروزرسانی Provider + همگام‌سازی</button>
+    </form>
+
+    <div class="card-body" style="padding-top:0">
+        <?php if ($providerCatalogs === []): ?>
+            <div class="empty"><p>هنوز Provider عمومی تعریف نشده است.</p></div>
+        <?php else: ?>
+            <div style="display:grid;gap:10px">
+                <?php foreach ($providerCatalogs as $providerCatalog): ?>
+                    <div class="notice <?= (int) $providerCatalog['active'] === 1 ? 'notice-info' : 'notice-warn' ?>" style="display:flex;justify-content:space-between;gap:12px;align-items:center;flex-wrap:wrap">
+                        <div>
+                            <strong><?= htmlspecialchars($providerCatalog['name']) ?></strong>
+                            <span class="cell-mono"> · <?= htmlspecialchars($providerCatalog['provider_key']) ?></span>
+                            <div class="field-hint" style="margin-top:4px">
+                                سود: <?= htmlspecialchars((string) $providerCatalog['profit_percent']) ?>٪
+                                · ارز: <?= htmlspecialchars(strtoupper((string) $providerCatalog['currency'])) ?>
+                                · آخرین Sync: <?= htmlspecialchars((string) ($providerCatalog['last_sync_at'] ?? '—')) ?>
+                                <?php if (!empty($providerCatalog['last_sync_status'])): ?>
+                                    · <?= htmlspecialchars((string) $providerCatalog['last_sync_status']) ?>
+                                <?php endif; ?>
+                            </div>
+                        </div>
+                        <div style="display:flex;gap:6px;flex-wrap:wrap">
+                            <form method="post">
+                                <input type="hidden" name="_csrf" value="<?= htmlspecialchars(csrf_token()) ?>">
+                                <input type="hidden" name="action" value="sync_provider_catalog">
+                                <input type="hidden" name="provider_key" value="<?= htmlspecialchars($providerCatalog['provider_key']) ?>">
+                                <button class="btn btn-ghost btn-sm" type="submit">↻ Sync</button>
+                            </form>
+                            <form method="post">
+                                <input type="hidden" name="_csrf" value="<?= htmlspecialchars(csrf_token()) ?>">
+                                <input type="hidden" name="action" value="toggle_provider_catalog">
+                                <input type="hidden" name="provider_key" value="<?= htmlspecialchars($providerCatalog['provider_key']) ?>">
+                                <button class="btn btn-ghost btn-sm" type="submit"><?= (int) $providerCatalog['active'] === 1 ? 'غیرفعال' : 'فعال' ?></button>
+                            </form>
+                            <form method="post" data-confirm="ارائه‌دهنده حذف شود؟">
+                                <input type="hidden" name="_csrf" value="<?= htmlspecialchars(csrf_token()) ?>">
+                                <input type="hidden" name="action" value="delete_provider_catalog">
+                                <input type="hidden" name="provider_key" value="<?= htmlspecialchars($providerCatalog['provider_key']) ?>">
+                                <button class="btn btn-no btn-sm" type="submit"><?= icon('trash', 12) ?></button>
+                            </form>
+                        </div>
+                    </div>
+                <?php endforeach; ?>
+            </div>
+        <?php endif; ?>
+    </div>
+</div>
+
 <div class="card fade-up d1" style="margin-top:16px">
     <div class="card-head">
         <div>
@@ -487,30 +774,22 @@ include __DIR__ . '/inc/layout_head.php';
                     <td class="cell-mono"><?= htmlspecialchars($product['provider']) ?></td>
                     <td><?= number_format((int) $product['service_value']) ?></td>
                     <td>
-                        <?php if (($product['provider'] ?? '') === 'tgtools'): ?>
-                            <form method="post" style="display:flex;gap:6px;align-items:center;min-width:210px">
-                                <input type="hidden" name="_csrf" value="<?= htmlspecialchars(csrf_token()) ?>">
-                                <input type="hidden" name="action" value="set_product_price">
-                                <input type="hidden" name="id" value="<?= (int) $product['id'] ?>">
-                                <input class="input" style="min-width:120px" type="number" name="price" min="1"
-                                    value="<?= (int) $product['price'] ?>" placeholder="قیمت فروش">
-                                <button class="btn btn-primary btn-sm" type="submit">ذخیره</button>
-                            </form>
-                            <?php
-                            $tgMeta = json_decode((string) ($product['metadata'] ?? ''), true);
-                            $tgWholesaleTon = is_array($tgMeta) ? ($tgMeta['wholesale_ton'] ?? null) : null;
-                            $tgWholesaleUsd = is_array($tgMeta) ? ($tgMeta['wholesale_usd'] ?? null) : null;
-                            ?>
-                            <?php if (is_numeric($tgWholesaleTon)): ?>
-                                <div class="field-hint" style="margin-top:4px">
-                                    عمده TGTools: <?= htmlspecialchars((string) $tgWholesaleTon) ?> TON
-                                    <?php if (is_numeric($tgWholesaleUsd)): ?>
-                                        · $<?= htmlspecialchars((string) $tgWholesaleUsd) ?>
-                                    <?php endif; ?>
-                                </div>
-                            <?php endif; ?>
-                        <?php else: ?>
-                            <?= number_format((float) $product['price']) ?> تومان
+                        <?php
+                        $priceMeta = json_decode((string) ($product['metadata'] ?? ''), true);
+                        $priceMeta = is_array($priceMeta) ? $priceMeta : [];
+                        $isMarginPrice = (($priceMeta['price_mode'] ?? '') === 'margin');
+                        ?>
+                        <strong><?= number_format((float) $product['price']) ?> تومان</strong>
+                        <?php if ($isMarginPrice): ?>
+                            <div class="field-hint" style="margin-top:4px">
+                                سود: <?= htmlspecialchars((string) ($priceMeta['profit_percent'] ?? '0')) ?>٪
+                                <?php if (isset($priceMeta['wholesale_ton'])): ?>
+                                    · عمده: <?= htmlspecialchars((string) $priceMeta['wholesale_ton']) ?> TON
+                                <?php elseif (isset($priceMeta['wholesale_cost'])): ?>
+                                    · عمده: <?= htmlspecialchars((string) $priceMeta['wholesale_cost']) ?>
+                                    <?= htmlspecialchars(strtoupper((string) ($priceMeta['wholesale_currency'] ?? ''))) ?>
+                                <?php endif; ?>
+                            </div>
                         <?php endif; ?>
                     </td>
                     <td>

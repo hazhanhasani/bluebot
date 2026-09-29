@@ -945,7 +945,7 @@ if ($text == "/start" || $datain == "start" || $text == "start") {
     }
     step('home', $from_id);
     return;
-} elseif (preg_match('/^ds_category:(premium|stars|other)$/', (string) $datain, $digitalCategoryMatch)) {
+} elseif (preg_match('/^ds_category:([a-z0-9_-]{1,40})$/', (string) $datain, $digitalCategoryMatch)) {
     if (!check_active_btn($setting['keyboardmain'], 'text_digital_services')) {
         sendmessage($from_id, $textbotlang['users']['buttonDisabled'], null, 'HTML');
         return;
@@ -957,7 +957,7 @@ if ($text == "/start" || $datain == "start" || $text == "start") {
         $textbotlang['users']['backbtn'],
         $category
     );
-    $categoryTitle = BluebotDigitalServices::categoryLabel($category);
+    $categoryTitle = BluebotDigitalServices::categoryLabel($category, $pdo);
     $categoryText = "<b>" . htmlspecialchars($categoryTitle, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . "</b>\n\n"
         . htmlspecialchars($textbotlang['digitalServices']['select'] ?? 'سرویس موردنظر را انتخاب کنید 👇', ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
 

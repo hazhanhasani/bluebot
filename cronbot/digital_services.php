@@ -33,6 +33,11 @@ try {
         }
     }
 
+    $providerStats = BluebotProviderCatalogService::syncDueProviders($pdo);
+    if (($providerStats['synced'] ?? 0) > 0 || ($providerStats['failed'] ?? 0) > 0) {
+        bluebotLog('info', 'Digital service provider catalogs synchronized', $providerStats);
+    }
+
     $stats = BluebotDigitalServices::reconcileTgToolsProcessing($pdo, 25);
     if (($stats['completed'] ?? 0) > 0 || ($stats['failed'] ?? 0) > 0 || ($stats['errors'] ?? 0) > 0) {
         bluebotLog('info', 'TGTools digital service reconciliation completed', $stats);

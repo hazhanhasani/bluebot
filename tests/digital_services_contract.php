@@ -9,12 +9,23 @@ $keyboard = file_get_contents($root . '/keyboard.php');
 $setting = file_get_contents($root . '/db/tables/setting.php');
 $panel = file_get_contents($root . '/panel/digital_services.php');
 $tgTools = file_get_contents($root . '/src/Services/TgToolsClient.php');
+$providerCatalog = file_get_contents($root . '/src/Services/DigitalServiceProviderCatalog.php');
+$providerTable = file_get_contents($root . '/db/tables/digital_service_providers.php');
 $cronJobs = file_get_contents($root . '/cronbot/jobs.php');
 $digitalServicesCron = file_get_contents($root . '/cronbot/digital_services.php');
 $settings = file_get_contents($root . '/db/tables/digital_service_settings.php');
 $langFa = file_get_contents($root . '/lang/fa.php');
 
 $checks = [
+    [str_contains($providerCatalog, "syncDueProviders"), 'provider catalog scheduler missing'],
+    [str_contains($providerCatalog, "syncProvider"), 'provider catalog synchronizer missing'],
+    [str_contains($providerCatalog, "normaliseCategory"), 'provider automatic categorisation missing'],
+    [str_contains($providerCatalog, "calculateSellingPrice"), 'provider automatic profit pricing missing'],
+    [str_contains($providerCatalog, "FILTER_FLAG_NO_PRIV_RANGE"), 'provider catalog SSRF private-range guard missing'],
+    [str_contains($providerCatalog, "CURLOPT_PROTOCOLS => CURLPROTO_HTTPS"), 'provider catalog must be HTTPS-only'],
+    [str_contains($providerCatalog, "disableMissingProducts"), 'provider removed products must be auto-disabled'],
+    [str_contains($providerTable, "profit_percent"), 'provider registry profit column missing'],
+    [str_contains($providerTable, "exchange_rate_toman"), 'provider registry exchange-rate column missing'],
     [str_contains($manager, "pending_approval"), 'orders must enter pending approval'],
     [str_contains($manager, "approveAndDeliver"), 'manual approval delivery action missing'],
     [str_contains($manager, "rejectAndRefund"), 'reject/refund action missing'],
@@ -24,10 +35,15 @@ $checks = [
     [str_contains($manager, "generatedProviderProductCode"), 'automatic provider product code generation missing'],
     [str_contains($manager, "categoryKeyboard"), 'digital service category keyboard missing'],
     [str_contains($manager, "categoryForProduct"), 'digital service category mapping missing'],
-    [str_contains($manager, "'telegram_premium' => 'premium'"), 'Telegram Premium category mapping missing'],
-    [str_contains($manager, "'telegram_stars' => 'stars'"), 'Telegram Stars category mapping missing'],
+    [str_contains($manager, "if (\$type === 'telegram_premium')"), 'Telegram Premium category mapping missing'],
+    [str_contains($manager, "if (\$type === 'telegram_stars')"), 'Telegram Stars category mapping missing'],
     [str_contains($manager, "ensureTgToolsCatalog"), 'automatic Stars/Premium catalog generation missing'],
     [str_contains($manager, "maybeSyncTgToolsCatalog"), 'periodic TGTools catalog refresh missing'],
+    [str_contains($manager, "tgtools_stars_profit_percent"), 'TGTools Stars margin setting missing'],
+    [str_contains($manager, "tgtools_premium_profit_percent"), 'TGTools Premium margin setting missing'],
+    [str_contains($manager, "tgtools_ton_toman_rate"), 'TGTools TON-to-Toman rate setting missing'],
+    [str_contains($manager, "calculateSellingPrice"), 'TGTools automatic margin pricing missing'],
+    [str_contains($manager, "category_label"), 'dynamic provider category labels missing'],
     [str_contains($manager, "provider_service_code = NULL"), 'TGTools products must not require provider service codes'],
     [str_contains($manager, "reconcileTgToolsProcessing"), 'TGTools async reconciliation missing'],
     [str_contains($manager, "failAndRefundProviderOrder"), 'TGTools provider failure refund missing'],
@@ -39,10 +55,19 @@ $checks = [
     [str_contains($tgTools, "trackingCode"), 'TGTools idempotency tracking code missing'],
     [str_contains($cronJobs, "'job' => 'digital_services'"), 'TGTools reconciliation cron is not scheduled'],
     [str_contains($digitalServicesCron, "maybeSyncTgToolsCatalog"), 'TGTools live catalog cron refresh missing'],
+    [str_contains($digitalServicesCron, "syncDueProviders"), 'generic provider catalog cron sync missing'],
     [str_contains($settings, "tgtools_api_key"), 'TGTools API key setting missing'],
     [str_contains($settings, "tgtools_catalog_last_sync"), 'TGTools catalog sync timestamp setting missing'],
+    [str_contains($settings, "tgtools_stars_profit_percent"), 'TGTools Stars profit seed missing'],
+    [str_contains($settings, "tgtools_premium_profit_percent"), 'TGTools Premium profit seed missing'],
+    [str_contains($settings, "tgtools_ton_toman_rate"), 'TGTools TON rate seed missing'],
     [str_contains($panel, "save_tgtools"), 'TGTools admin settings UI missing'],
     [str_contains($panel, "sync_tgtools_catalog"), 'TGTools catalog sync action missing'],
+    [str_contains($panel, "save_provider_catalog"), 'generic provider catalog save action missing'],
+    [str_contains($panel, "sync_provider_catalog"), 'generic provider manual sync action missing'],
+    [str_contains($panel, "profit_percent"), 'provider profit percentage UI missing'],
+    [str_contains($panel, "tgtools_stars_profit_percent"), 'TGTools Stars separate margin UI missing'],
+    [str_contains($panel, "tgtools_premium_profit_percent"), 'TGTools Premium separate margin UI missing'],
     [str_contains($panel, "set_product_price"), 'generated product retail price action missing'],
     [str_contains($panel, 'value="tgtools"'), 'TGTools product provider option missing'],
     [str_contains($manager, "https://api.ozvinoo.xyz"), 'OZVinoo host allowlist missing'],

@@ -1,6 +1,7 @@
 <?php
 
 require_once __DIR__ . '/TgToolsClient.php';
+require_once __DIR__ . '/DigitalServiceProviderCatalog.php';
 
 final class BluebotDigitalServices
 {
@@ -93,6 +94,10 @@ final class BluebotDigitalServices
             ? $priceResponse['data']
             : [];
 
+        $starsProfit = max(0.0, min(1000.0, (float) self::setting($pdo, 'tgtools_stars_profit_percent', '0')));
+        $premiumProfit = max(0.0, min(1000.0, (float) self::setting($pdo, 'tgtools_premium_profit_percent', '0')));
+        $tonRateToman = max(0.0, (float) self::setting($pdo, 'tgtools_ton_toman_rate', '0'));
+
         $definitions = [];
         $seenStars = [];
 
@@ -113,13 +118,11 @@ final class BluebotDigitalServices
                     'sort' => 100 + $qty,
                     'wholesale_ton' => is_numeric($package['ton'] ?? null) ? (float) $package['ton'] : null,
                     'wholesale_usd' => is_numeric($package['usd'] ?? null) ? (float) $package['usd'] : null,
+                    'profit_percent' => $starsProfit,
                 ];
             }
         }
 
-        // TGTools supports custom Stars amounts. If the public package list is
-        // temporarily unavailable, keep a small starter catalog so the admin
-        // can still configure retail prices without knowing any provider code.
         if ($seenStars === []) {
             foreach ([50, 100, 250, 500, 1000] as $qty) {
                 $definitions[] = [
@@ -129,19 +132,22 @@ final class BluebotDigitalServices
                     'sort' => 100 + $qty,
                     'wholesale_ton' => null,
                     'wholesale_usd' => null,
+                    'profit_percent' => $starsProfit,
                 ];
             }
         }
 
         foreach ([3, 6, 12] as $months) {
             $tonKey = 'premium_' . $months . 'm_ton';
+            $usdKey = 'premium_' . $months . 'm_usd';
             $definitions[] = [
                 'type' => 'telegram_premium',
                 'value' => $months,
                 'name' => self::generatedProviderProductName('telegram_premium', $months),
                 'sort' => 10000 + $months,
                 'wholesale_ton' => is_numeric($priceData[$tonKey] ?? null) ? (float) $priceData[$tonKey] : null,
-                'wholesale_usd' => null,
+                'wholesale_usd' => is_numeric($priceData[$usdKey] ?? null) ? (float) $priceData[$usdKey] : null,
+                'profit_percent' => $premiumProfit,
             ];
         }
 
@@ -156,6 +162,8 @@ final class BluebotDigitalServices
              SET name = ?,
                  provider = 'tgtools',
                  provider_service_code = NULL,
+                 price = ?,
+                 active = ?,
                  description = ?,
                  metadata = ?,
                  sort_order = ?,
@@ -165,40 +173,73 @@ final class BluebotDigitalServices
         $insert = $pdo->prepare(
             "INSERT INTO digital_service_products
              (code, name, type, provider, price, service_value, provider_service_code, description, metadata, active, sort_order)
-             VALUES (?, ?, ?, 'tgtools', 0, ?, NULL, ?, ?, 0, ?)"
+             VALUES (?, ?, ?, 'tgtools', ?, ?, NULL, ?, ?, ?, ?)"
         );
 
         $created = 0;
         $updated = 0;
+        $priced = 0;
         $commissionRate = is_numeric($priceData['commission_rate'] ?? null)
             ? (float) $priceData['commission_rate']
             : null;
 
         foreach ($definitions as $definition) {
+            $wholesaleTon = is_numeric($definition['wholesale_ton'] ?? null)
+                ? (float) $definition['wholesale_ton']
+                : null;
+            $profitPercent = (float) ($definition['profit_percent'] ?? 0);
+
+            $autoPrice = 0;
+            if ($wholesaleTon !== null && $wholesaleTon > 0 && $tonRateToman > 0) {
+                $autoPrice = BluebotProviderCatalogService::calculateSellingPrice(
+                    $wholesaleTon,
+                    'ton',
+                    $tonRateToman,
+                    $profitPercent
+                );
+            }
+
             $metadata = [
                 'source' => $remoteOk ? 'tgtools-live-prices' : 'tgtools-fallback-catalog',
                 'auto_generated' => true,
                 'no_provider_service_code' => true,
+                'price_mode' => 'margin',
+                'profit_percent' => $profitPercent,
+                'ton_rate_toman' => $tonRateToman,
+                'category_key' => (string) $definition['type'] === 'telegram_stars' ? 'stars' : 'premium',
+                'category_label' => (string) $definition['type'] === 'telegram_stars'
+                    ? '⭐ استارز تلگرام'
+                    : '🎁 تلگرام پرمیوم',
                 'synced_at' => gmdate(DATE_ATOM),
             ];
-            if ($definition['wholesale_ton'] !== null) {
-                $metadata['wholesale_ton'] = $definition['wholesale_ton'];
+            if ($wholesaleTon !== null) {
+                $metadata['wholesale_ton'] = $wholesaleTon;
             }
-            if ($definition['wholesale_usd'] !== null) {
-                $metadata['wholesale_usd'] = $definition['wholesale_usd'];
+            if (is_numeric($definition['wholesale_usd'] ?? null)) {
+                $metadata['wholesale_usd'] = (float) $definition['wholesale_usd'];
             }
             if ($commissionRate !== null) {
                 $metadata['commission_rate'] = $commissionRate;
             }
+
             $metadataJson = json_encode($metadata, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
-            $description = 'کد داخلی و Provider Service Code توسط BlueBot مدیریت می‌شود.';
+            $description = 'محصول TGTools با قیمت‌گذاری خودکار بر اساس حاشیه سود.';
 
             $find->execute([$definition['type'], $definition['value']]);
             $row = $find->fetch(PDO::FETCH_ASSOC);
 
             if (is_array($row)) {
+                $currentPrice = max(0, (int) ($row['price'] ?? 0));
+                $price = $autoPrice > 0 ? $autoPrice : $currentPrice;
+                $active = $price > 0 ? 1 : 0;
+                if ($autoPrice > 0) {
+                    $priced++;
+                }
+
                 $update->execute([
                     $definition['name'],
+                    $price,
+                    $active,
                     $description,
                     is_string($metadataJson) ? $metadataJson : null,
                     $definition['sort'],
@@ -212,15 +253,21 @@ final class BluebotDigitalServices
                 (string) $definition['type'],
                 (int) $definition['value']
             );
+            $active = $autoPrice > 0 ? 1 : 0;
+            if ($autoPrice > 0) {
+                $priced++;
+            }
 
             try {
                 $insert->execute([
                     $code,
                     $definition['name'],
                     $definition['type'],
+                    $autoPrice,
                     $definition['value'],
                     $description,
                     is_string($metadataJson) ? $metadataJson : null,
+                    $active,
                     $definition['sort'],
                 ]);
                 $created++;
@@ -235,9 +282,13 @@ final class BluebotDigitalServices
             'ok' => true,
             'created' => $created,
             'updated' => $updated,
+            'priced' => $priced,
             'remote_ok' => $remoteOk,
             'remote_error' => $remoteOk ? '' : (string) ($priceResponse['message'] ?? 'TGTools price endpoint unavailable'),
             'price_data' => $priceData,
+            'stars_profit_percent' => $starsProfit,
+            'premium_profit_percent' => $premiumProfit,
+            'ton_rate_toman' => $tonRateToman,
         ];
     }
 
@@ -257,46 +308,102 @@ final class BluebotDigitalServices
 
     public static function categoryForProduct(array $product): string
     {
-        return match ((string) ($product['type'] ?? '')) {
-            'telegram_premium' => 'premium',
-            'telegram_stars' => 'stars',
-            default => 'other',
-        };
+        $type = (string) ($product['type'] ?? '');
+        if ($type === 'telegram_premium') {
+            return 'premium';
+        }
+        if ($type === 'telegram_stars') {
+            return 'stars';
+        }
+
+        $metadata = self::productMetadata($product);
+        $key = strtolower(trim((string) ($metadata['category_key'] ?? '')));
+        if ($key !== '' && preg_match('/^[a-z0-9_-]{1,40}$/', $key)) {
+            return $key;
+        }
+
+        return 'other';
     }
 
-    public static function categoryLabel(string $category): string
+    public static function categoryLabel(string $category, ?PDO $pdo = null): string
     {
-        return match ($category) {
+        $fixed = [
             'premium' => '🎁 تلگرام پرمیوم',
             'stars' => '⭐ استارز تلگرام',
+            'telegram' => '✈️ خدمات تلگرام',
+            'instagram' => '📸 خدمات اینستاگرام',
+            'giftcards' => '🎁 گیفت‌کارت',
+            'games' => '🎮 بازی و شارژ',
+            'apple' => '🍎 خدمات اپل',
+            'chatgpt' => '🤖 هوش مصنوعی',
+            'virtual_number' => '📱 شماره مجازی',
+            'design' => '🎨 طراحی و دیجیتال',
             'other' => '🧩 سایر خدمات',
-            default => '🛍 خدمات',
-        };
+        ];
+        if (isset($fixed[$category])) {
+            return $fixed[$category];
+        }
+
+        if ($pdo instanceof PDO) {
+            foreach (self::listActive($pdo) as $product) {
+                if (self::categoryForProduct($product) !== $category) {
+                    continue;
+                }
+                $metadata = self::productMetadata($product);
+                $label = trim((string) ($metadata['category_label'] ?? ''));
+                if ($label !== '') {
+                    return $label;
+                }
+            }
+        }
+
+        return '🛍 خدمات';
     }
 
     public static function categoryKeyboard(PDO $pdo, string $backText): string
     {
-        $counts = [
-            'premium' => 0,
-            'stars' => 0,
-            'other' => 0,
-        ];
-
+        $categories = [];
         foreach (self::listActive($pdo) as $product) {
             $category = self::categoryForProduct($product);
-            if (isset($counts[$category])) {
-                $counts[$category]++;
+            if (!isset($categories[$category])) {
+                $categories[$category] = [
+                    'count' => 0,
+                    'label' => self::categoryLabel($category, $pdo),
+                ];
             }
+            $categories[$category]['count']++;
         }
 
+        $priority = [
+            'premium' => 10,
+            'stars' => 20,
+            'telegram' => 30,
+            'instagram' => 40,
+            'giftcards' => 50,
+            'games' => 60,
+            'apple' => 70,
+            'chatgpt' => 80,
+            'virtual_number' => 90,
+            'design' => 100,
+            'other' => 999,
+        ];
+
+        uksort($categories, static function (string $a, string $b) use ($priority): int {
+            $pa = $priority[$a] ?? 500;
+            $pb = $priority[$b] ?? 500;
+            if ($pa !== $pb) {
+                return $pa <=> $pb;
+            }
+            return strcmp($a, $b);
+        });
+
         $rows = [];
-        foreach (['premium', 'stars', 'other'] as $category) {
-            if ($counts[$category] <= 0) {
+        foreach ($categories as $category => $info) {
+            if ((int) ($info['count'] ?? 0) <= 0) {
                 continue;
             }
-
             $rows[] = [[
-                'text' => self::categoryLabel($category) . ' · ' . number_format($counts[$category]),
+                'text' => (string) $info['label'] . ' · ' . number_format((int) $info['count']),
                 'callback_data' => 'ds_category:' . $category,
             ]];
         }
@@ -765,6 +872,19 @@ final class BluebotDigitalServices
             return self::deliverOZVinoo($pdo, $order, $product);
         }
 
+        $registeredProvider = BluebotProviderCatalogService::findProvider($pdo, $provider);
+        if (is_array($registeredProvider)) {
+            return [
+                'ok' => true,
+                'reference' => 'manual-provider:' . $provider . ':' . ($order['order_code'] ?? $order['id']),
+                'response' => [
+                    'mode' => 'manual',
+                    'provider' => $provider,
+                    'confirmed_by_admin' => true,
+                ],
+            ];
+        }
+
         return ['ok' => false, 'error' => 'Unsupported digital service provider.'];
     }
 
@@ -1157,6 +1277,12 @@ final class BluebotDigitalServices
             'error' => $error,
             'order' => self::findOrder($pdo, $orderId),
         ];
+    }
+
+    private static function productMetadata(array $product): array
+    {
+        $decoded = json_decode((string) ($product['metadata'] ?? ''), true);
+        return is_array($decoded) ? $decoded : [];
     }
 
     private static function setSetting(PDO $pdo, string $key, string $value, bool $secret = false): void
