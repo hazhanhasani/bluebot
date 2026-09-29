@@ -1160,6 +1160,8 @@ final class BluebotProviderCatalogService
 
     private static function isSafeHttpsUrl(string $url): bool
     {
+        static $hostSafetyCache = [];
+
         if (!filter_var($url, FILTER_VALIDATE_URL)) {
             return false;
         }
@@ -1173,12 +1175,18 @@ final class BluebotProviderCatalogService
             return false;
         }
 
+        if (array_key_exists($host, $hostSafetyCache)) {
+            return (bool) $hostSafetyCache[$host];
+        }
+
         if (filter_var($host, FILTER_VALIDATE_IP)) {
-            return (bool) filter_var(
+            $safe = (bool) filter_var(
                 $host,
                 FILTER_VALIDATE_IP,
                 FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE
             );
+            $hostSafetyCache[$host] = $safe;
+            return $safe;
         }
 
         $ips = gethostbynamel($host);
@@ -1189,11 +1197,13 @@ final class BluebotProviderCatalogService
                     FILTER_VALIDATE_IP,
                     FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE
                 )) {
+                    $hostSafetyCache[$host] = false;
                     return false;
                 }
             }
         }
 
+        $hostSafetyCache[$host] = true;
         return true;
     }
 
