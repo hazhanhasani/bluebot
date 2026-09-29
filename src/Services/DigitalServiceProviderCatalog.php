@@ -6,9 +6,9 @@ final class BluebotProviderCatalogService
 {
     private const RESERVED_KEYS = ['manual', 'telegram_bot', 'tgtools'];
     private const DISCOVERY_MAX_ATTEMPTS = 12;
-    private const DISCOVERY_BUDGET_SECONDS = 10.0;
+    private const DISCOVERY_BUDGET_SECONDS = 8.0;
     private const DISCOVERY_CONNECT_TIMEOUT_SECONDS = 2;
-    private const DISCOVERY_REQUEST_TIMEOUT_SECONDS = 5;
+    private const DISCOVERY_REQUEST_TIMEOUT_SECONDS = 4;
 
     public static function ensureStorage(PDO $pdo): void
     {
@@ -87,7 +87,7 @@ final class BluebotProviderCatalogService
         // Fast pass: try one configured REST request per endpoint before
         // multiplying requests across every authentication style.
         $primaryProfile = $authProfiles[0] ?? ['header' => '', 'prefix' => '', 'label' => 'none'];
-        foreach ($candidates as $url) {
+        foreach (array_slice($candidates, 0, 4) as $url) {
             if (!self::isSafeHttpsUrl($url)) {
                 continue;
             }
