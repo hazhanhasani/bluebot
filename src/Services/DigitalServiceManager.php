@@ -395,7 +395,10 @@ final class BluebotDigitalServices
             if (is_array($row)) {
                 $currentPrice = max(0, (int) ($row['price'] ?? 0));
                 $price = $autoPrice > 0 ? $autoPrice : $currentPrice;
-                $active = $price > 0 ? 1 : 0;
+                $providerActive = $price > 0 ? 1 : 0;
+                $active = self::providerManagedActive($row, $providerActive);
+                $metadata = self::mergeAdminProductMetadata($row, $metadata);
+                $metadataJson = json_encode($metadata, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
                 if ($autoPrice > 0) {
                     $priced++;
                 }
@@ -889,7 +892,7 @@ final class BluebotDigitalServices
         $update = $pdo->prepare(
             "UPDATE digital_service_products
              SET name = ?, type = ?, provider = 'ozvinoo', price = ?, service_value = ?,
-                 provider_service_code = ?, description = ?, metadata = ?, active = 1,
+                 provider_service_code = ?, description = ?, metadata = ?, active = ?,
                  sort_order = ?, updated_at = NOW()
              WHERE id = ?"
         );
@@ -929,6 +932,10 @@ final class BluebotDigitalServices
             $find->execute([$code]);
             $existing = $find->fetch(PDO::FETCH_ASSOC);
             if (is_array($existing)) {
+                $metadata = self::mergeAdminProductMetadata($existing, $metadata);
+                $metadataJson = json_encode($metadata, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+                $active = self::providerManagedActive($existing, 1);
+
                 $update->execute([
                     (string) $definition['name'],
                     $type,
@@ -937,6 +944,7 @@ final class BluebotDigitalServices
                     (string) $definition['provider_service_code'],
                     (string) $definition['description'],
                     is_string($metadataJson) ? $metadataJson : null,
+                    $active,
                     $sort,
                     (int) $existing['id'],
                 ]);
