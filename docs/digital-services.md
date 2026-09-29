@@ -70,6 +70,15 @@ of treating the catalog as Telegram-only:
 The V2 Telegram-number endpoint remains only as a fallback when the Callinoo
 application catalog is temporarily unavailable.
 
+### Catalog schema migration
+
+BlueBot stores an `ozvinoo_catalog_schema_version` marker. When a release
+changes the Callinoo catalog hierarchy, the background job ignores the normal
+freshness window once and performs a full application/catalog refresh. This is
+important for installations upgraded from the old Telegram-only virtual-number
+catalog: old V1 rows are refreshed with their real application metadata instead
+of remaining grouped under a generic “virtual number service”.
+
 ## Admin visibility overrides
 
 When an administrator disables a digital service from **Services → Digital

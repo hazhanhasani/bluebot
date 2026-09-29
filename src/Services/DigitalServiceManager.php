@@ -11,6 +11,7 @@ final class BluebotDigitalServices
     private const STATUS_DELIVERED = 'delivered';
     private const STATUS_REJECTED = 'rejected';
     private const STATUS_FAILED = 'failed';
+    private const OZVINOO_CATALOG_SCHEMA_VERSION = 2;
 
     public static function isAvailable(PDO $pdo): bool
     {
@@ -531,11 +532,16 @@ final class BluebotDigitalServices
 
         $interval = max(1, min(1440, (int) self::setting($pdo, 'ozvinoo_sync_interval_minutes', '15')));
         $lastSync = (int) self::setting($pdo, 'ozvinoo_catalog_last_sync', '0');
+        $catalogSchemaVersion = (int) self::setting($pdo, 'ozvinoo_catalog_schema_version', '0');
+        $requiresCatalogMigration = $catalogSchemaVersion < self::OZVINOO_CATALOG_SCHEMA_VERSION;
         $activeProducts = (int) $pdo->query(
             "SELECT COUNT(*) FROM digital_service_products WHERE provider = 'ozvinoo' AND active = 1"
         )->fetchColumn();
 
-        if ($activeProducts > 0 && $lastSync > 0 && (time() - $lastSync) < ($interval * 60)) {
+        if (!$requiresCatalogMigration
+            && $activeProducts > 0
+            && $lastSync > 0
+            && (time() - $lastSync) < ($interval * 60)) {
             return [
                 'ok' => true,
                 'skipped' => true,
@@ -692,6 +698,7 @@ final class BluebotDigitalServices
             : [];
         $applicationPriceFailures = 0;
         $applicationPriceSuccesses = 0;
+        $applicationCatalogReady = false;
 
         foreach ($applicationItems as $application) {
             if (!is_array($application)) {
@@ -792,6 +799,10 @@ final class BluebotDigitalServices
                 $virtualNumberApplicationIds[$serviceId] = true;
             }
         }
+
+        $applicationCatalogReady = !empty($applicationsResponse['ok'])
+            && $applicationItems !== []
+            && $applicationPriceSuccesses > 0;
 
         if ($numberDefinitionCount > 0) {
             if (!in_array('virtual_number', $successfulTypes, true)) {
@@ -996,6 +1007,14 @@ final class BluebotDigitalServices
         }
 
         self::setSetting($pdo, 'ozvinoo_catalog_last_sync', (string) time(), false);
+        if ($applicationCatalogReady) {
+            self::setSetting(
+                $pdo,
+                'ozvinoo_catalog_schema_version',
+                (string) self::OZVINOO_CATALOG_SCHEMA_VERSION,
+                false
+            );
+        }
         self::setSetting($pdo, 'ozvinoo_api_style', 'official-v1', false);
         self::setSetting($pdo, 'ozvinoo_catalog_path', '/telegram-services/stars/', false);
         self::setSetting($pdo, 'ozvinoo_order_path', '/telegram-services/stars/', false);
@@ -1449,12 +1468,15 @@ final class BluebotDigitalServices
             $applicationCode = strtolower(trim((string) ($metadata['application_code'] ?? '')));
 
             if ($applicationName === '') {
-                $applicationName = (($metadata['api_family'] ?? '') === 'telegram-numbers-v2')
-                    ? 'Telegram'
-                    : 'سرویس شماره مجازی';
+                $apiFamily = (string) ($metadata['api_family'] ?? '');
+                $isLegacyTelegram = $apiFamily === 'telegram-numbers-v2'
+                    || ($apiFamily === 'web-v1' && !isset($metadata['application_name']));
+                $applicationName = $isLegacyTelegram ? 'Telegram' : 'سرویس شماره مجازی';
             }
             if ($applicationCode === '') {
-                $applicationCode = $applicationId > 0 ? ('app_' . $applicationId) : 'telegram';
+                $applicationCode = $applicationName === 'Telegram'
+                    ? 'telegram'
+                    : ($applicationId > 0 ? ('app_' . $applicationId) : 'virtual_number');
             }
 
             $key = (string) $applicationId;
