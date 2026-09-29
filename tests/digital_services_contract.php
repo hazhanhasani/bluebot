@@ -10,6 +10,7 @@ $setting = file_get_contents($root . '/db/tables/setting.php');
 $panel = file_get_contents($root . '/panel/digital_services.php');
 $tgTools = file_get_contents($root . '/src/Services/TgToolsClient.php');
 $cronJobs = file_get_contents($root . '/cronbot/jobs.php');
+$digitalServicesCron = file_get_contents($root . '/cronbot/digital_services.php');
 $settings = file_get_contents($root . '/db/tables/digital_service_settings.php');
 
 $checks = [
@@ -21,15 +22,20 @@ $checks = [
     [str_contains($manager, "provider === 'tgtools'"), 'TGTools provider dispatch missing'],
     [str_contains($manager, "generatedProviderProductCode"), 'automatic provider product code generation missing'],
     [str_contains($manager, "ensureTgToolsCatalog"), 'automatic Stars/Premium catalog generation missing'],
+    [str_contains($manager, "maybeSyncTgToolsCatalog"), 'periodic TGTools catalog refresh missing'],
+    [str_contains($manager, "provider_service_code = NULL"), 'TGTools products must not require provider service codes'],
     [str_contains($manager, "reconcileTgToolsProcessing"), 'TGTools async reconciliation missing'],
     [str_contains($manager, "failAndRefundProviderOrder"), 'TGTools provider failure refund missing'],
     [str_contains($tgTools, "https://api.tg-tools.shop"), 'TGTools host allowlist missing'],
     [str_contains($tgTools, "/api/purchase/stars"), 'TGTools Stars endpoint missing'],
     [str_contains($tgTools, "/api/purchase/premium"), 'TGTools Premium endpoint missing'],
+    [str_contains($tgTools, "/api/purchase/prices"), 'TGTools live prices endpoint missing'],
     [str_contains($tgTools, "X-Api-Key"), 'TGTools API key authentication missing'],
     [str_contains($tgTools, "trackingCode"), 'TGTools idempotency tracking code missing'],
     [str_contains($cronJobs, "'job' => 'digital_services'"), 'TGTools reconciliation cron is not scheduled'],
+    [str_contains($digitalServicesCron, "maybeSyncTgToolsCatalog"), 'TGTools live catalog cron refresh missing'],
     [str_contains($settings, "tgtools_api_key"), 'TGTools API key setting missing'],
+    [str_contains($settings, "tgtools_catalog_last_sync"), 'TGTools catalog sync timestamp setting missing'],
     [str_contains($panel, "save_tgtools"), 'TGTools admin settings UI missing'],
     [str_contains($panel, "sync_tgtools_catalog"), 'TGTools catalog sync action missing'],
     [str_contains($panel, "set_product_price"), 'generated product retail price action missing'],
