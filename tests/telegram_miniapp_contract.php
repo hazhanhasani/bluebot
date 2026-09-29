@@ -78,8 +78,11 @@ $miniAppSupport = @file_get_contents($root . '/src/Support/MiniApp.php');
 $keyboard = @file_get_contents($root . '/keyboard.php');
 $indexSource = @file_get_contents($root . '/index.php');
 
-if ($keyboard === false || !str_contains($keyboard, '$miniAppUrl = bluebotMiniAppUrl();')) {
-    $failures[] = 'Main keyboard Mini App button must use the active runtime Mini App URL.';
+if ($keyboard !== false && (
+    str_contains($keyboard, '$miniAppButton')
+    || str_contains($keyboard, "'web_app' => ['url' =>")
+)) {
+    $failures[] = 'Main reply/inline keyboard must not inject the Mini App user-panel button.';
 }
 if ($keyboard !== false && str_contains($keyboard, '$miniAppHost = trim((string) ($domainhosts')) {
     $failures[] = 'Main keyboard must not rebuild Mini App URL from stale config domain.';
