@@ -397,6 +397,11 @@ final class BluebotDigitalServices
             }
         }
         foreach ([
+            '/api/v2',
+            '/api/v1',
+            '/api',
+            '/v2',
+            '/v1',
             '/api/services',
             '/api/service',
             '/services',
@@ -437,6 +442,8 @@ final class BluebotDigitalServices
 
         $catalogUrl = (string) $discovery['url'];
         $apiStyle = strtolower(trim((string) ($discovery['api_style'] ?? 'rest')));
+        $detectedAuthHeader = trim((string) ($discovery['auth_header'] ?? $authHeader));
+        $detectedAuthPrefix = trim((string) ($discovery['auth_prefix'] ?? $authPrefix));
         $detectedPath = (string) parse_url($catalogUrl, PHP_URL_PATH);
         if ($detectedPath !== '') {
             self::setSetting($pdo, 'ozvinoo_catalog_path', $detectedPath, false);
@@ -447,14 +454,16 @@ final class BluebotDigitalServices
             }
         }
         self::setSetting($pdo, 'ozvinoo_api_style', $apiStyle === 'smm' ? 'smm' : 'rest', false);
+        self::setSetting($pdo, 'ozvinoo_auth_header', $detectedAuthHeader, false);
+        self::setSetting($pdo, 'ozvinoo_auth_prefix', $detectedAuthPrefix, false);
 
         BluebotProviderCatalogService::saveProvider($pdo, [
             'provider_key' => 'ozvinoo',
             'name' => 'OZVinoo',
             'catalog_url' => $catalogUrl,
             'api_key' => $apiKey,
-            'auth_header' => $authHeader,
-            'auth_prefix' => $authPrefix,
+            'auth_header' => $detectedAuthHeader,
+            'auth_prefix' => $detectedAuthPrefix,
             'products_path' => (string) ($discovery['products_path'] ?? 'auto'),
             'id_field' => (string) ($discovery['id_field'] ?? 'auto'),
             'name_field' => (string) ($discovery['name_field'] ?? 'auto'),
@@ -499,12 +508,21 @@ final class BluebotDigitalServices
             'stars' => '⭐ استارز تلگرام',
             'telegram' => '✈️ خدمات تلگرام',
             'instagram' => '📸 خدمات اینستاگرام',
+            'youtube' => '▶️ خدمات یوتیوب',
+            'twitter' => '𝕏 خدمات X / توییتر',
+            'tiktok' => '🎵 خدمات تیک‌تاک',
+            'spotify' => '🎧 خدمات اسپاتیفای',
+            'linkedin' => '💼 خدمات لینکدین',
+            'facebook' => '📘 خدمات فیسبوک',
+            'whatsapp' => '🟢 خدمات واتساپ',
+            'likee' => '💜 خدمات Likee',
+            'naver' => '🟩 Naver TV',
             'giftcards' => '🎁 گیفت‌کارت',
             'games' => '🎮 بازی و شارژ',
             'apple' => '🍎 خدمات اپل',
             'chatgpt' => '🤖 هوش مصنوعی',
             'virtual_number' => '📱 شماره مجازی',
-            'design' => '🎨 طراحی و دیجیتال',
+            'design' => '🎨 طراحی و گرافیک',
             'other' => '🧩 سایر خدمات',
         ];
         if (isset($fixed[$category])) {
@@ -546,12 +564,21 @@ final class BluebotDigitalServices
             'stars' => 20,
             'telegram' => 30,
             'instagram' => 40,
-            'giftcards' => 50,
-            'games' => 60,
-            'apple' => 70,
-            'chatgpt' => 80,
-            'virtual_number' => 90,
-            'design' => 100,
+            'youtube' => 50,
+            'twitter' => 60,
+            'tiktok' => 70,
+            'spotify' => 80,
+            'linkedin' => 90,
+            'facebook' => 100,
+            'whatsapp' => 110,
+            'virtual_number' => 120,
+            'design' => 130,
+            'likee' => 140,
+            'naver' => 150,
+            'giftcards' => 160,
+            'games' => 170,
+            'apple' => 180,
+            'chatgpt' => 190,
             'other' => 999,
         ];
 
