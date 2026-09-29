@@ -1086,7 +1086,7 @@ final class BluebotDigitalServices
             $defaults = [
                 ['premium', 'تلگرام پرمیوم', '🎁', 10],
                 ['stars', 'استارز تلگرام', '⭐', 20],
-                ['virtual_number', 'شماره مجازی تلگرام', '📱', 30],
+                ['virtual_number', 'شماره مجازی', '📱', 30],
                 ['telegram', 'خدمات تلگرام', '✈️', 40],
                 ['instagram', 'خدمات اینستاگرام', '📸', 50],
                 ['youtube', 'خدمات یوتیوب', '▶️', 60],
@@ -1103,6 +1103,14 @@ final class BluebotDigitalServices
                 ['design', 'طراحی و گرافیک', '🎨', 170],
                 ['other', 'سایر خدمات', '🧩', 999],
             ];
+
+            $renameLegacyVirtualNumber = $pdo->prepare(
+                "UPDATE digital_service_categories
+                 SET name = 'شماره مجازی', updated_at = NOW()
+                 WHERE category_key = 'virtual_number'
+                   AND name = 'شماره مجازی تلگرام'"
+            );
+            $renameLegacyVirtualNumber->execute();
 
             $count = (int) $pdo->query("SELECT COUNT(*) FROM digital_service_categories")->fetchColumn();
             if ($count === 0) {
@@ -1244,7 +1252,7 @@ final class BluebotDigitalServices
             'games' => '🎮 بازی و شارژ',
             'apple' => '🍎 خدمات اپل',
             'chatgpt' => '🤖 هوش مصنوعی',
-            'virtual_number' => '📱 شماره مجازی تلگرام',
+            'virtual_number' => '📱 شماره مجازی',
             'design' => '🎨 طراحی و گرافیک',
             'other' => '🧩 سایر خدمات',
         ];
