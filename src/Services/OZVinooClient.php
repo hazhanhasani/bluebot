@@ -24,6 +24,60 @@ final class OZVinooClient
         );
     }
 
+    public function applications(): array
+    {
+        return $this->request(
+            'GET',
+            '/web/' . rawurlencode(trim($this->token)) . '/applications',
+            [],
+            false
+        );
+    }
+
+    public function prices(int $serviceId): array
+    {
+        return $this->request(
+            'GET',
+            '/web/' . rawurlencode(trim($this->token)) . '/get-prices/' . max(1, $serviceId),
+            [],
+            false
+        );
+    }
+
+    public function getNumberV1(int $serviceId, string|int $country): array
+    {
+        return $this->request(
+            'POST',
+            '/web/' . rawurlencode(trim($this->token))
+                . '/getNumber/' . max(1, $serviceId)
+                . '/' . rawurlencode((string) $country),
+            [],
+            false
+        );
+    }
+
+    public function getCodeV1(int|string $requestId): array
+    {
+        return $this->request(
+            'GET',
+            '/web/' . rawurlencode(trim($this->token))
+                . '/getCode/' . rawurlencode((string) $requestId),
+            [],
+            false
+        );
+    }
+
+    public function logoutV1(int|string $requestId): array
+    {
+        return $this->request(
+            'POST',
+            '/web/' . rawurlencode(trim($this->token))
+                . '/logout/' . rawurlencode((string) $requestId),
+            [],
+            false
+        );
+    }
+
     public function stars(): array
     {
         return $this->request('GET', '/telegram-services/stars/');
