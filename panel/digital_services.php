@@ -778,7 +778,7 @@ include __DIR__ . '/inc/layout_head.php';
                 <div class="card-subtitle">محصولات، دسته‌بندی و قیمت فروش به‌صورت خودکار از API همگام می‌شوند.</div>
             </div>
         </div>
-        <form method="post" class="card-body" style="display:grid;gap:12px">
+        <form method="post" class="card-body" style="display:grid;gap:12px" data-ozvinoo-discovery-form>
             <input type="hidden" name="_csrf" value="<?= htmlspecialchars(csrf_token()) ?>">
             <input type="hidden" name="action" value="save_ozvinoo">
 
@@ -883,11 +883,23 @@ include __DIR__ . '/inc/layout_head.php';
             <button class="btn btn-primary" type="submit"><?= icon('check', 14) ?> ذخیره + شناسایی و همگام‌سازی محصولات</button>
         </form>
 
-        <form method="post" class="card-body" style="padding-top:0">
+        <form method="post" class="card-body" style="padding-top:0" data-ozvinoo-discovery-form>
             <input type="hidden" name="_csrf" value="<?= htmlspecialchars(csrf_token()) ?>">
             <input type="hidden" name="action" value="sync_ozvinoo_catalog">
             <button class="btn btn-ghost" type="submit">🔎 تشخیص عمیق API + همگام‌سازی عضوینو</button>
+            <small class="field-hint">جست‌وجوی API محدود شده و دیگر نباید صفحه را برای مدت طولانی معطل نگه دارد.</small>
         </form>
+        <script>
+        document.querySelectorAll('[data-ozvinoo-discovery-form]').forEach(function (form) {
+            form.addEventListener('submit', function () {
+                var button = form.querySelector('button[type="submit"]');
+                if (!button || button.disabled) return;
+                button.disabled = true;
+                button.dataset.originalText = button.textContent || '';
+                button.textContent = '⏳ در حال بررسی API و همگام‌سازی...';
+            });
+        });
+        </script>
     </div>
 
 <div class="card fade-up d1" id="providers" style="margin-top:16px">
