@@ -395,9 +395,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
         }
         foreach ([
+            '/api/',
+            '/api/v2/',
+            '/api/v1/',
             '/api/v2',
             '/api/v1',
             '/api',
+            '/v2/',
+            '/v1/',
             '/v2',
             '/v1',
             '/api/services',
