@@ -2618,13 +2618,17 @@ function update_bot() {
              rm -rf "$TEMP_DIR"; sleep 2; show_menu; return 1; }
     CONFIG_PATH="$BOT_DIR/config.php"
     TEMP_CONFIG="/root/mirzapro_config_backup.php"
+    rm -f "$TEMP_CONFIG"
     if [ -f "$CONFIG_PATH" ]; then
         cp "$CONFIG_PATH" "$TEMP_CONFIG" || {
-            echo -e "\e[91mConfig file backup failed!\033[0m"
-            exit 1
+            echo -e "\e[91mConfig file backup failed! Update aborted before touching the live install.\033[0m"
+            rm -rf "$TEMP_DIR"
+            return 1
         }
     else
-        echo -e "\e[93mWarning: config.php not found. Proceeding without backup.\033[0m"
+        echo -e "\e[91mError: config.php is missing. Update aborted before touching the live install.\033[0m"
+        rm -rf "$TEMP_DIR"
+        return 1
     fi
     LANG_OVERRIDE_BACKUP="/root/mirzapro_lang_override_backup"
     rm -rf "$LANG_OVERRIDE_BACKUP"
