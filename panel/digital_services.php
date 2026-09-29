@@ -196,12 +196,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $migrateProducts->execute();
 
         $catalog = BluebotDigitalServices::ensureTgToolsCatalog($pdo);
-        flash(
-            'success',
-            'تنظیمات TGTools ذخیره شد. محصولات Stars/Premium همگام شدند: '
+        $catalogMessage = 'تنظیمات TGTools ذخیره شد. محصولات Stars/Premium همگام شدند: '
             . (int) ($catalog['created'] ?? 0) . ' جدید، '
-            . (int) ($catalog['updated'] ?? 0) . ' بروزرسانی.'
-        );
+            . (int) ($catalog['updated'] ?? 0) . ' بروزرسانی.';
+        if (!empty($catalog['remote_ok'])) {
+            flash('success', $catalogMessage . ' قیمت‌های زنده TGTools نیز دریافت شد.');
+        } else {
+            flash('warning', $catalogMessage . ' دریافت قیمت زنده موقتاً ممکن نبود و کاتالوگ جایگزین استفاده شد.');
+        }
         header('Location: digital_services.php#tgtools');
         exit;
     }
@@ -209,12 +211,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if ($action === 'sync_tgtools_catalog') {
         $catalog = BluebotDigitalServices::ensureTgToolsCatalog($pdo);
         if (!empty($catalog['ok'])) {
-            flash(
-                'success',
-                'محصولات Stars/Premium آماده شدند: '
+            $catalogMessage = 'محصولات Stars/Premium آماده شدند: '
                 . (int) ($catalog['created'] ?? 0) . ' جدید، '
-                . (int) ($catalog['updated'] ?? 0) . ' بروزرسانی.'
-            );
+                . (int) ($catalog['updated'] ?? 0) . ' بروزرسانی.';
+            if (!empty($catalog['remote_ok'])) {
+                flash('success', $catalogMessage . ' قیمت‌های زنده TGTools دریافت شد.');
+            } else {
+                flash('warning', $catalogMessage . ' قیمت زنده در دسترس نبود؛ کاتالوگ جایگزین استفاده شد.');
+            }
         } else {
             flash('error', 'همگام‌سازی محصولات انجام نشد.');
         }
@@ -399,7 +403,8 @@ include __DIR__ . '/inc/layout_head.php';
                 <small class="field-hint">کلید از Settings → API Keys در TGTools ساخته می‌شود و در پیام‌های ربات نمایش داده نمی‌شود.</small>
             </div>
             <div class="notice notice-info">
-                برای Stars و Premium هیچ کد محصول خارجی لازم نیست. BlueBot کد داخلی را از نوع سرویس و مقدار آن می‌سازد و Provider Service Code را خالی نگه می‌دارد.
+                BlueBot بسته‌های Stars و قیمت‌های Premium را از <code>/api/purchase/prices</code> می‌خواند و خودکار همگام می‌کند.
+                هیچ کد محصول خارجی لازم نیست؛ کد داخلی از نوع سرویس و مقدار آن ساخته می‌شود و Provider Service Code خالی می‌ماند.
             </div>
             <button class="btn btn-primary" type="submit"><?= icon('check', 14) ?> ذخیره TGTools</button>
         </form>
@@ -491,6 +496,19 @@ include __DIR__ . '/inc/layout_head.php';
                                     value="<?= (int) $product['price'] ?>" placeholder="قیمت فروش">
                                 <button class="btn btn-primary btn-sm" type="submit">ذخیره</button>
                             </form>
+                            <?php
+                            $tgMeta = json_decode((string) ($product['metadata'] ?? ''), true);
+                            $tgWholesaleTon = is_array($tgMeta) ? ($tgMeta['wholesale_ton'] ?? null) : null;
+                            $tgWholesaleUsd = is_array($tgMeta) ? ($tgMeta['wholesale_usd'] ?? null) : null;
+                            ?>
+                            <?php if (is_numeric($tgWholesaleTon)): ?>
+                                <div class="field-hint" style="margin-top:4px">
+                                    عمده TGTools: <?= htmlspecialchars((string) $tgWholesaleTon) ?> TON
+                                    <?php if (is_numeric($tgWholesaleUsd)): ?>
+                                        · $<?= htmlspecialchars((string) $tgWholesaleUsd) ?>
+                                    <?php endif; ?>
+                                </div>
+                            <?php endif; ?>
                         <?php else: ?>
                             <?= number_format((float) $product['price']) ?> تومان
                         <?php endif; ?>
