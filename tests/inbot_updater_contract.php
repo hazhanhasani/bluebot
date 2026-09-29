@@ -131,9 +131,10 @@ if ($installer !== false) {
         $failures[] = 'Updater must verify the /panel route before reporting update success.';
     }
 
-    $configAbortPos = strpos($installer, 'config.php is missing. Update aborted before touching the live install.', $updatePos ?: 0);
-    if ($configAbortPos === false) {
-        $failures[] = 'Updater must abort before live swap when config.php is missing.';
+    $configRecoveryPos = strpos($installer, 'attempting safe recovery from saved install state', $updatePos ?: 0);
+    $configFailPos = strpos($installer, 'automatic recovery was not possible', $updatePos ?: 0);
+    if ($configRecoveryPos === false || $configFailPos === false || $configRecoveryPos > $configFailPos) {
+        $failures[] = 'Updater must attempt safe config recovery and abort if recovery cannot be verified.';
     }
 }
 
