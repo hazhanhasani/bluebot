@@ -147,21 +147,44 @@ if (preg_match('/^ds_approve:(\d+)$/', (string) $datain, $digitalApproveMatch)
             }
         } else {
             $error = trim((string) ($result['error'] ?? 'خطای نامشخص'));
-            $failedText = "⚠️ <b>ارسال انجام نشد</b>\n\n"
-                . BluebotDigitalServices::adminOrderText(is_array($order) ? $order : ['id' => $orderId])
-                . "\n\n<code>"
-                . htmlspecialchars($error, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8')
-                . "</code>\n\nمی‌توانید دوباره «تأیید و ارسال» بزنید یا سفارش را رد و مبلغ را برگردانید.";
+            $retryable = !empty($result['retryable']);
+            $refunded = !empty($result['refunded']);
+
+            if ($retryable) {
+                $failedText = "⚠️ <b>ارسال انجام نشد؛ قابل تلاش مجدد است</b>\n\n"
+                    . BluebotDigitalServices::adminOrderText(is_array($order) ? $order : ['id' => $orderId])
+                    . "\n\n"
+                    . nl2br(htmlspecialchars($error, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'))
+                    . "\n\nبعد از رفع مشکل Provider دوباره «تأیید و ارسال» را بزنید.";
+                $failureKeyboard = BluebotDigitalServices::adminKeyboard($orderId);
+                $callbackText = 'ارسال انجام نشد؛ بعد از رفع مشکل دوباره تلاش کنید.';
+            } elseif ($refunded) {
+                $failedText = "❌ <b>ارسال ناموفق بود و مبلغ برگشت خورد</b>\n\n"
+                    . BluebotDigitalServices::adminOrderText(is_array($order) ? $order : ['id' => $orderId])
+                    . "\n\n"
+                    . nl2br(htmlspecialchars($error, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'))
+                    . "\n\n💰 مبلغ سفارش به کیف پول کاربر برگشت داده شد.";
+                $failureKeyboard = json_encode(['inline_keyboard' => []], JSON_UNESCAPED_UNICODE);
+                $callbackText = 'ارسال ناموفق بود و وجه کاربر برگشت داده شد.';
+            } else {
+                $failedText = "⚠️ <b>ارسال انجام نشد</b>\n\n"
+                    . BluebotDigitalServices::adminOrderText(is_array($order) ? $order : ['id' => $orderId])
+                    . "\n\n"
+                    . nl2br(htmlspecialchars($error, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'));
+                $failureKeyboard = BluebotDigitalServices::adminKeyboard($orderId);
+                $callbackText = 'ارسال ناموفق بود؛ سفارش برای بررسی باقی ماند.';
+            }
+
             Editmessagetext(
                 $from_id,
                 $message_id,
                 $failedText,
-                BluebotDigitalServices::adminKeyboard($orderId)
+                $failureKeyboard
             );
             if ($callback_query_id) {
                 telegram('answerCallbackQuery', [
                     'callback_query_id' => $callback_query_id,
-                    'text' => 'ارسال ناموفق بود؛ سفارش برای بررسی باقی ماند.',
+                    'text' => $callbackText,
                     'show_alert' => true,
                 ]);
             }
