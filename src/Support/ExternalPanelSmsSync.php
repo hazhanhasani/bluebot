@@ -151,11 +151,13 @@ final class ExternalPanelSmsSync
         }
 
         if (function_exists('getusers')) {
-            $legacy = getusers((string) ($panel['name_panel'] ?? ''), '');
-            foreach ($this->extractUsers(is_array($legacy) ? $legacy : []) as $row) {
-                $key = $this->externalIdentity($row);
-                if ($key !== '') {
-                    $users[$key] = $row;
+            foreach (['active', 'on_hold', 'disabled', 'limited', 'expired'] as $status) {
+                $legacy = getusers((string) ($panel['name_panel'] ?? ''), $status);
+                foreach ($this->extractUsers(is_array($legacy) ? $legacy : []) as $row) {
+                    $key = $this->externalIdentity($row);
+                    if ($key !== '') {
+                        $users[$key] = $row;
+                    }
                 }
             }
         }
@@ -265,7 +267,7 @@ final class ExternalPanelSmsSync
             }
         } else {
             $oldPhone = (string) ($previous['phone'] ?? '');
-            $phoneJustAdded = $oldPhone === '' && $phone !== '';
+            $phoneChanged = $phone !== '' && $oldPhone !== $phone;
             $expireRaised = (int) $user['expire'] > (int) ($previous['expire_at'] ?? 0);
             $limitRaised = (int) $user['data_limit'] > (int) ($previous['data_limit'] ?? 0);
             $trafficReset = (int) ($previous['used_traffic'] ?? 0) >= self::RESET_TRAFFIC_MIN_BYTES
@@ -273,7 +275,7 @@ final class ExternalPanelSmsSync
             $becameActive = !in_array((string) ($previous['status'] ?? ''), ['active', 'unknown'], true)
                 && in_array($user['status'], ['active', 'unknown'], true);
 
-            if ($phoneJustAdded && in_array($user['status'], ['active', 'unknown'], true)) {
+            if ($phoneChanged && in_array($user['status'], ['active', 'unknown'], true)) {
                 $event = 'service_activated';
             } elseif ($phone !== '' && ($expireRaised || $limitRaised || $trafficReset || $becameActive)) {
                 $event = 'service_renewed';
