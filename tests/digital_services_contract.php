@@ -12,6 +12,7 @@ $tgTools = file_get_contents($root . '/src/Services/TgToolsClient.php');
 $cronJobs = file_get_contents($root . '/cronbot/jobs.php');
 $digitalServicesCron = file_get_contents($root . '/cronbot/digital_services.php');
 $settings = file_get_contents($root . '/db/tables/digital_service_settings.php');
+$langFa = file_get_contents($root . '/lang/fa.php');
 
 $checks = [
     [str_contains($manager, "pending_approval"), 'orders must enter pending approval'],
@@ -50,6 +51,11 @@ $checks = [
     [str_contains($setting, "text_digital_services"), 'default keyboard token missing'],
     [str_contains($panel, "approve_order"), 'web approval action missing'],
     [str_contains($panel, "reject_order"), 'web reject action missing'],
+    [!str_contains($index, "ارسال فقط بعد از تأیید دستی ادمین انجام می‌شود."), 'customer product page leaks internal approval workflow'],
+    [!str_contains($index, "سفارش تا تأیید دستی ادمین ارسال نخواهد شد."), 'customer confirmation leaks internal approval workflow'],
+    [!str_contains($langFa, "در صف تأیید و ارسال ادمین"), 'customer queued message leaks internal approval workflow'],
+    [!str_contains($manager, "برای TGTools باید یوزرنیم"), 'customer validation leaks provider name'],
+    [str_contains($langFa, "سرویس موردنظر را انتخاب کنید 👇"), 'customer catalog copy was not simplified'],
 ];
 
 foreach ($checks as [$ok, $message]) {
