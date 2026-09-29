@@ -1684,7 +1684,6 @@ move_extracted_files() {
 bluebot_validate_source_tree() {
     local root="$1" required rel
     [ -d "$root" ] || return 1
-
     required=(
         "index.php"
         "table.php"
@@ -1697,28 +1696,20 @@ bluebot_validate_source_tree() {
         "src/Support/UpdateManager.php"
         "scripts/bluebot-update-worker.sh"
     )
-
     for rel in "${required[@]}"; do
         [ -f "$root/$rel" ] || {
             echo "Missing required BlueBot file: $rel" >&2
             return 1
         }
     done
-
     return 0
 }
 
 bluebot_validate_live_tree() {
     local root="$1"
     bluebot_validate_source_tree "$root" || return 1
-    [ -f "$root/config.php" ] || {
-        echo "Missing live config.php" >&2
-        return 1
-    }
-    [ -f "$root/vendor/autoload.php" ] || {
-        echo "Missing vendor/autoload.php" >&2
-        return 1
-    }
+    [ -f "$root/config.php" ] || { echo "Missing live config.php" >&2; return 1; }
+    [ -f "$root/vendor/autoload.php" ] || { echo "Missing vendor/autoload.php" >&2; return 1; }
     return 0
 }
 
@@ -1726,8 +1717,6 @@ bluebot_resolve_extracted_root() {
     local temp="$1" d found=""
     [ -d "$temp" ] || return 1
 
-    # Support both flat hosting bundles and GitHub source archives wrapped in a
-    # single top-level directory. Never guess by taking the first directory.
     if bluebot_validate_source_tree "$temp" >/dev/null 2>&1; then
         printf '%s' "$temp"
         return 0
@@ -1748,7 +1737,6 @@ bluebot_resolve_extracted_root() {
         echo "No valid BlueBot application root found in update package." >&2
         return 1
     }
-
     printf '%s' "$found"
     return 0
 }
@@ -2117,7 +2105,526 @@ function install_bot() {
         ZIP_URL="$(state_get SRC_ZIP_URL)"; [ -z "$ZIP_URL" ] && ZIP_URL="$SRC_ZIP_URL"
         SRC_LABEL_RESUME="$(state_get SRC_LABEL)"; [ -z "$SRC_LABEL_RESUME" ] && SRC_LABEL_RESUME="$SRC_LABEL"
         if [ -d "$BOT_DIR" ]; then
-            STAGED_DIR="${BOT_DIR}.staging"
+            sudo rm -rf "$BOT_DIR" || {
+                echo -e "\e[91mError: Failed to remove existing directory $BOT_DIR.\033[0m"
+                install_pause "Cleaning bot directory"
+            }
+        fi
+        sudo mkdir -p "$BOT_DIR"
+        if [ ! -d "$BOT_DIR" ]; then
+            echo -e "\e[91mError: Failed to create directory $BOT_DIR.\033[0m"
+            install_pause "Creating bot directory"
+        fi
+
+        TEMP_DIR="/tmp/mirzaprobot"
+        rm -rf "$TEMP_DIR"; mkdir -p "$TEMP_DIR"
+        run_step "Downloading BlueBot (${SRC_LABEL_RESUME})" "wget -O '$TEMP_DIR/bot.zip' '$ZIP_URL'" \
+            || { show_step_error; install_pause "Downloading bot files"; }
+        run_step "Extracting source files" "unzip -o '$TEMP_DIR/bot.zip' -d '$TEMP_DIR'" \
+            || { show_step_error; install_pause "Extracting bot files"; }
+
+        EXTRACTED_DIR=$(find "$TEMP_DIR" -mindepth 1 -maxdepth 1 -type d | head -1)
+        if [ -z "$EXTRACTED_DIR" ] || [ ! -d "$EXTRACTED_DIR" ]; then
+            echo -e "\e[91mError: Extracted source folder not found (bad or empty download).\033[0m"
+            install_pause "Locating extracted files"
+        fi
+        purge_installer_dir "$EXTRACTED_DIR"
+        move_extracted_files "$EXTRACTED_DIR" "$BOT_DIR" || {
+            echo -e "\e[91mError: Failed to move extracted files.\033[0m"
+            install_pause "Moving bot files"
+        }
+        purge_installer_dir "$BOT_DIR"
+        rm -rf "$TEMP_DIR"
+        sudo chown -R www-data:www-data "$BOT_DIR"
+        sudo chmod -R 755 "$BOT_DIR"
+        wait
+        run_step "Installing PHP dependencies (composer)" "install_php_deps '$BOT_DIR'" \
+            || { show_step_error; install_pause "Installing PHP dependencies"; }
+        mark_phase FILES
+    else
+        echo -e "  ${C_OK}●${CR} ${C_DIM}Bot files already downloaded - skipping.${CR}"
+    fi
+    # ╰─────────────────────────────────────────────────────────────╯
+
+    # ╭──────────────────────── PHASE: DBROOT ──────────────────────╮
+    if ! phase_done DBROOT; then
+        if [ ! -f "/root/confmirza/dbrootmirza.txt" ] || ! grep -q '\$pass' /root/confmirza/dbrootmirza.txt 2>/dev/null; then
+            run_step "Configuring MySQL root access" "setup_mysql_root" \
+                || { show_step_error; install_pause "MySQL root setup"; }
+        fi
+        mark_phase DBROOT
+    fi
+    # ╰─────────────────────────────────────────────────────────────╯
+
+    # ── Domain capture (needed for SSL, VHost, config & webhook) ──
+    clear
+    print_header "SSL Certificate Setup"
+    domainname="$(state_get DOMAIN)"
+    if [ -n "$ARG_DOMAIN" ]; then
+        if [ -n "$domainname" ] && [ "$domainname" != "$ARG_DOMAIN" ]; then
+            echo -e "  ${C_WARN}! Replacing resumed domain ${domainname} with ${ARG_DOMAIN}.${CR}"
+            state_unmark_phase SSL
+            state_unmark_phase VHOST
+            state_unmark_phase CONFIG
+            state_unmark_phase WEBHOOK
+        fi
+        domainname="$ARG_DOMAIN"
+        state_set DOMAIN "$domainname"
+        echo -e "  ${C_DIM}Domain (from --domain):${CR} ${C_KEY}${domainname}${CR}"
+    elif [ -n "$domainname" ]; then
+        echo -e "  ${C_DIM}Domain (resumed):${CR} ${C_KEY}${domainname}${CR}"
+    else
+        read -p "Enter the domain: " domainname
+        while ! validate_domain "$domainname"; do
+            echo -e "\e[91mInvalid domain. Enter a full domain like bot.example.com (no http://, no slash).\033[0m"
+            read -p "Enter the domain: " domainname
+        done
+        # Verify the domain actually points to this server (certbot needs this)
+        domain_points_here "$domainname"
+        case $? in
+            0) echo -e "  ${C_OK}●${CR} ${C_OK}Domain resolves to this server.${CR}" ;;
+            1) echo -e "  ${C_WARN}!${CR} ${C_WARN}Domain does NOT point to this server's IP ($(get_server_ip)).${CR}"
+               echo -e "  ${C_DIM}Let's Encrypt will fail until the DNS A record points here.${CR}"
+               printf "  ${C_PROMPT}❯${CR} Continue anyway? ${C_DIM}[y/N]${CR}: "
+               read -r _gd
+               if [[ ! "$_gd" =~ ^[Yy]$ ]]; then echo -e "  ${C_BAD}Aborted. Fix the DNS A record and retry.${CR}"; sleep 1; show_menu; return 1; fi ;;
+            2) echo -e "  ${C_WARN}!${CR} ${C_WARN}Could not resolve the domain yet (DNS may still be propagating).${CR}"
+               printf "  ${C_PROMPT}❯${CR} Continue anyway? ${C_DIM}[y/N]${CR}: "
+               read -r _gd
+               if [[ ! "$_gd" =~ ^[Yy]$ ]]; then echo -e "  ${C_BAD}Aborted.${CR}"; sleep 1; show_menu; return 1; fi ;;
+        esac
+        state_set DOMAIN "$domainname"
+    fi
+    DOMAIN_NAME="$domainname"
+    PATHS=$(cat /root/confmirza/dbrootmirza.txt | grep '$path' | cut -d"'" -f2)
+
+    # ╭──────────────────────── PHASE: SSL ─────────────────────────╮
+    if ! phase_done SSL; then
+        if [ -f "/etc/letsencrypt/live/$DOMAIN_NAME/fullchain.pem" ]; then
+            echo -e "  ${C_OK}●${CR} ${C_DIM}SSL certificate for ${DOMAIN_NAME} already exists - skipping issuance.${CR}"
+        else
+            run_step "Opening firewall ports 80 & 443" "ufw allow 80 && ufw allow 443" \
+                || { show_step_error; install_pause "Opening firewall ports"; }
+            run_step "Stopping Apache for certificate issuance" "systemctl stop apache2 && systemctl disable apache2" \
+                || { show_step_error; install_pause "Stopping Apache"; }
+            run_step "Installing Let's Encrypt (certbot)" "apt install letsencrypt -y && systemctl enable certbot.timer" \
+                || { show_step_error; install_pause "Installing certbot"; }
+
+            run_step "Requesting SSL certificate (Let's Encrypt)" \
+                "certbot certonly --standalone --non-interactive --agree-tos --register-unsafely-without-email --preferred-challenges http -d $DOMAIN_NAME" \
+                || { show_step_error; install_pause "Requesting SSL certificate"; }
+        fi
+        run_step "Enabling & starting Apache" "systemctl enable apache2 && systemctl start apache2" \
+            || { show_step_error; install_pause "Starting Apache"; }
+        mark_phase SSL
+    else
+        echo -e "  ${C_OK}●${CR} ${C_DIM}SSL certificate already configured - skipping.${CR}"
+    fi
+    # ╰─────────────────────────────────────────────────────────────╯
+
+    # ╭──────────────────────── PHASE: VHOST ───────────────────────╮
+    if ! phase_done VHOST; then
+        VHOST_FILE="/etc/apache2/sites-available/${DOMAIN_NAME}.conf"
+        sudo tee "$VHOST_FILE" > /dev/null <<EOF
+<VirtualHost *:80>
+    ServerName $DOMAIN_NAME
+    DocumentRoot $BOT_DIR
+    <Directory $BOT_DIR>
+        Options Indexes FollowSymLinks
+        AllowOverride All
+        Require all granted
+    </Directory>
+    Include /etc/apache2/conf-available/phpmyadmin.conf
+    ErrorLog \${APACHE_LOG_DIR}/${DOMAIN_NAME}-error.log
+    CustomLog \${APACHE_LOG_DIR}/${DOMAIN_NAME}-access.log combined
+</VirtualHost>
+EOF
+        VHOST_SSL_FILE="/etc/apache2/sites-available/${DOMAIN_NAME}-ssl.conf"
+        sudo tee "$VHOST_SSL_FILE" > /dev/null <<EOF
+<VirtualHost *:443>
+    ServerName $DOMAIN_NAME
+    DocumentRoot $BOT_DIR
+    SSLEngine on
+    SSLCertificateFile /etc/letsencrypt/live/$DOMAIN_NAME/fullchain.pem
+    SSLCertificateKeyFile /etc/letsencrypt/live/$DOMAIN_NAME/privkey.pem
+    <Directory $BOT_DIR>
+        Options Indexes FollowSymLinks
+        AllowOverride All
+        Require all granted
+    </Directory>
+    Include /etc/apache2/conf-available/phpmyadmin.conf
+    ErrorLog \${APACHE_LOG_DIR}/${DOMAIN_NAME}-error.log
+    CustomLog \${APACHE_LOG_DIR}/${DOMAIN_NAME}-access.log combined
+</VirtualHost>
+EOF
+        run_step "Configuring Apache virtual hosts" \
+            "a2ensite '${DOMAIN_NAME}.conf' && a2ensite '${DOMAIN_NAME}-ssl.conf' ; a2dissite 000-default.conf 2>/dev/null ; a2dissite 000-default-le-ssl.conf 2>/dev/null ; a2dissite default-ssl.conf 2>/dev/null ; rm -f /etc/apache2/sites-enabled/000-default.conf /etc/apache2/sites-enabled/000-default-le-ssl.conf /etc/apache2/sites-enabled/default-ssl.conf ; rm -f /etc/apache2/sites-available/000-default.conf /etc/apache2/sites-available/000-default-le-ssl.conf /etc/apache2/sites-available/default-ssl.conf ; a2enmod ssl ; a2enmod rewrite ; systemctl restart apache2" \
+            || { show_step_error; install_pause "Configuring Apache virtual hosts"; }
+        mark_phase VHOST
+    else
+        echo -e "  ${C_OK}●${CR} ${C_DIM}Apache virtual hosts already configured - skipping.${CR}"
+    fi
+    # ╰─────────────────────────────────────────────────────────────╯
+
+    # ── Bot configuration inputs (token / chat id / botname) ──
+    clear
+    print_header "Bot Configuration"
+    YOUR_BOT_TOKEN="$(state_get BOT_TOKEN)"
+    if [ -n "$ARG_TOKEN" ]; then
+        if [ -n "$YOUR_BOT_TOKEN" ] && [ "$YOUR_BOT_TOKEN" != "$ARG_TOKEN" ]; then
+            echo -e "  ${C_WARN}! Replacing resumed bot token with the supplied token.${CR}"
+            state_set BOTNAME ""
+            state_unmark_phase CONFIG
+            state_unmark_phase WEBHOOK
+        fi
+        YOUR_BOT_TOKEN="$ARG_TOKEN"
+        state_set BOT_TOKEN "$YOUR_BOT_TOKEN"
+        echo -e "\e[33m[+] \e[36mBot Token (from --token):\e[0m ${YOUR_BOT_TOKEN:0:10}..."
+    elif [ -n "$YOUR_BOT_TOKEN" ]; then
+        echo -e "\e[33m[+] \e[36mBot Token (resumed):\e[0m ${YOUR_BOT_TOKEN:0:10}..."
+    else
+        printf "\e[33m[+] \e[36mBot Token: \033[0m"
+        read YOUR_BOT_TOKEN
+        while [[ ! "$YOUR_BOT_TOKEN" =~ ^[0-9]{8,10}:[a-zA-Z0-9_-]{35}$ ]]; do
+            echo -e "\e[91mInvalid bot token format. Please try again.\033[0m"
+            printf "\e[33m[+] \e[36mBot Token: \033[0m"
+            read YOUR_BOT_TOKEN
+        done
+        # Live-verify the token with Telegram (getMe)
+        while true; do
+            validate_token "$YOUR_BOT_TOKEN"
+            case $? in
+                0) echo -e "  ${C_OK}●${CR} ${C_OK}Token verified with Telegram.${CR}"; break ;;
+                2) echo -e "  ${C_BAD}●${CR} ${C_BAD}Telegram rejected this token (or API unreachable).${CR}"
+                   printf "  ${C_PROMPT}❯${CR} Re-enter token, or press Enter to keep it anyway: "
+                   read -r _t
+                   if [ -z "$_t" ]; then break; fi
+                   YOUR_BOT_TOKEN="$_t"
+                   while [[ ! "$YOUR_BOT_TOKEN" =~ ^[0-9]{8,10}:[a-zA-Z0-9_-]{35}$ ]]; do
+                       echo -e "\e[91mInvalid format.\033[0m"; printf "  ${C_PROMPT}❯${CR} Bot Token: "; read -r YOUR_BOT_TOKEN
+                   done ;;
+                *) break ;;
+            esac
+        done
+        state_set BOT_TOKEN "$YOUR_BOT_TOKEN"
+    fi
+
+    YOUR_CHAT_ID="$(state_get CHAT_ID)"
+    if [ -n "$YOUR_CHAT_ID" ]; then
+        echo -e "\e[33m[+] \e[36mChat id (resumed):\e[0m ${YOUR_CHAT_ID}"
+    else
+        if [ -n "$ARG_ADMIN" ]; then
+            YOUR_CHAT_ID="$ARG_ADMIN"
+            echo -e "\e[33m[+] \e[36mChat id (from --admin):\e[0m ${YOUR_CHAT_ID}"
+        else
+            printf "\e[33m[+] \e[36mChat id: \033[0m"
+            read YOUR_CHAT_ID
+        fi
+        while [[ ! "$YOUR_CHAT_ID" =~ ^-?[0-9]+$ ]]; do
+            echo -e "\e[91mInvalid chat ID format. Please try again.\033[0m"
+            printf "\e[33m[+] \e[36mChat id: \033[0m"
+            read YOUR_CHAT_ID
+        done
+        state_set CHAT_ID "$YOUR_CHAT_ID"
+    fi
+
+    YOUR_DOMAIN="$DOMAIN_NAME"
+    RESUMED_BOTNAME="$(state_get BOTNAME)"
+    YOUR_BOTNAME="$TG_BOT_USERNAME"
+    [ -z "$YOUR_BOTNAME" ] && YOUR_BOTNAME="$(fetch_bot_username "$YOUR_BOT_TOKEN")"
+
+    if [ -n "$YOUR_BOTNAME" ]; then
+        YOUR_BOTNAME="${YOUR_BOTNAME#@}"
+        YOUR_BOTNAME="${YOUR_BOTNAME//[[:space:]]/}"
+        state_set BOTNAME "$YOUR_BOTNAME"
+        echo -e "\e[33m[+] \e[36musernamebot (verified from current token):\e[0m @${YOUR_BOTNAME}"
+    elif [ -n "$RESUMED_BOTNAME" ]; then
+        YOUR_BOTNAME="${RESUMED_BOTNAME#@}"
+        YOUR_BOTNAME="${YOUR_BOTNAME//[[:space:]]/}"
+        echo -e "  ${C_WARN}! Telegram getMe unavailable; temporarily using resumed username @${YOUR_BOTNAME}.${CR}"
+    else
+        echo -e "  ${C_BAD}●${CR} ${C_BAD}Could not read the bot username from Telegram.${CR}"
+        while true; do
+            printf "\e[33m[+] \e[36musernamebot: \033[0m"
+            read YOUR_BOTNAME
+            YOUR_BOTNAME="${YOUR_BOTNAME#@}"
+            YOUR_BOTNAME="${YOUR_BOTNAME//[[:space:]]/}"
+            if [ -n "$YOUR_BOTNAME" ]; then
+                state_set BOTNAME "$YOUR_BOTNAME"
+                break
+            fi
+            echo -e "\e[91mError: Bot username cannot be empty. Please enter a valid username.\033[0m"
+        done
+    fi
+
+    ROOT_PASSWORD=$(cat /root/confmirza/dbrootmirza.txt | grep '$pass' | cut -d"'" -f2)
+    ROOT_USER="root"
+    echo "SELECT 1" | mysql -u$ROOT_USER -p$ROOT_PASSWORD 2>/dev/null || {
+        echo -e "\e[91mError: MySQL connection failed.\033[0m"
+        install_pause "MySQL connection"
+    }
+
+    MYSQL_AUTH_PLUGIN="mysql_native_password"
+    if ! mysql -u"$ROOT_USER" -p"$ROOT_PASSWORD" -N -B -e \
+        "SELECT PLUGIN_STATUS FROM INFORMATION_SCHEMA.PLUGINS WHERE PLUGIN_NAME='mysql_native_password';" 2>/dev/null \
+        | grep -qi ACTIVE; then
+        MYSQL_AUTH_PLUGIN="caching_sha2_password"
+    fi
+
+    randomdbpass=$(openssl rand -base64 10 | tr -dc 'a-zA-Z0-9' | cut -c1-8)
+    randomdbdb=$(openssl rand -base64 10 | tr -dc 'a-zA-Z' | cut -c1-8)
+    dbname="mirzaprobot"
+
+    # ╭──────────────────────── PHASE: DB ──────────────────────────╮
+    if ! phase_done DB; then
+        dbuser="$(state_get DBUSER)"
+        dbpass="$(state_get DBPASS)"
+        if [ -z "$dbuser" ] || [ -z "$dbpass" ]; then
+            clear
+            if [ -n "$ARG_DBUSER" ]; then
+                dbuser="$ARG_DBUSER"
+                echo -e "\e[32mDatabase username (from --db-user):\e[0m ${dbuser}"
+            else
+                echo -e "\n\e[32mPlease enter the database username!\033[0m"
+                printf "[+] Default user name is \e[91m${randomdbdb}\e[0m ( let it blank to use this user name ): "
+                read dbuser
+            fi
+            if [ "$dbuser" = "" ]; then
+                dbuser=$randomdbdb
+            fi
+            if ! valid_db_ident "$dbuser"; then
+                echo -e "  ${C_WARN}!${CR} ${C_WARN}Invalid DB username (use only A-Z a-z 0-9 _). Using generated name.${CR}"
+                dbuser=$randomdbdb
+            fi
+            if [ -n "$ARG_DBPASS" ]; then
+                dbpass="$ARG_DBPASS"
+                echo -e "\e[32mDatabase password (from --db-pass): [hidden]\033[0m"
+            else
+                echo -e "\n\e[32mPlease enter the database password!\033[0m"
+                printf "[+] Default password is \e[91m${randomdbpass}\e[0m ( let it blank to use this password ): "
+                read dbpass
+            fi
+            if [ "$dbpass" = "" ]; then
+                dbpass=$randomdbpass
+            fi
+            if ! valid_db_pass "$dbpass"; then
+                echo -e "  ${C_WARN}!${CR} ${C_WARN}Password has unsafe characters or is too short (need 6+, A-Z a-z 0-9 _). Using generated password.${CR}"
+                dbpass=$randomdbpass
+            fi
+            state_set DBUSER "$dbuser"
+            state_set DBPASS "$dbpass"
+        else
+            echo -e "  ${C_OK}●${CR} ${C_DIM}Database credentials resumed.${CR}"
+        fi
+        # Idempotent: safe to re-run (IF NOT EXISTS), so a resumed install never breaks here
+        run_step "Creating database & user" \
+            "mysql -u root -p$ROOT_PASSWORD -e \"CREATE DATABASE IF NOT EXISTS $dbname;\" && mysql -u root -p$ROOT_PASSWORD -e \"CREATE USER IF NOT EXISTS '$dbuser'@'%' IDENTIFIED WITH $MYSQL_AUTH_PLUGIN BY '$dbpass'; GRANT ALL PRIVILEGES ON $dbname.* TO '$dbuser'@'%'; FLUSH PRIVILEGES;\" && mysql -u root -p$ROOT_PASSWORD -e \"CREATE USER IF NOT EXISTS '$dbuser'@'localhost' IDENTIFIED WITH $MYSQL_AUTH_PLUGIN BY '$dbpass'; GRANT ALL PRIVILEGES ON $dbname.* TO '$dbuser'@'localhost'; FLUSH PRIVILEGES;\"" \
+            || { show_step_error; install_pause "Creating database/user"; }
+        mark_phase DB
+    else
+        dbuser="$(state_get DBUSER)"
+        dbpass="$(state_get DBPASS)"
+        echo -e "  ${C_OK}●${CR} ${C_DIM}Database already created - skipping.${CR}"
+    fi
+    # ╰─────────────────────────────────────────────────────────────╯
+
+    # ╭──────────────────────── PHASE: CONFIG ──────────────────────╮
+    if ! phase_done CONFIG; then
+        wait
+        sleep 1
+        file_path="/var/www/html/mirzaprobotconfig/config.php"
+        if [ -f "$file_path" ]; then
+            rm "$file_path" || {
+                echo -e "\e[91mError: Failed to delete old config.php.\033[0m"
+                install_pause "Removing old config.php"
+            }
+        fi
+        sleep 1
+        cat <<EOF > /var/www/html/mirzaprobotconfig/config.php
+<?php
+// This variable added for high load panels which their response time is long and bot can't communicate with online panel!
+// null for default settings
+\$request_exec_timeout = null;
+\$dbhost = 'localhost';
+\$dbname = '$dbname';
+\$usernamedb = '$dbuser';
+\$passworddb = '$dbpass';
+\$options = [ PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION, PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC, PDO::ATTR_EMULATE_PREPARES => false, PDO::MYSQL_ATTR_INIT_COMMAND => "SET NAMES utf8mb4 COLLATE utf8mb4_unicode_ci", ];
+\$dsn = "mysql:host=\$dbhost;dbname=\$dbname;charset=utf8mb4";
+try { \$pdo = new PDO(\$dsn, \$usernamedb, \$passworddb, \$options); } catch (\PDOException \$e) { error_log("Database connection failed: " . \$e->getMessage()); die("error: database connection failed"); }
+\$APIKEY = '${YOUR_BOT_TOKEN}';
+\$adminnumber = '${YOUR_CHAT_ID}';
+\$domainhosts = '${YOUR_DOMAIN}';
+\$usernamebot = '${YOUR_BOTNAME}';
+?>
+EOF
+        sudo chown www-data:www-data /var/www/html/mirzaprobotconfig/config.php 2>/dev/null
+        sudo chmod 640 /var/www/html/mirzaprobotconfig/config.php 2>/dev/null
+        mark_phase CONFIG
+    else
+        echo -e "  ${C_OK}●${CR} ${C_DIM}config.php already written - skipping.${CR}"
+    fi
+    # ╰─────────────────────────────────────────────────────────────╯
+
+    # ╭──────────────────────── PHASE: WEBHOOK ─────────────────────╮
+    if ! phase_done WEBHOOK; then
+        sleep 1
+        run_step "Setting Telegram webhook" \
+            "curl -s -F \"url=https://${YOUR_DOMAIN}/index.php\" \"https://api.telegram.org/bot${YOUR_BOT_TOKEN}/setWebhook\"" \
+            || { show_step_error; install_pause "Setting Telegram webhook"; }
+
+        MESSAGE="✅ The BlueBot bot is installed! for start the bot send /start command."
+        curl -s -X POST "https://api.telegram.org/bot${YOUR_BOT_TOKEN}/sendMessage" -d chat_id="${YOUR_CHAT_ID}" -d text="$MESSAGE" > /dev/null 2>&1
+        sleep 3
+        run_step "Starting Apache" "systemctl start apache2" \
+            || { show_step_error; install_pause "Starting Apache"; }
+        sleep 5
+        run_step "Initializing database tables" "cd '$BOT_DIR' && php${PHP_VER} table.php" \
+            || { show_step_error; install_pause "Initializing database tables"; }
+        run_step "Refreshing protected Telegram webhook" "cd '$BOT_DIR' && php${PHP_VER} scripts/repair-webhook.php" \
+            || { show_step_error; install_pause "Refreshing Telegram webhook"; }
+        run_step "Installing in-bot update worker" "install_update_worker '$BOT_DIR/scripts/bluebot-update-worker.sh'" \
+            || { show_step_error; install_pause "Installing in-bot update worker"; }
+        mark_phase WEBHOOK
+    fi
+    # ╰─────────────────────────────────────────────────────────────╯
+
+    # ── Done ──
+    mark_phase COMPLETE
+    clear
+    banner
+    _sec "Installation complete"
+    printf "    ${C_OK}●${CR} ${C_OK}BlueBot is installed and the webhook is set.${CR}\n"
+    printf "    ${C_DIM}Open Telegram and send ${CR}${C_KEY}/start${CR}${C_DIM} to your bot.${CR}\n"
+
+    _sec "Access"
+    _kv "Bot URL" "${C_DIM}https://${YOUR_DOMAIN}${CR}"
+    _kv "phpMyAdmin" "${C_DIM}https://${YOUR_DOMAIN}/phpmyadmin${CR}"
+
+    _sec "Database"
+    _kv "Name" "${C_KEY}${dbname}${CR}"
+    _kv "Username" "${C_KEY}${dbuser}${CR}"
+    _kv "Password" "${C_KEY}${dbpass}${CR}"
+    printf "    ${C_WARN}!${CR} ${C_DIM}Save these credentials somewhere safe.${CR}\n"
+
+    _sec "Manage"
+    _kv "Command" "${C_DIM}run ${CR}${C_KEY}bluebot${CR}${C_DIM} anytime to open this panel${CR}"
+    echo ""
+    _rule
+    echo ""
+
+    chmod +x /root/install.sh
+    ln -sf /root/install.sh /usr/local/bin/bluebot
+    ln -sf /root/install.sh /usr/local/bin/mirza
+    self_update_script
+}
+function update_bot() {
+    clear
+    banner
+    BOT_DIR="/var/www/html/mirzaprobotconfig"
+    if [ ! -d "$BOT_DIR" ]; then
+        _sec "Update"
+        printf "    ${C_BAD}●${CR} ${C_BAD}BlueBot is not installed. Install it first.${CR}\n"
+        sleep 2
+        show_menu
+        return 1
+    fi
+
+    # ── Show current version + choose source (has Back option) ──
+    local current
+    current=$(get_installed_version); [ -z "$current" ] && current="unknown"
+    _sec "Update"
+    printf "    ${C_DIM}Currently installed:${CR} ${C_OK}%s${CR}\n" "$current"
+    if ! ensure_connectivity; then
+        printf "    ${C_BAD}●${CR} ${C_BAD}No internet connection (even after DNS reset). Try again later.${CR}\n"
+        sleep 2; show_menu; return 1
+    fi
+    choose_source
+    local _rc=$?
+    if [ "$_rc" -eq 2 ]; then show_menu; return 0; fi
+    if [ "$_rc" -ne 0 ]; then sleep 2; show_menu; return 1; fi
+    local ZIP_URL="$SRC_ZIP_URL" TARGET_LABEL="$SRC_LABEL"
+    local TARGET_CHANNEL="" TARGET_REF=""
+
+    case "$TARGET_LABEL" in
+        Beta*)
+            TARGET_CHANNEL="beta"
+            if [ -n "$ARG_REF" ]; then
+                TARGET_REF="$ARG_REF"
+                TARGET_LABEL="Beta (commit ${TARGET_REF:0:7})"
+            else
+                TARGET_REF="$(get_main_commit_sha)"
+                [ -n "$TARGET_REF" ] && TARGET_LABEL="Beta (main @ ${TARGET_REF:0:7})"
+            fi
+            ;;
+        Release\ *)
+            TARGET_CHANNEL="release"
+            TARGET_REF="${TARGET_LABEL#Release }"
+            ;;
+    esac
+
+    echo ""
+    echo -e "  ${C_DIM}Update target:${CR} ${C_KEY}${TARGET_LABEL}${CR}"
+    print_header "Updating BlueBot"
+    if [ "$ARG_BACKGROUND" != "1" ]; then
+        run_step "Updating system packages" "apt update --allow-releaseinfo-change && apt upgrade -y" \
+            || { show_step_error; echo -e "\e[91mError updating the server. Exiting...\033[0m"; exit 1; }
+        echo -e "\e[92mServer packages updated successfully...\033[0m\n"
+    fi
+    run_step "Ensuring cron is installed and running" "ensure_cron" \
+        || { show_step_error; echo -e "\e[91mError: Failed to install or start cron.\033[0m"; exit 1; }
+    TEMP_DIR="/tmp/mirzaprobot_update"
+    rm -rf "$TEMP_DIR"; mkdir -p "$TEMP_DIR"
+    run_step "Downloading ${TARGET_LABEL}" "wget -q -O '$TEMP_DIR/bot.zip' '$ZIP_URL'" \
+        || { show_step_error; echo -e "\e[91mError: Failed to download update package.\033[0m"; exit 1; }
+    run_step "Extracting update package" "unzip -o -q '$TEMP_DIR/bot.zip' -d '$TEMP_DIR'" \
+        || { show_step_error; echo -e "\e[91mError: Failed to extract update package.\033[0m"; exit 1; }
+    EXTRACTED_DIR="$(bluebot_resolve_extracted_root "$TEMP_DIR")"
+    if [ -z "$EXTRACTED_DIR" ] || [ ! -d "$EXTRACTED_DIR" ]; then
+        echo -e "\e[91mError: Update package does not contain a complete BlueBot application tree. Current installation was not touched.\033[0m"
+        rm -rf "$TEMP_DIR"; sleep 2; show_menu; return 1
+    fi
+    if ! bluebot_validate_source_tree "$EXTRACTED_DIR"; then
+        echo -e "\e[91mError: Update package validation failed. Current installation was not touched.\033[0m"
+        rm -rf "$TEMP_DIR"; sleep 2; show_menu; return 1
+    fi
+    # Build vendor/ inside the extracted copy first. The live install is still
+    # untouched at this point, so a composer or network failure aborts the update
+    # instead of leaving the bot without its dependencies.
+    run_step "Installing PHP dependencies (composer)" "install_php_deps '$EXTRACTED_DIR'" \
+        || { show_step_error
+             echo -e "\e[91mError: Failed to install PHP dependencies. The update was aborted and your current installation was left untouched.\033[0m"
+             rm -rf "$TEMP_DIR"; sleep 2; show_menu; return 1; }
+    CONFIG_PATH="$BOT_DIR/config.php"
+    TEMP_CONFIG="/root/mirzapro_config_backup.php"
+    if [ -f "$CONFIG_PATH" ]; then
+        cp "$CONFIG_PATH" "$TEMP_CONFIG" || {
+            echo -e "\e[91mConfig file backup failed!\033[0m"
+            exit 1
+        }
+    else
+        echo -e "\e[93mWarning: config.php not found. Proceeding without backup.\033[0m"
+    fi
+    LANG_OVERRIDE_BACKUP="/root/mirzapro_lang_override_backup"
+    rm -rf "$LANG_OVERRIDE_BACKUP"
+    [ -d "$BOT_DIR/lang/override" ] && cp -a "$BOT_DIR/lang/override" "$LANG_OVERRIDE_BACKUP"
+    STORAGE_BACKUP="/root/bluebot_storage_backup"
+    rm -rf "$STORAGE_BACKUP"
+    [ -d "$BOT_DIR/storage" ] && cp -a "$BOT_DIR/storage" "$STORAGE_BACKUP"
+    API_TOKEN_BACKUP="/root/bluebot_api_token_backup"
+    rm -f "$API_TOKEN_BACKUP"
+    [ -s "$BOT_DIR/api/hash.txt" ] && cp -a "$BOT_DIR/api/hash.txt" "$API_TOKEN_BACKUP"
+    run_step "Backing up vpnbots" "backup_vpnbots '$BOT_DIR'" \
+        || { show_step_error
+             echo -e "\e[91mError: Failed to backup vpnbots.\033[0m"
+             rm -rf "$TEMP_DIR"; sleep 2; show_menu; return 1; }
+    _vpnbot_live=$(vpnbot_instance_count "$BOT_DIR/vpnbot")
+    _vpnbot_bak=$(vpnbot_instance_count "$VPNBOT_BACKUP")
+    if [ "$_vpnbot_live" -gt 0 ] && [ "$_vpnbot_bak" -lt "$_vpnbot_live" ]; then
+        echo -e "\e[91mError: vpnbot backup incomplete ($_vpnbot_bak/$_vpnbot_live). Update aborted.\033[0m"
+        rm -rf "$TEMP_DIR"; sleep 2; show_menu; return 1
+    fi
+    STAGED_DIR="${BOT_DIR}.staging"
     ROLLBACK_DIR="${BOT_DIR}.rollback"
     sudo rm -rf "$STAGED_DIR"
     sudo mkdir -p "$STAGED_DIR" || {
@@ -2128,9 +2635,7 @@ function install_bot() {
     purge_installer_dir "$EXTRACTED_DIR"
     move_extracted_files "$EXTRACTED_DIR" "$STAGED_DIR" || {
         echo -e "\e[91mFailed to stage update files. Current installation was not touched.\033[0m"
-        sudo rm -rf "$STAGED_DIR"
-        rm -rf "$TEMP_DIR"
-        return 1
+        sudo rm -rf "$STAGED_DIR"; rm -rf "$TEMP_DIR"; return 1
     }
     purge_installer_dir "$STAGED_DIR"
 
@@ -2142,8 +2647,8 @@ function install_bot() {
         }
     fi
     if [ -d "$LANG_OVERRIDE_BACKUP" ]; then
-        sudo rm -rf "$STAGED_DIR/lang/override"
         sudo mkdir -p "$STAGED_DIR/lang"
+        sudo rm -rf "$STAGED_DIR/lang/override"
         sudo cp -a "$LANG_OVERRIDE_BACKUP" "$STAGED_DIR/lang/override"
     fi
     if [ -d "$STORAGE_BACKUP" ]; then
@@ -2165,35 +2670,27 @@ function install_bot() {
     sudo chmod -R 755 "$STAGED_DIR"
 
     if ! bluebot_validate_live_tree "$STAGED_DIR"; then
-        echo -e "\e[91mError: Staged BlueBot tree is incomplete (panel/core files missing). Current installation was not touched.\033[0m"
-        sudo rm -rf "$STAGED_DIR"
-        rm -rf "$TEMP_DIR"
-        return 1
+        echo -e "\e[91mError: Staged BlueBot tree is incomplete. Current installation was not touched.\033[0m"
+        sudo rm -rf "$STAGED_DIR"; rm -rf "$TEMP_DIR"; return 1
     fi
 
-    # Atomic-style directory swap: keep the previous live tree intact until the
-    # staged tree has passed all structural validation.
     sudo rm -rf "$ROLLBACK_DIR"
     if ! sudo mv "$BOT_DIR" "$ROLLBACK_DIR"; then
         echo -e "\e[91mFailed to preserve current installation for rollback. Update aborted.\033[0m"
-        sudo rm -rf "$STAGED_DIR"
-        rm -rf "$TEMP_DIR"
-        return 1
+        sudo rm -rf "$STAGED_DIR"; rm -rf "$TEMP_DIR"; return 1
     fi
     if ! sudo mv "$STAGED_DIR" "$BOT_DIR"; then
         echo -e "\e[91mFailed to activate staged update; restoring previous installation.\033[0m"
         sudo mv "$ROLLBACK_DIR" "$BOT_DIR" 2>/dev/null || true
-        rm -rf "$TEMP_DIR"
-        return 1
+        rm -rf "$TEMP_DIR"; return 1
     fi
 
     CONFIG_PATH="$BOT_DIR/config.php"
     if ! bluebot_validate_live_tree "$BOT_DIR"; then
-        echo -e "\e[91mActivated update failed live-tree validation; rolling back immediately.\033[0m"
+        echo -e "\e[91mActivated update failed validation; rolling back immediately.\033[0m"
         sudo rm -rf "$BOT_DIR"
         sudo mv "$ROLLBACK_DIR" "$BOT_DIR" 2>/dev/null || true
-        rm -rf "$TEMP_DIR"
-        return 1
+        rm -rf "$TEMP_DIR"; return 1
     fi
 
     _vpnbot_restored=$(vpnbot_instance_count "$BOT_DIR/vpnbot")
@@ -2201,8 +2698,7 @@ function install_bot() {
         echo -e "\e[91mError: vpnbot restore incomplete ($_vpnbot_restored/$_vpnbot_bak); rolling back.\033[0m"
         sudo rm -rf "$BOT_DIR"
         sudo mv "$ROLLBACK_DIR" "$BOT_DIR" 2>/dev/null || true
-        rm -rf "$TEMP_DIR"
-        return 1
+        rm -rf "$TEMP_DIR"; return 1
     fi
 
     if [ -f "$BOT_DIR/install.sh" ]; then
@@ -2305,7 +2801,7 @@ EOF
     fi
 
     if ! bluebot_validate_live_tree "$BOT_DIR"; then
-        echo -e "\e[91mFinal BlueBot validation failed. Previous installation remains at $ROLLBACK_DIR for recovery.\033[0m"
+        echo -e "\e[91mFinal BlueBot validation failed. Rollback tree kept at $ROLLBACK_DIR.\033[0m"
         return 1
     fi
 
