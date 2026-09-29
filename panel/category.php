@@ -13,17 +13,11 @@ if ($scope === 'digital') {
     exit;
   }
 
-  $categoryTableExists = false;
-  try {
-    $categoryTableExists = (bool) $pdo->query("SHOW TABLES LIKE 'digital_service_categories'")->fetchColumn();
-  } catch (Throwable $e) {
-  }
-  if (!$categoryTableExists) {
-    flash('warning', 'جدول دسته‌بندی فروش خدمات هنوز ساخته نشده است؛ بروزرسانی دیتابیس را اجرا کنید.');
+  if (!BluebotDigitalServices::ensureManagedCategorySchema($pdo)) {
+    flash('error', 'آماده‌سازی دسته‌بندی‌های فروش خدمات انجام نشد.');
     header('Location: digital_services.php');
     exit;
   }
-
   BluebotDigitalServices::ensureManagedCategories($pdo);
 
   $digitalRedirect = static function (): never {
