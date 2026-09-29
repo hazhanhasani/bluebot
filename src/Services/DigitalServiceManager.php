@@ -1036,13 +1036,16 @@ final class BluebotDigitalServices
                 ['other', 'سایر خدمات', '🧩', 999],
             ];
 
-            $insert = $pdo->prepare(
-                "INSERT IGNORE INTO digital_service_categories
-                 (category_key, name, emoji, sort_order, active)
-                 VALUES (?, ?, ?, ?, 1)"
-            );
-            foreach ($defaults as [$key, $name, $emoji, $sort]) {
-                $insert->execute([$key, $name, $emoji, $sort]);
+            $count = (int) $pdo->query("SELECT COUNT(*) FROM digital_service_categories")->fetchColumn();
+            if ($count === 0) {
+                $insert = $pdo->prepare(
+                    "INSERT INTO digital_service_categories
+                     (category_key, name, emoji, sort_order, active)
+                     VALUES (?, ?, ?, ?, 1)"
+                );
+                foreach ($defaults as [$key, $name, $emoji, $sort]) {
+                    $insert->execute([$key, $name, $emoji, $sort]);
+                }
             }
 
             return true;
