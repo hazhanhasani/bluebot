@@ -253,11 +253,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 'api_key' => $_POST['provider_api_key'] ?? '',
                 'auth_header' => $_POST['provider_auth_header'] ?? 'Authorization',
                 'auth_prefix' => $_POST['provider_auth_prefix'] ?? 'Bearer',
-                'products_path' => $_POST['products_path'] ?? 'data',
-                'id_field' => $_POST['id_field'] ?? 'id',
-                'name_field' => $_POST['name_field'] ?? 'name',
-                'category_field' => $_POST['category_field'] ?? 'category',
-                'price_field' => $_POST['price_field'] ?? 'price',
+                'products_path' => $_POST['products_path'] ?? 'auto',
+                'id_field' => $_POST['id_field'] ?? 'auto',
+                'name_field' => $_POST['name_field'] ?? 'auto',
+                'category_field' => $_POST['category_field'] ?? 'auto',
+                'price_field' => $_POST['price_field'] ?? 'auto',
                 'currency' => $_POST['provider_currency'] ?? 'toman',
                 'exchange_rate_toman' => $_POST['exchange_rate_toman'] ?? 1,
                 'profit_percent' => $_POST['profit_percent'] ?? 0,
@@ -386,15 +386,30 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if ($catalogPath !== '') {
             $candidatePaths[] = $catalogPath;
         }
+        if ($orderPath !== '') {
+            $orderDir = rtrim(str_replace('\\', '/', dirname($orderPath)), '/.');
+            if ($orderDir !== '') {
+                foreach (['/services', '/products', '/catalog', '/packages'] as $sibling) {
+                    $candidatePaths[] = $orderDir . $sibling;
+                }
+            }
+        }
         foreach ([
             '/api/services',
+            '/api/service',
             '/services',
+            '/api/services/list',
             '/api/v1/services',
+            '/api/v1/services/list',
             '/v1/services',
             '/api/products',
             '/products',
             '/api/v1/products',
             '/v1/products',
+            '/api/catalog',
+            '/catalog',
+            '/api/packages',
+            '/packages',
         ] as $candidatePath) {
             if (!in_array($candidatePath, $candidatePaths, true)) {
                 $candidatePaths[] = $candidatePath;
