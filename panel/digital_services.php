@@ -239,9 +239,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     ? ' · موجودی API: ' . number_format((float) $wallet['balance']) . ' تومان'
                     : '';
                 $typeCounts = is_array($sync['type_counts'] ?? null) ? $sync['type_counts'] : [];
+                $postProbeText = !empty($typeCounts['number_apps_post_attempted'])
+                    ? ' / POST ' . (int) ($typeCounts['number_apps_post'] ?? 0)
+                    : ' / POST نیاز نشد';
                 $catalogText = ' · Stars: ' . (int) ($typeCounts['stars'] ?? 0)
                     . ' · Premium: ' . (int) ($typeCounts['premium'] ?? 0)
                     . ' · پلتفرم شماره: ' . (int) ($typeCounts['number_apps'] ?? 0)
+                    . ' (GET ' . (int) ($typeCounts['number_apps_get'] ?? 0) . $postProbeText . ')'
                     . ' · شماره/کشور: ' . (int) ($typeCounts['numbers'] ?? 0);
 
                 flash(
@@ -276,6 +280,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     . 'Stars ' . (int) ($typeCounts['stars'] ?? 0)
                     . ' · Premium ' . (int) ($typeCounts['premium'] ?? 0)
                     . ' · پلتفرم شماره ' . (int) ($typeCounts['number_apps'] ?? 0)
+                    . ' (GET ' . (int) ($typeCounts['number_apps_get'] ?? 0)
+                    . (!empty($typeCounts['number_apps_post_attempted'])
+                        ? ' / POST ' . (int) ($typeCounts['number_apps_post'] ?? 0)
+                        : ' / POST نیاز نشد')
+                    . ')'
                     . ' · شماره/کشور ' . (int) ($typeCounts['numbers'] ?? 0)
                     . ' · ' . (int) ($sync['created'] ?? 0) . ' جدید'
                     . ' · ' . (int) ($sync['updated'] ?? 0) . ' بروزرسانی'
