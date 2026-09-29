@@ -137,6 +137,68 @@ final class BluebotDigitalServices
         return false;
     }
 
+    public static function setProductAdminDisabled(PDO $pdo, int $productId, bool $disabled): bool
+    {
+        $product = self::findProduct($pdo, $productId, false);
+        if (!is_array($product)) {
+            return false;
+        }
+
+        $metadata = self::productMetadata($product);
+        if ($disabled) {
+            $metadata['admin_disabled'] = true;
+            $active = 0;
+        } else {
+            unset($metadata['admin_disabled']);
+            $active = 1;
+        }
+
+        $json = json_encode($metadata, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+        if (!is_string($json)) {
+            return false;
+        }
+
+        $stmt = $pdo->prepare(
+            "UPDATE digital_service_products
+             SET active = ?, metadata = ?, updated_at = NOW()
+             WHERE id = ?"
+        );
+        $stmt->execute([$active, $json, $productId]);
+
+        return $stmt->rowCount() > 0 || (int) ($product['active'] ?? 0) === $active;
+    }
+
+    public static function productAdminDisabled(array $product): bool
+    {
+        $metadata = self::productMetadata($product);
+        return !empty($metadata['admin_disabled']);
+    }
+
+    public static function mergeAdminProductMetadata(array $existing, array $synced): array
+    {
+        $existingMetadata = self::productMetadata($existing);
+        if (!empty($existingMetadata['admin_disabled'])) {
+            $synced['admin_disabled'] = true;
+        }
+
+        if (!empty($existingMetadata['admin_category_override'])) {
+            $synced['admin_category_override'] = true;
+            if (isset($existingMetadata['category_key'])) {
+                $synced['category_key'] = $existingMetadata['category_key'];
+            }
+            if (isset($existingMetadata['category_label'])) {
+                $synced['category_label'] = $existingMetadata['category_label'];
+            }
+        }
+
+        return $synced;
+    }
+
+    public static function providerManagedActive(array $existing, int $providerDefault = 1): int
+    {
+        return self::productAdminDisabled($existing) ? 0 : ($providerDefault > 0 ? 1 : 0);
+    }
+
     public static function findProduct(PDO $pdo, int $id, bool $activeOnly = true): ?array
     {
         if ($id <= 0 || !self::isAvailable($pdo)) {
