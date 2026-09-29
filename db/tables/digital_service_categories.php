@@ -16,7 +16,7 @@ return [
     'seedOnCreate' => [
         ['category_key' => 'premium', 'name' => 'تلگرام پرمیوم', 'emoji' => '🎁', 'sort_order' => 10, 'active' => 1],
         ['category_key' => 'stars', 'name' => 'استارز تلگرام', 'emoji' => '⭐', 'sort_order' => 20, 'active' => 1],
-        ['category_key' => 'virtual_number', 'name' => 'شماره مجازی تلگرام', 'emoji' => '📱', 'sort_order' => 30, 'active' => 1],
+        ['category_key' => 'virtual_number', 'name' => 'شماره مجازی', 'emoji' => '📱', 'sort_order' => 30, 'active' => 1],
         ['category_key' => 'telegram', 'name' => 'خدمات تلگرام', 'emoji' => '✈️', 'sort_order' => 40, 'active' => 1],
         ['category_key' => 'instagram', 'name' => 'خدمات اینستاگرام', 'emoji' => '📸', 'sort_order' => 50, 'active' => 1],
         ['category_key' => 'youtube', 'name' => 'خدمات یوتیوب', 'emoji' => '▶️', 'sort_order' => 60, 'active' => 1],

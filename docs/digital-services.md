@@ -53,10 +53,22 @@ into `digital_service_products`. The configured OZVinoo profit percentage is
 applied to every imported wholesale price. Missing products are disabled only
 when their corresponding endpoint synchronized successfully.
 
-For virtual numbers, checkout does not ask the customer for an external target.
-After administrator approval BlueBot reserves the selected country, shows the
-number when available and polls the order until the Telegram verification code
-arrives.
+For virtual numbers, BlueBot mirrors Callinoo's application-first flow instead
+of treating the catalog as Telegram-only:
+
+1. **Virtual Number** opens a platform/application picker (Telegram, WhatsApp,
+   Google, Instagram, Discord, Apple and every other application returned by
+   `/web/{token}/applications`).
+2. Selecting a platform opens its available countries from
+   `/web/{token}/get-prices/{service_id}`.
+3. Country lists are paginated so Telegram never receives an oversized inline
+   keyboard.
+4. Checkout does not ask for an external target. After administrator approval,
+   BlueBot reserves the selected platform/country number and polls the matching
+   provider flow until the verification code arrives.
+
+The V2 Telegram-number endpoint remains only as a fallback when the Callinoo
+application catalog is temporarily unavailable.
 
 ## Background reconciliation
 
