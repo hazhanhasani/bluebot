@@ -466,6 +466,22 @@ final class BluebotDigitalServices
         ], JSON_UNESCAPED_UNICODE);
     }
 
+    public static function targetKeyboard(array $product): string
+    {
+        return json_encode([
+            'inline_keyboard' => [
+                [[
+                    'text' => '↩️ بازگشت به سرویس',
+                    'callback_data' => 'ds_product:' . (int) $product['id'],
+                ]],
+                [[
+                    'text' => '🏠 دسته‌بندی‌ها',
+                    'callback_data' => 'ds_home',
+                ]],
+            ],
+        ], JSON_UNESCAPED_UNICODE);
+    }
+
     public static function confirmKeyboard(int $productId, string $backText): string
     {
         return json_encode([
@@ -550,7 +566,7 @@ final class BluebotDigitalServices
         if (!$valid) {
             throw new InvalidArgumentException($targetOrError);
         }
-        $target = $targetOrError;
+        $target = (string) $targetOrError;
 
         $pdo->beginTransaction();
         try {
@@ -559,6 +575,21 @@ final class BluebotDigitalServices
             $freshUser = $lock->fetch(PDO::FETCH_ASSOC);
             if (!is_array($freshUser)) {
                 throw new RuntimeException('User not found.');
+            }
+
+            // The user row is the order-intent lock. This makes the confirm
+            // button idempotent even when Telegram delivers duplicate callbacks.
+            $flowData = json_decode((string) ($freshUser['Processing_value'] ?? ''), true);
+            $flowData = is_array($flowData) ? $flowData : [];
+            $flowProductId = (int) ($flowData['digital_service_id'] ?? 0);
+            $flowTarget = trim((string) ($flowData['digital_service_target'] ?? ''));
+            [$flowTargetValid, $normalizedFlowTarget] = self::validateTarget($product, $flowTarget);
+
+            if ((string) ($freshUser['step'] ?? '') !== 'digital_service_confirm'
+                || $flowProductId !== $productId
+                || !$flowTargetValid
+                || (string) $normalizedFlowTarget !== $target) {
+                throw new DomainException('ORDER_STATE_INVALID');
             }
 
             $freshProductStmt = $pdo->prepare(
@@ -582,6 +613,15 @@ final class BluebotDigitalServices
             if ($balance - $freshPrice < $minBalance) {
                 throw new DomainException('INSUFFICIENT_BALANCE');
             }
+
+            // Claim the intent before money moves. A second concurrent click
+            // waits for this row lock and then sees that the intent is consumed.
+            $claimIntent = $pdo->prepare(
+                "UPDATE user
+                 SET step = 'digital_service_processing', Processing_value = '0'
+                 WHERE id = ?"
+            );
+            $claimIntent->execute([$userId]);
 
             $debit = $pdo->prepare("UPDATE user SET Balance = Balance - ? WHERE id = ?");
             $debit->execute([$freshPrice, $userId]);
@@ -607,6 +647,11 @@ final class BluebotDigitalServices
                 self::STATUS_PENDING,
             ]);
             $orderId = (int) $pdo->lastInsertId();
+
+            $finishIntent = $pdo->prepare(
+                "UPDATE user SET step = 'home', Processing_value = '0' WHERE id = ?"
+            );
+            $finishIntent->execute([$userId]);
 
             $pdo->commit();
             clearSelectCache('user');
@@ -713,21 +758,31 @@ final class BluebotDigitalServices
 
         $product = self::findProduct($pdo, (int) $order['service_id'], false);
         if (!is_array($product)) {
-            return self::markFailed($pdo, $orderId, 'Product snapshot is no longer available.');
+            return self::failAndRefundProviderOrder(
+                $pdo,
+                $orderId,
+                'Product snapshot is no longer available.',
+                []
+            );
         }
 
         try {
             $delivery = self::deliver($pdo, $order, $product);
         } catch (Throwable $e) {
-            return self::markFailed($pdo, $orderId, $e->getMessage());
+            return self::failAndRefundProviderOrder(
+                $pdo,
+                $orderId,
+                $e->getMessage(),
+                []
+            );
         }
 
         if (empty($delivery['ok'])) {
-            return self::markFailed(
+            return self::failAndRefundProviderOrder(
                 $pdo,
                 $orderId,
                 (string) ($delivery['error'] ?? 'Unknown provider error'),
-                $delivery['response'] ?? null
+                is_array($delivery['response'] ?? null) ? $delivery['response'] : $delivery
             );
         }
 
