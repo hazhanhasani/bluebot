@@ -531,7 +531,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     (string) ($_SESSION['admin_user'] ?? 'panel')
                 );
                 if (empty($result['ok'])) {
-                    flash('error', 'ارسال ناموفق بود: ' . (string) ($result['error'] ?? 'خطای Provider'));
+                    $errorText = (string) ($result['error'] ?? 'خطای Provider');
+                    if (!empty($result['retryable'])) {
+                        flash('warning', 'ارسال انجام نشد ولی قابل تلاش مجدد است: ' . $errorText);
+                    } elseif (!empty($result['refunded'])) {
+                        flash('warning', 'ارسال انجام نشد و مبلغ به کیف پول کاربر برگشت: ' . $errorText);
+                    } else {
+                        flash('error', 'ارسال ناموفق بود: ' . $errorText);
+                    }
                 } elseif (!empty($result['pending'])) {
                     flash('success', 'سفارش به TGTools ارسال شد و در حال پردازش است.');
                 } else {
@@ -567,6 +574,9 @@ $tgApiKey = ds_panel_setting($pdo, 'tgtools_api_key');
 $tgStarsProfit = (float) ds_panel_setting($pdo, 'tgtools_stars_profit_percent', '0');
 $tgPremiumProfit = (float) ds_panel_setting($pdo, 'tgtools_premium_profit_percent', '0');
 $tgTonRateToman = (float) ds_panel_setting($pdo, 'tgtools_ton_toman_rate', '0');
+$tgWalletStatus = $tgApiKey !== ''
+    ? BluebotDigitalServices::tgToolsWalletStatus($pdo)
+    : ['ok' => false, 'configured' => false, 'balance_ton' => null, 'deposit_address' => '', 'message' => 'API Key تنظیم نشده است.'];
 $providerCatalogs = BluebotProviderCatalogService::listProviders($pdo);
 $ozOrderPath = ds_panel_setting($pdo, 'ozvinoo_order_path');
 $ozCatalogPath = ds_panel_setting($pdo, 'ozvinoo_catalog_path');
@@ -578,6 +588,8 @@ $ozCurrency = ds_panel_setting($pdo, 'ozvinoo_currency', 'toman');
 $ozExchangeRate = (float) ds_panel_setting($pdo, 'ozvinoo_exchange_rate_toman', '1');
 $ozSyncInterval = (int) ds_panel_setting($pdo, 'ozvinoo_sync_interval_minutes', '15');
 $ozProvider = BluebotProviderCatalogService::findProvider($pdo, 'ozvinoo');
+$ozProductCountStmt = $pdo->query("SELECT COUNT(*) FROM digital_service_products WHERE provider = 'ozvinoo' AND active = 1");
+$ozProductCount = (int) $ozProductCountStmt->fetchColumn();
 
 $pageTitle = 'فروش خدمات';
 $pageLede = 'فروش Stars و Telegram Premium با TGTools و تأیید دستی قبل از ارسال';
@@ -674,6 +686,24 @@ include __DIR__ . '/inc/layout_head.php';
                 <input class="input" type="password" name="tgtools_api_key" autocomplete="new-password"
                     placeholder="<?= $tgApiKey !== '' ? '•••••••• (ذخیره شده؛ برای تغییر وارد کنید)' : 'tgt_...' ?>">
                 <small class="field-hint">کلید از Settings → API Keys در TGTools ساخته می‌شود و در پیام‌های ربات نمایش داده نمی‌شود.</small>
+            </div>
+            <div class="notice <?= !empty($tgWalletStatus['ok']) ? 'notice-info' : 'notice-warn' ?>">
+                <strong>کیف پول API TGTools:</strong>
+                <?php if (!empty($tgWalletStatus['ok'])): ?>
+                    موجودی:
+                    <code><?= is_numeric($tgWalletStatus['balance_ton'] ?? null)
+                        ? htmlspecialchars(rtrim(rtrim(number_format((float) $tgWalletStatus['balance_ton'], 6, '.', ''), '0'), '.'))
+                        : 'نامشخص' ?> TON</code>
+                    <?php if (!empty($tgWalletStatus['deposit_address'])): ?>
+                        <br>آدرس واریز:
+                        <code><?= htmlspecialchars((string) $tgWalletStatus['deposit_address']) ?></code>
+                    <?php endif; ?>
+                <?php else: ?>
+                    <?= htmlspecialchars((string) ($tgWalletStatus['message'] ?? 'دریافت موجودی ناموفق بود.')) ?>
+                <?php endif; ?>
+                <br><small>
+                    اتصال Tonkeeper به سایت به‌تنهایی موجودی API را تأمین نمی‌کند؛ سفارش API از موجودی کیف پول TGTools کسر می‌شود.
+                </small>
             </div>
             <div class="two-col" style="gap:10px">
                 <div class="field">
@@ -792,11 +822,23 @@ include __DIR__ . '/inc/layout_head.php';
                 BlueBot لیست محصولات و فیلدهای ID، نام، دسته و قیمت را نیز تا حد ممکن خودکار تشخیص می‌دهد.
             </div>
 
+            <div class="notice <?= $ozProductCount > 0 ? 'notice-info' : 'notice-warn' ?>">
+                <strong>محصولات فعال عضوینو در ربات:</strong> <?= number_format($ozProductCount) ?>
+                <?php if ($ozProductCount === 0): ?>
+                    <br><small>
+                        هنوز محصول فعالی از عضوینو وارد نشده است. «ذخیره + شناسایی و همگام‌سازی محصولات» را بزنید؛
+                        اگر API مسیر کاتالوگ متفاوتی دارد، Catalog endpoint را وارد کنید.
+                    </small>
+                <?php endif; ?>
+            </div>
             <?php if (is_array($ozProvider)): ?>
                 <div class="notice <?= (($ozProvider['last_sync_status'] ?? '') === 'success') ? 'notice-info' : 'notice-warn' ?>">
                     کاتالوگ: <code><?= htmlspecialchars((string) ($ozProvider['catalog_url'] ?? '—')) ?></code>
                     · آخرین Sync: <?= htmlspecialchars((string) ($ozProvider['last_sync_at'] ?? '—')) ?>
                     · وضعیت: <?= htmlspecialchars((string) ($ozProvider['last_sync_status'] ?? '—')) ?>
+                    <?php if (!empty($ozProvider['last_sync_message'])): ?>
+                        <br><small><?= htmlspecialchars((string) $ozProvider['last_sync_message']) ?></small>
+                    <?php endif; ?>
                 </div>
             <?php endif; ?>
 
