@@ -52,6 +52,123 @@ final class BluebotDigitalServices
         return is_array($row) ? $row : null;
     }
 
+    public static function generatedProviderProductCode(string $type, int $serviceValue): string
+    {
+        $serviceValue = max(1, $serviceValue);
+        return match ($type) {
+            'telegram_stars' => 'tgtools-stars-' . $serviceValue,
+            'telegram_premium' => 'tgtools-premium-' . $serviceValue . 'm',
+            default => 'digital-' . substr(hash('sha256', $type . ':' . $serviceValue), 0, 12),
+        };
+    }
+
+    public static function generatedProviderProductName(string $type, int $serviceValue): string
+    {
+        $serviceValue = max(1, $serviceValue);
+        return match ($type) {
+            'telegram_stars' => 'Telegram Stars ' . $serviceValue . ' ⭐',
+            'telegram_premium' => 'Telegram Premium ' . $serviceValue . ' Months',
+            default => 'Digital Service ' . $serviceValue,
+        };
+    }
+
+    /**
+     * Stars/Premium providers are amount/period based and do not expose an
+     * opaque "service code" that an admin should have to know. BlueBot keeps
+     * its own deterministic internal codes and maps by type + service_value.
+     *
+     * Newly discovered presets are intentionally inactive with price=0 until
+     * the store owner sets a retail price.
+     */
+    public static function ensureTgToolsCatalog(PDO $pdo): array
+    {
+        if (!self::isAvailable($pdo)) {
+            return ['ok' => false, 'created' => 0, 'updated' => 0];
+        }
+
+        $definitions = [];
+        foreach ([50, 100, 250, 500, 1000] as $stars) {
+            $definitions[] = [
+                'type' => 'telegram_stars',
+                'value' => $stars,
+                'name' => self::generatedProviderProductName('telegram_stars', $stars),
+                'sort' => 100 + $stars,
+            ];
+        }
+        foreach ([3, 6, 12] as $months) {
+            $definitions[] = [
+                'type' => 'telegram_premium',
+                'value' => $months,
+                'name' => self::generatedProviderProductName('telegram_premium', $months),
+                'sort' => 10000 + $months,
+            ];
+        }
+
+        $find = $pdo->prepare(
+            "SELECT * FROM digital_service_products
+             WHERE type = ? AND service_value = ?
+             ORDER BY (provider = 'tgtools') DESC, id ASC
+             LIMIT 1"
+        );
+        $update = $pdo->prepare(
+            "UPDATE digital_service_products
+             SET provider = 'tgtools',
+                 provider_service_code = NULL,
+                 updated_at = NOW()
+             WHERE id = ?"
+        );
+        $insert = $pdo->prepare(
+            "INSERT INTO digital_service_products
+             (code, name, type, provider, price, service_value, provider_service_code, description, metadata, active, sort_order)
+             VALUES (?, ?, ?, 'tgtools', 0, ?, NULL, ?, ?, 0, ?)"
+        );
+
+        $created = 0;
+        $updated = 0;
+        foreach ($definitions as $definition) {
+            $find->execute([$definition['type'], $definition['value']]);
+            $row = $find->fetch(PDO::FETCH_ASSOC);
+
+            if (is_array($row)) {
+                if ((string) ($row['provider'] ?? '') !== 'tgtools'
+                    || trim((string) ($row['provider_service_code'] ?? '')) !== '') {
+                    $update->execute([(int) $row['id']]);
+                    $updated++;
+                }
+                continue;
+            }
+
+            $code = self::generatedProviderProductCode(
+                (string) $definition['type'],
+                (int) $definition['value']
+            );
+            $metadata = json_encode([
+                'source' => 'provider-catalog',
+                'auto_generated' => true,
+                'no_provider_service_code' => true,
+            ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+
+            try {
+                $insert->execute([
+                    $code,
+                    $definition['name'],
+                    $definition['type'],
+                    $definition['value'],
+                    'کد داخلی و Provider Service Code توسط BlueBot مدیریت می‌شود.',
+                    is_string($metadata) ? $metadata : null,
+                    $definition['sort'],
+                ]);
+                $created++;
+            } catch (PDOException $e) {
+                if ((string) $e->getCode() !== '23000') {
+                    throw $e;
+                }
+            }
+        }
+
+        return ['ok' => true, 'created' => $created, 'updated' => $updated];
+    }
+
     public static function catalogKeyboard(PDO $pdo, string $backText): string
     {
         $rows = [];
