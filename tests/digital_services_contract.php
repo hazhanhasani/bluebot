@@ -22,6 +22,10 @@ $checks = [
     [str_contains($manager, "giftPremiumSubscription"), 'Telegram Premium provider missing'],
     [str_contains($manager, "provider === 'tgtools'"), 'TGTools provider dispatch missing'],
     [str_contains($manager, "generatedProviderProductCode"), 'automatic provider product code generation missing'],
+    [str_contains($manager, "categoryKeyboard"), 'digital service category keyboard missing'],
+    [str_contains($manager, "categoryForProduct"), 'digital service category mapping missing'],
+    [str_contains($manager, "'telegram_premium' => 'premium'"), 'Telegram Premium category mapping missing'],
+    [str_contains($manager, "'telegram_stars' => 'stars'"), 'Telegram Stars category mapping missing'],
     [str_contains($manager, "ensureTgToolsCatalog"), 'automatic Stars/Premium catalog generation missing'],
     [str_contains($manager, "maybeSyncTgToolsCatalog"), 'periodic TGTools catalog refresh missing'],
     [str_contains($manager, "provider_service_code = NULL"), 'TGTools products must not require provider service codes'],
@@ -44,6 +48,8 @@ $checks = [
     [str_contains($manager, "https://api.ozvinoo.xyz"), 'OZVinoo host allowlist missing'],
     [str_contains($manager, "CURLOPT_PROTOCOLS => CURLPROTO_HTTPS"), 'OZVinoo must be HTTPS-only'],
     [str_contains($index, "ds_confirm:"), 'user order confirmation route missing'],
+    [str_contains($index, "ds_category:"), 'customer category navigation route missing'],
+    [str_contains($index, "categoryKeyboard"), 'customer category landing screen missing'],
     [str_contains($index, "notifyAdmins"), 'admin notification missing'],
     [str_contains($admin, "ds_approve:"), 'bot approval callback missing'],
     [str_contains($admin, "ds_reject:"), 'bot reject callback missing'],
@@ -56,6 +62,7 @@ $checks = [
     [!str_contains($langFa, "در صف تأیید و ارسال ادمین"), 'customer queued message leaks internal approval workflow'],
     [!str_contains($manager, "برای TGTools باید یوزرنیم"), 'customer validation leaks provider name'],
     [str_contains($langFa, "سرویس موردنظر را انتخاب کنید 👇"), 'customer catalog copy was not simplified'],
+    [str_contains($langFa, "دسته‌بندی موردنظر را انتخاب کنید 👇"), 'customer category prompt missing'],
 ];
 
 foreach ($checks as [$ok, $message]) {

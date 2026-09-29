@@ -934,16 +934,34 @@ if ($text == "/start" || $datain == "start" || $text == "start") {
         return;
     }
 
-    $catalogKeyboard = BluebotDigitalServices::catalogKeyboard($pdo, $textbotlang['users']['backbtn']);
-    $catalogText = "<b>" . htmlspecialchars($textbotlang['digitalServices']['title'], ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . "</b>\n\n"
-        . htmlspecialchars($textbotlang['digitalServices']['select'], ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+    $categoryKeyboard = BluebotDigitalServices::categoryKeyboard($pdo, $textbotlang['users']['backbtn']);
+    $categoryText = "<b>" . htmlspecialchars($textbotlang['digitalServices']['title'], ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . "</b>\n\n"
+        . htmlspecialchars($textbotlang['digitalServices']['categorySelect'] ?? 'دسته‌بندی موردنظر را انتخاب کنید 👇', ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
 
     if ($datain === 'ds_home' || $datain === 'digitalservices') {
-        Editmessagetext($from_id, $message_id, $catalogText, $catalogKeyboard);
+        Editmessagetext($from_id, $message_id, $categoryText, $categoryKeyboard);
     } else {
-        sendmessage($from_id, $catalogText, $catalogKeyboard, 'HTML');
+        sendmessage($from_id, $categoryText, $categoryKeyboard, 'HTML');
     }
     step('home', $from_id);
+    return;
+} elseif (preg_match('/^ds_category:(premium|stars|other)$/', (string) $datain, $digitalCategoryMatch)) {
+    if (!check_active_btn($setting['keyboardmain'], 'text_digital_services')) {
+        sendmessage($from_id, $textbotlang['users']['buttonDisabled'], null, 'HTML');
+        return;
+    }
+
+    $category = (string) $digitalCategoryMatch[1];
+    $categoryKeyboard = BluebotDigitalServices::catalogKeyboard(
+        $pdo,
+        $textbotlang['users']['backbtn'],
+        $category
+    );
+    $categoryTitle = BluebotDigitalServices::categoryLabel($category);
+    $categoryText = "<b>" . htmlspecialchars($categoryTitle, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . "</b>\n\n"
+        . htmlspecialchars($textbotlang['digitalServices']['select'] ?? 'سرویس موردنظر را انتخاب کنید 👇', ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+
+    Editmessagetext($from_id, $message_id, $categoryText, $categoryKeyboard);
     return;
 } elseif (preg_match('/^ds_product:(\d+)$/', (string) $datain, $digitalProductMatch)) {
     if (!check_active_btn($setting['keyboardmain'], 'text_digital_services')) {

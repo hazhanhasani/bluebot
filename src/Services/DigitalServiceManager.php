@@ -255,10 +255,68 @@ final class BluebotDigitalServices
         return $result;
     }
 
-    public static function catalogKeyboard(PDO $pdo, string $backText): string
+    public static function categoryForProduct(array $product): string
+    {
+        return match ((string) ($product['type'] ?? '')) {
+            'telegram_premium' => 'premium',
+            'telegram_stars' => 'stars',
+            default => 'other',
+        };
+    }
+
+    public static function categoryLabel(string $category): string
+    {
+        return match ($category) {
+            'premium' => '🎁 تلگرام پرمیوم',
+            'stars' => '⭐ استارز تلگرام',
+            'other' => '🧩 سایر خدمات',
+            default => '🛍 خدمات',
+        };
+    }
+
+    public static function categoryKeyboard(PDO $pdo, string $backText): string
+    {
+        $counts = [
+            'premium' => 0,
+            'stars' => 0,
+            'other' => 0,
+        ];
+
+        foreach (self::listActive($pdo) as $product) {
+            $category = self::categoryForProduct($product);
+            if (isset($counts[$category])) {
+                $counts[$category]++;
+            }
+        }
+
+        $rows = [];
+        foreach (['premium', 'stars', 'other'] as $category) {
+            if ($counts[$category] <= 0) {
+                continue;
+            }
+
+            $rows[] = [[
+                'text' => self::categoryLabel($category) . ' · ' . number_format($counts[$category]),
+                'callback_data' => 'ds_category:' . $category,
+            ]];
+        }
+
+        $rows[] = [[
+            'text' => $backText,
+            'callback_data' => 'backuser',
+        ]];
+
+        return json_encode(['inline_keyboard' => $rows], JSON_UNESCAPED_UNICODE);
+    }
+
+    public static function catalogKeyboard(PDO $pdo, string $backText, ?string $category = null): string
     {
         $rows = [];
         foreach (self::listActive($pdo) as $product) {
+            if ($category !== null && self::categoryForProduct($product) !== $category) {
+                continue;
+            }
+
             $label = sprintf(
                 '%s · %s تومان',
                 trim((string) $product['name']),
@@ -271,8 +329,8 @@ final class BluebotDigitalServices
         }
 
         $rows[] = [[
-            'text' => $backText,
-            'callback_data' => 'backuser',
+            'text' => $category !== null ? '↩️ دسته‌بندی‌ها' : $backText,
+            'callback_data' => $category !== null ? 'ds_home' : 'backuser',
         ]];
 
         return json_encode(['inline_keyboard' => $rows], JSON_UNESCAPED_UNICODE);
@@ -280,6 +338,8 @@ final class BluebotDigitalServices
 
     public static function productKeyboard(array $product, string $backText): string
     {
+        $category = self::categoryForProduct($product);
+
         return json_encode([
             'inline_keyboard' => [
                 [[
@@ -288,8 +348,12 @@ final class BluebotDigitalServices
                     'style' => 'success',
                 ]],
                 [[
+                    'text' => '↩️ بازگشت',
+                    'callback_data' => 'ds_category:' . $category,
+                ]],
+                [[
                     'text' => $backText,
-                    'callback_data' => 'ds_home',
+                    'callback_data' => 'backuser',
                 ]],
             ],
         ], JSON_UNESCAPED_UNICODE);
