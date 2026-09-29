@@ -998,8 +998,62 @@ final class BluebotDigitalServices
         return 'other';
     }
 
+    public static function ensureManagedCategorySchema(PDO $pdo): bool
+    {
+        try {
+            $pdo->exec(
+                "CREATE TABLE IF NOT EXISTS digital_service_categories (
+                    id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+                    category_key VARCHAR(40) NOT NULL,
+                    name VARCHAR(120) NOT NULL,
+                    emoji VARCHAR(32) NOT NULL DEFAULT '',
+                    sort_order INT NOT NULL DEFAULT 0,
+                    active TINYINT(1) NOT NULL DEFAULT 1,
+                    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                    UNIQUE KEY uniq_digital_service_category_key (category_key)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci"
+            );
+
+            $defaults = [
+                ['premium', 'تلگرام پرمیوم', '🎁', 10],
+                ['stars', 'استارز تلگرام', '⭐', 20],
+                ['virtual_number', 'شماره مجازی تلگرام', '📱', 30],
+                ['telegram', 'خدمات تلگرام', '✈️', 40],
+                ['instagram', 'خدمات اینستاگرام', '📸', 50],
+                ['youtube', 'خدمات یوتیوب', '▶️', 60],
+                ['twitter', 'خدمات X / توییتر', '𝕏', 70],
+                ['tiktok', 'خدمات تیک‌تاک', '🎵', 80],
+                ['spotify', 'خدمات اسپاتیفای', '🎧', 90],
+                ['linkedin', 'خدمات لینکدین', '💼', 100],
+                ['facebook', 'خدمات فیسبوک', '📘', 110],
+                ['whatsapp', 'خدمات واتساپ', '🟢', 120],
+                ['giftcards', 'گیفت‌کارت', '🎁', 130],
+                ['games', 'بازی و شارژ', '🎮', 140],
+                ['apple', 'خدمات اپل', '🍎', 150],
+                ['chatgpt', 'هوش مصنوعی', '🤖', 160],
+                ['design', 'طراحی و گرافیک', '🎨', 170],
+                ['other', 'سایر خدمات', '🧩', 999],
+            ];
+
+            $insert = $pdo->prepare(
+                "INSERT IGNORE INTO digital_service_categories
+                 (category_key, name, emoji, sort_order, active)
+                 VALUES (?, ?, ?, ?, 1)"
+            );
+            foreach ($defaults as [$key, $name, $emoji, $sort]) {
+                $insert->execute([$key, $name, $emoji, $sort]);
+            }
+
+            return true;
+        } catch (Throwable $e) {
+            return false;
+        }
+    }
+
     public static function managedCategories(PDO $pdo, bool $activeOnly = false): array
     {
+        self::ensureManagedCategorySchema($pdo);
         try {
             $exists = $pdo->query("SHOW TABLES LIKE 'digital_service_categories'")->fetchColumn();
             if (!$exists) {
