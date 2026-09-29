@@ -519,10 +519,7 @@ final class ExternalPanelSmsSync
 
     private function formatExpire(int $expire): string
     {
-        if ($expire <= 0) {
-            return 'بدون محدودیت';
-        }
-        return date('Y/m/d', $expire);
+        return BluebotSms::formatDate($expire);
     }
 
     private function ensureSchema(): void
