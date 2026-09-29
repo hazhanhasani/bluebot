@@ -81,6 +81,43 @@ if ($installer === false || !str_contains($installer, "php scripts/repair-webhoo
 }
 
 foreach ([
+    'bluebot_validate_source_tree',
+    'bluebot_validate_live_tree',
+    'bluebot_resolve_extracted_root',
+    'bluebot_verify_panel_route',
+    'STAGED_DIR="${BOT_DIR}.staging"',
+    'ROLLBACK_DIR="${BOT_DIR}.rollback"',
+    'panel/service.php',
+    'panel/invoice.php',
+    'panel/category.php',
+    'panel/digital_services.php',
+] as $needle) {
+    if ($installer === false || !str_contains($installer, $needle)) {
+        $failures[] = "Atomic updater safety contract missing: {$needle}";
+    }
+}
+
+if ($installer !== false) {
+    $updatePos = strpos($installer, 'function update_bot()');
+    $stageValidatePos = strpos($installer, 'bluebot_validate_live_tree "$STAGED_DIR"', $updatePos ?: 0);
+    $swapPos = strpos($installer, 'mv "$BOT_DIR" "$ROLLBACK_DIR"', $updatePos ?: 0);
+    if ($updatePos === false || $stageValidatePos === false || $swapPos === false || $stageValidatePos > $swapPos) {
+        $failures[] = 'Updater must validate the complete staged tree before swapping the live installation.';
+    }
+
+    $panelHealthPos = strpos($installer, 'bluebot_verify_panel_route "$DOMAIN_NAME"', $updatePos ?: 0);
+    $successPos = strpos($installer, 'BlueBot updated successfully', $updatePos ?: 0);
+    if ($panelHealthPos === false || $successPos === false || $panelHealthPos > $successPos) {
+        $failures[] = 'Updater must verify the /panel route before reporting update success.';
+    }
+
+    $configAbortPos = strpos($installer, 'config.php is missing. Update aborted before touching the live install.', $updatePos ?: 0);
+    if ($configAbortPos === false) {
+        $failures[] = 'Updater must abort before live swap when config.php is missing.';
+    }
+}
+
+foreach ([
     'install_update_worker',
     '/usr/local/sbin/bluebot-update-worker',
     '--background',
