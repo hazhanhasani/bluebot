@@ -22,6 +22,11 @@ return [
         ['setting_key' => 'ozvinoo_api_key', 'setting_value' => '', 'is_secret' => 1],
         ['setting_key' => 'ozvinoo_auth_header', 'setting_value' => 'Authorization', 'is_secret' => 0],
         ['setting_key' => 'ozvinoo_auth_prefix', 'setting_value' => 'Bearer', 'is_secret' => 0],
+        ['setting_key' => 'ozvinoo_catalog_path', 'setting_value' => '', 'is_secret' => 0],
+        ['setting_key' => 'ozvinoo_profit_percent', 'setting_value' => '0', 'is_secret' => 0],
+        ['setting_key' => 'ozvinoo_currency', 'setting_value' => 'toman', 'is_secret' => 0],
+        ['setting_key' => 'ozvinoo_exchange_rate_toman', 'setting_value' => '1', 'is_secret' => 0],
+        ['setting_key' => 'ozvinoo_sync_interval_minutes', 'setting_value' => '15', 'is_secret' => 0],
     ],
 ];
 
