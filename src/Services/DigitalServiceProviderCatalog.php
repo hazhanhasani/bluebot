@@ -916,6 +916,7 @@ final class BluebotProviderCatalogService
 
         $profiles = [
             ['header' => trim($authHeader), 'prefix' => trim($authPrefix), 'label' => 'configured'],
+            ['header' => '', 'prefix' => '', 'label' => 'body-only'],
             ['header' => 'Authorization', 'prefix' => 'Bearer', 'label' => 'bearer'],
             ['header' => 'Authorization', 'prefix' => '', 'label' => 'authorization-raw'],
             ['header' => 'X-API-Key', 'prefix' => '', 'label' => 'x-api-key'],
@@ -928,7 +929,7 @@ final class BluebotProviderCatalogService
         foreach ($profiles as $profile) {
             $header = trim((string) $profile['header']);
             $prefix = trim((string) $profile['prefix']);
-            if ($header === '' || !preg_match('/^[A-Za-z0-9-]{1,80}$/', $header)) {
+            if ($header !== '' && !preg_match('/^[A-Za-z0-9-]{1,80}$/', $header)) {
                 continue;
             }
             $key = strtolower($header) . '|' . $prefix;
