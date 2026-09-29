@@ -10,6 +10,11 @@ final class TgToolsClient
     {
     }
 
+    public function prices(): array
+    {
+        return $this->request('GET', '/api/purchase/prices', null, false);
+    }
+
     public function lookupUser(string $username): array
     {
         $username = ltrim(trim($username), '@');
