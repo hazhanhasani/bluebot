@@ -474,6 +474,11 @@ final class BluebotProviderCatalogService
         $stats = ['checked' => 0, 'synced' => 0, 'failed' => 0, 'created' => 0, 'updated' => 0, 'disabled' => 0];
 
         foreach (self::listProviders($pdo, true) as $provider) {
+            if (strtolower((string) ($provider['provider_key'] ?? '')) === 'ozvinoo') {
+                // OZVinoo has dedicated official endpoints and is synchronized
+                // by BluebotDigitalServices::maybeBootstrapOZVinooCatalog().
+                continue;
+            }
             $stats['checked']++;
             $interval = max(1, (int) ($provider['sync_interval_minutes'] ?? 15));
             $last = trim((string) ($provider['last_sync_at'] ?? ''));
