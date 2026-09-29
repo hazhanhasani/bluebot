@@ -24,20 +24,30 @@ final class OZVinooClient
         );
     }
 
-    public function applications(): array
+    public function applications(string $method = 'GET'): array
     {
+        $method = strtoupper(trim($method));
+        if (!in_array($method, ['GET', 'POST'], true)) {
+            throw new InvalidArgumentException('Unsupported applications request method.');
+        }
+
         return $this->request(
-            'GET',
+            $method,
             '/web/' . rawurlencode(trim($this->token)) . '/applications',
             [],
             false
         );
     }
 
-    public function prices(int $serviceId): array
+    public function prices(int $serviceId, string $method = 'GET'): array
     {
+        $method = strtoupper(trim($method));
+        if (!in_array($method, ['GET', 'POST'], true)) {
+            throw new InvalidArgumentException('Unsupported prices request method.');
+        }
+
         return $this->request(
-            'GET',
+            $method,
             '/web/' . rawurlencode(trim($this->token)) . '/get-prices/' . max(1, $serviceId),
             [],
             false
