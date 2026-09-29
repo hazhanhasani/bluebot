@@ -343,17 +343,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $exchangeRate = (float) ($_POST['ozvinoo_exchange_rate_toman'] ?? 1);
         $syncInterval = max(1, min(1440, (int) ($_POST['ozvinoo_sync_interval_minutes'] ?? 15)));
 
-        foreach (['orderPath' => &$orderPath, 'catalogPath' => &$catalogPath] as &$path) {
-            if ($path !== '' && !str_starts_with($path, '/')) {
-                $path = '/' . $path;
+        foreach (['orderPath', 'catalogPath'] as $pathName) {
+            $pathValue = $pathName === 'orderPath' ? $orderPath : $catalogPath;
+            if ($pathValue !== '' && !str_starts_with($pathValue, '/')) {
+                $pathValue = '/' . $pathValue;
             }
-            if ($path !== '' && !preg_match('#^/[A-Za-z0-9_./{}?=&-]+$#', $path)) {
+            if ($pathValue !== '' && !preg_match('#^/[A-Za-z0-9_./{}?=&-]+$#', $pathValue)) {
                 flash('error', 'مسیر API معتبر نیست.');
                 header('Location: digital_services.php#ozvinoo');
                 exit;
             }
+            if ($pathName === 'orderPath') {
+                $orderPath = $pathValue;
+            } else {
+                $catalogPath = $pathValue;
+            }
         }
-        unset($path);
 
         if (!preg_match('/^[A-Za-z0-9-]{1,80}$/', $authHeader)) {
             flash('error', 'نام هدر احراز هویت معتبر نیست.');
