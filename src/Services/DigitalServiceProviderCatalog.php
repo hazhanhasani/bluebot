@@ -182,6 +182,205 @@ final class BluebotProviderCatalogService
         ];
     }
 
+    public static function deepDiagnoseCatalog(
+        array $urls,
+        string $apiKey = '',
+        string $authHeader = 'Authorization',
+        string $authPrefix = 'Bearer'
+    ): array {
+        $attempts = [];
+        $candidates = array_values(array_unique(array_filter(array_map('trim', $urls))));
+        $authProfiles = self::authProfiles($apiKey, $authHeader, $authPrefix);
+
+        // Keep diagnostics bounded so an unavailable provider cannot hold the
+        // admin request open for minutes. Endpoints are ordered by likelihood.
+        $candidates = array_slice($candidates, 0, 18);
+        $authProfiles = array_slice($authProfiles, 0, 7);
+
+        $record = static function (
+            array &$attempts,
+            string $method,
+            string $url,
+            string $authLabel,
+            array $response,
+            string $mode
+        ): void {
+            if (count($attempts) >= 120) {
+                return;
+            }
+
+            $data = is_array($response['data'] ?? null) ? $response['data'] : [];
+            $topKeys = [];
+            if ($data !== []) {
+                $topKeys = array_slice(array_map('strval', array_keys($data)), 0, 12);
+            }
+
+            $attempts[] = [
+                'method' => $method,
+                'url' => $url,
+                'auth' => $authLabel,
+                'mode' => $mode,
+                'ok' => !empty($response['ok']),
+                'http_status' => (int) ($response['http_status'] ?? 0),
+                'content_type' => (string) ($response['content_type'] ?? ''),
+                'message' => mb_substr((string) ($response['message'] ?? ''), 0, 220, 'UTF-8'),
+                'top_keys' => $topKeys,
+            ];
+        };
+
+        $found = static function (
+            array $response,
+            string $style,
+            string $url,
+            array $profile,
+            array &$attempts,
+            string $method,
+            string $mode
+        ) use ($record): ?array {
+            $record($attempts, $method, $url, (string) $profile['label'], $response, $mode);
+            if (empty($response['ok'])) {
+                return null;
+            }
+
+            $body = is_array($response['data'] ?? null) ? $response['data'] : [];
+            $mapping = self::autoDiscoverCatalogMapping($body);
+            if (empty($mapping['ok'])) {
+                return null;
+            }
+
+            return [
+                'ok' => true,
+                'api_style' => $style,
+                'url' => $url,
+                'auth_header' => (string) $profile['header'],
+                'auth_prefix' => (string) $profile['prefix'],
+                'products_path' => ($style === 'smm' ? 'smm:' : '') . (string) $mapping['products_path'],
+                'id_field' => (string) $mapping['id_field'],
+                'name_field' => (string) $mapping['name_field'],
+                'category_field' => (string) $mapping['category_field'],
+                'price_field' => (string) $mapping['price_field'],
+                'attempts' => $attempts,
+            ];
+        };
+
+        // 1) REST GET with header-based authentication variants.
+        foreach ($candidates as $url) {
+            if (!self::isSafeHttpsUrl($url)) {
+                continue;
+            }
+
+            foreach ($authProfiles as $profile) {
+                $response = self::requestCatalogUrl(
+                    $url,
+                    $apiKey,
+                    (string) $profile['header'],
+                    (string) $profile['prefix'],
+                    7
+                );
+                $hit = $found($response, 'rest', $url, $profile, $attempts, 'GET', 'header');
+                if (is_array($hit)) {
+                    return $hit;
+                }
+            }
+
+            // 2) Read-only query-string auth conventions. The API key itself is
+            // never included in the diagnostic log.
+            if (trim($apiKey) !== '') {
+                foreach (['key', 'api_key', 'apikey', 'token'] as $keyParam) {
+                    $profile = ['header' => '', 'prefix' => '', 'label' => 'query-' . $keyParam];
+                    $response = self::requestQueryCatalog($url, $apiKey, $keyParam, 7);
+                    $hit = $found($response, 'rest', $url, $profile, $attempts, 'GET', 'query');
+                    if (is_array($hit)) {
+                        return $hit;
+                    }
+                }
+            }
+        }
+
+        if (trim($apiKey) !== '') {
+            $smmCandidates = [];
+            foreach ($candidates as $url) {
+                if (!self::isSafeHttpsUrl($url)) {
+                    continue;
+                }
+                $smmCandidates[] = $url;
+                $parts = parse_url($url);
+                if (!is_array($parts)) {
+                    continue;
+                }
+                $scheme = strtolower((string) ($parts['scheme'] ?? ''));
+                $host = (string) ($parts['host'] ?? '');
+                $port = isset($parts['port']) ? ':' . (int) $parts['port'] : '';
+                if ($scheme !== 'https' || $host === '') {
+                    continue;
+                }
+                $origin = $scheme . '://' . $host . $port;
+                foreach (['/api/v2', '/api/v1', '/api', '/v2', '/v1', '/'] as $path) {
+                    $smmCandidates[] = rtrim($origin, '/') . $path;
+                }
+            }
+
+            $smmCandidates = array_slice(array_values(array_unique($smmCandidates)), 0, 18);
+            foreach ($smmCandidates as $url) {
+                if (!self::isSafeHttpsUrl($url)) {
+                    continue;
+                }
+
+                // 3) Standard SMM form body: key=...&action=services.
+                foreach ($authProfiles as $profile) {
+                    $response = self::requestSmmServices(
+                        $url,
+                        $apiKey,
+                        (string) $profile['header'],
+                        (string) $profile['prefix'],
+                        'key',
+                        7
+                    );
+                    $hit = $found($response, 'smm', $url, $profile, $attempts, 'POST', 'form');
+                    if (is_array($hit)) {
+                        return $hit;
+                    }
+                }
+
+                // 4) SMM-like form bodies using alternate key parameter names.
+                foreach (['api_key', 'apikey', 'token'] as $bodyKey) {
+                    $profile = ['header' => '', 'prefix' => '', 'label' => 'form-' . $bodyKey];
+                    $response = self::requestSmmServices($url, $apiKey, '', '', $bodyKey, 7);
+                    $hit = $found($response, 'smm', $url, $profile, $attempts, 'POST', 'form');
+                    if (is_array($hit)) {
+                        return $hit;
+                    }
+                }
+
+                // 5) JSON APIs that expect action/services in a JSON payload.
+                foreach (['key', 'api_key', 'token'] as $bodyKey) {
+                    foreach (array_slice($authProfiles, 0, 4) as $profile) {
+                        $jsonProfile = $profile;
+                        $jsonProfile['label'] = 'json-' . $bodyKey . '-' . (string) $profile['label'];
+                        $response = self::requestJsonServices(
+                            $url,
+                            $apiKey,
+                            (string) $profile['header'],
+                            (string) $profile['prefix'],
+                            $bodyKey,
+                            7
+                        );
+                        $hit = $found($response, 'rest', $url, $jsonProfile, $attempts, 'POST', 'json');
+                        if (is_array($hit)) {
+                            return $hit;
+                        }
+                    }
+                }
+            }
+        }
+
+        return [
+            'ok' => false,
+            'message' => 'No compatible product catalog was detected.',
+            'attempts' => $attempts,
+        ];
+    }
+
     public static function saveProvider(PDO $pdo, array $input): array
     {
         self::ensureStorage($pdo);
@@ -947,7 +1146,8 @@ final class BluebotProviderCatalogService
         string $url,
         string $apiKey,
         string $authHeader,
-        string $authPrefix
+        string $authPrefix,
+        int $timeoutSeconds = 20
     ): array {
         if (!self::isSafeHttpsUrl($url)) {
             return ['ok' => false, 'message' => 'Catalog URL is unsafe.'];
@@ -967,40 +1167,63 @@ final class BluebotProviderCatalogService
         curl_setopt_array($ch, [
             CURLOPT_RETURNTRANSFER => true,
             CURLOPT_HTTPHEADER => $headers,
-            CURLOPT_CONNECTTIMEOUT => 5,
-            CURLOPT_TIMEOUT => 20,
+            CURLOPT_CONNECTTIMEOUT => min(5, max(2, $timeoutSeconds)),
+            CURLOPT_TIMEOUT => max(3, $timeoutSeconds),
             CURLOPT_SSL_VERIFYHOST => 2,
             CURLOPT_SSL_VERIFYPEER => true,
             CURLOPT_PROTOCOLS => CURLPROTO_HTTPS,
             CURLOPT_FOLLOWLOCATION => false,
-            CURLOPT_USERAGENT => 'BlueBot/0.5.32 ProviderCatalog',
+            CURLOPT_USERAGENT => 'BlueBot/0.5.33 ProviderCatalog',
         ]);
 
         $raw = curl_exec($ch);
         $error = curl_error($ch);
         $http = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        $contentType = (string) curl_getinfo($ch, CURLINFO_CONTENT_TYPE);
         curl_close($ch);
 
         if ($raw === false) {
-            return ['ok' => false, 'message' => $error !== '' ? $error : 'Provider catalog request failed.'];
+            return [
+                'ok' => false,
+                'http_status' => $http,
+                'content_type' => $contentType,
+                'message' => $error !== '' ? $error : 'Provider catalog request failed.',
+            ];
         }
         if ($http < 200 || $http >= 300) {
-            return ['ok' => false, 'message' => 'Provider catalog returned HTTP ' . $http . '.'];
+            return [
+                'ok' => false,
+                'http_status' => $http,
+                'content_type' => $contentType,
+                'message' => 'Provider catalog returned HTTP ' . $http . '.',
+            ];
         }
 
         $decoded = json_decode((string) $raw, true);
         if (!is_array($decoded)) {
-            return ['ok' => false, 'message' => 'Provider catalog returned invalid JSON.'];
+            return [
+                'ok' => false,
+                'http_status' => $http,
+                'content_type' => $contentType,
+                'message' => 'Provider catalog returned non-JSON content.',
+            ];
         }
 
-        return ['ok' => true, 'data' => $decoded];
+        return [
+            'ok' => true,
+            'data' => $decoded,
+            'http_status' => $http,
+            'content_type' => $contentType,
+        ];
     }
 
     private static function requestSmmServices(
         string $url,
         string $apiKey,
         string $authHeader,
-        string $authPrefix
+        string $authPrefix,
+        string $keyParameter = 'key',
+        int $timeoutSeconds = 20
     ): array {
         if (!self::isSafeHttpsUrl($url)) {
             return ['ok' => false, 'message' => 'SMM catalog URL is unsafe.'];
@@ -1019,7 +1242,7 @@ final class BluebotProviderCatalogService
         }
 
         $payload = http_build_query([
-            'key' => $apiKey,
+            $keyParameter => $apiKey,
             'action' => 'services',
         ], '', '&', PHP_QUERY_RFC3986);
 
@@ -1033,37 +1256,230 @@ final class BluebotProviderCatalogService
             CURLOPT_POSTFIELDS => $payload,
             CURLOPT_RETURNTRANSFER => true,
             CURLOPT_HTTPHEADER => $headers,
-            CURLOPT_CONNECTTIMEOUT => 5,
-            CURLOPT_TIMEOUT => 20,
+            CURLOPT_CONNECTTIMEOUT => min(5, max(2, $timeoutSeconds)),
+            CURLOPT_TIMEOUT => max(3, $timeoutSeconds),
             CURLOPT_SSL_VERIFYHOST => 2,
             CURLOPT_SSL_VERIFYPEER => true,
             CURLOPT_PROTOCOLS => CURLPROTO_HTTPS,
             CURLOPT_FOLLOWLOCATION => false,
-            CURLOPT_USERAGENT => 'BlueBot/0.5.32 ProviderCatalog',
+            CURLOPT_USERAGENT => 'BlueBot/0.5.33 ProviderCatalog',
         ]);
 
         $raw = curl_exec($ch);
         $error = curl_error($ch);
         $http = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        $contentType = (string) curl_getinfo($ch, CURLINFO_CONTENT_TYPE);
         curl_close($ch);
 
         if ($raw === false) {
-            return ['ok' => false, 'message' => $error !== '' ? $error : 'SMM provider request failed.'];
+            return [
+                'ok' => false,
+                'http_status' => $http,
+                'content_type' => $contentType,
+                'message' => $error !== '' ? $error : 'SMM provider request failed.',
+            ];
         }
         if ($http < 200 || $http >= 300) {
-            return ['ok' => false, 'message' => 'SMM provider returned HTTP ' . $http . '.'];
+            return [
+                'ok' => false,
+                'http_status' => $http,
+                'content_type' => $contentType,
+                'message' => 'SMM provider returned HTTP ' . $http . '.',
+            ];
         }
 
         $decoded = json_decode((string) $raw, true);
         if (!is_array($decoded)) {
-            return ['ok' => false, 'message' => 'SMM provider returned invalid JSON.'];
+            return [
+                'ok' => false,
+                'http_status' => $http,
+                'content_type' => $contentType,
+                'message' => 'SMM provider returned non-JSON content.',
+            ];
         }
 
         if (isset($decoded['error']) && trim((string) $decoded['error']) !== '') {
-            return ['ok' => false, 'message' => trim((string) $decoded['error'])];
+            return [
+                'ok' => false,
+                'data' => $decoded,
+                'http_status' => $http,
+                'content_type' => $contentType,
+                'message' => trim((string) $decoded['error']),
+            ];
         }
 
-        return ['ok' => true, 'data' => $decoded];
+        return [
+            'ok' => true,
+            'data' => $decoded,
+            'http_status' => $http,
+            'content_type' => $contentType,
+        ];
+    }
+
+    private static function requestQueryCatalog(
+        string $url,
+        string $apiKey,
+        string $keyParameter,
+        int $timeoutSeconds = 20
+    ): array {
+        if (!self::isSafeHttpsUrl($url)) {
+            return ['ok' => false, 'message' => 'Catalog URL is unsafe.'];
+        }
+
+        $separator = str_contains($url, '?') ? '&' : '?';
+        $requestUrl = $url . $separator . rawurlencode($keyParameter) . '=' . rawurlencode($apiKey);
+        $ch = curl_init($requestUrl);
+        if ($ch === false) {
+            return ['ok' => false, 'message' => 'Unable to initialise query-auth catalog request.'];
+        }
+
+        curl_setopt_array($ch, [
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_HTTPHEADER => ['Accept: application/json'],
+            CURLOPT_CONNECTTIMEOUT => min(5, max(2, $timeoutSeconds)),
+            CURLOPT_TIMEOUT => max(3, $timeoutSeconds),
+            CURLOPT_SSL_VERIFYHOST => 2,
+            CURLOPT_SSL_VERIFYPEER => true,
+            CURLOPT_PROTOCOLS => CURLPROTO_HTTPS,
+            CURLOPT_FOLLOWLOCATION => false,
+            CURLOPT_USERAGENT => 'BlueBot/0.5.33 ProviderCatalog',
+        ]);
+
+        $raw = curl_exec($ch);
+        $error = curl_error($ch);
+        $http = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        $contentType = (string) curl_getinfo($ch, CURLINFO_CONTENT_TYPE);
+        curl_close($ch);
+
+        if ($raw === false) {
+            return [
+                'ok' => false,
+                'http_status' => $http,
+                'content_type' => $contentType,
+                'message' => $error !== '' ? $error : 'Query-auth catalog request failed.',
+            ];
+        }
+        if ($http < 200 || $http >= 300) {
+            return [
+                'ok' => false,
+                'http_status' => $http,
+                'content_type' => $contentType,
+                'message' => 'Query-auth catalog returned HTTP ' . $http . '.',
+            ];
+        }
+
+        $decoded = json_decode((string) $raw, true);
+        if (!is_array($decoded)) {
+            return [
+                'ok' => false,
+                'http_status' => $http,
+                'content_type' => $contentType,
+                'message' => 'Query-auth catalog returned non-JSON content.',
+            ];
+        }
+
+        return [
+            'ok' => true,
+            'data' => $decoded,
+            'http_status' => $http,
+            'content_type' => $contentType,
+        ];
+    }
+
+    private static function requestJsonServices(
+        string $url,
+        string $apiKey,
+        string $authHeader,
+        string $authPrefix,
+        string $keyParameter = 'key',
+        int $timeoutSeconds = 20
+    ): array {
+        if (!self::isSafeHttpsUrl($url)) {
+            return ['ok' => false, 'message' => 'Catalog URL is unsafe.'];
+        }
+
+        $headers = ['Accept: application/json', 'Content-Type: application/json'];
+        if ($apiKey !== '' && trim($authHeader) !== '') {
+            $value = trim(($authPrefix !== '' ? $authPrefix . ' ' : '') . $apiKey);
+            $headers[] = $authHeader . ': ' . $value;
+        }
+
+        $payload = json_encode([
+            $keyParameter => $apiKey,
+            'action' => 'services',
+        ], JSON_UNESCAPED_SLASHES);
+        if (!is_string($payload)) {
+            return ['ok' => false, 'message' => 'Unable to encode JSON services payload.'];
+        }
+
+        $ch = curl_init($url);
+        if ($ch === false) {
+            return ['ok' => false, 'message' => 'Unable to initialise JSON services request.'];
+        }
+
+        curl_setopt_array($ch, [
+            CURLOPT_POST => true,
+            CURLOPT_POSTFIELDS => $payload,
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_HTTPHEADER => $headers,
+            CURLOPT_CONNECTTIMEOUT => min(5, max(2, $timeoutSeconds)),
+            CURLOPT_TIMEOUT => max(3, $timeoutSeconds),
+            CURLOPT_SSL_VERIFYHOST => 2,
+            CURLOPT_SSL_VERIFYPEER => true,
+            CURLOPT_PROTOCOLS => CURLPROTO_HTTPS,
+            CURLOPT_FOLLOWLOCATION => false,
+            CURLOPT_USERAGENT => 'BlueBot/0.5.33 ProviderCatalog',
+        ]);
+
+        $raw = curl_exec($ch);
+        $error = curl_error($ch);
+        $http = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        $contentType = (string) curl_getinfo($ch, CURLINFO_CONTENT_TYPE);
+        curl_close($ch);
+
+        if ($raw === false) {
+            return [
+                'ok' => false,
+                'http_status' => $http,
+                'content_type' => $contentType,
+                'message' => $error !== '' ? $error : 'JSON services request failed.',
+            ];
+        }
+        if ($http < 200 || $http >= 300) {
+            return [
+                'ok' => false,
+                'http_status' => $http,
+                'content_type' => $contentType,
+                'message' => 'JSON services endpoint returned HTTP ' . $http . '.',
+            ];
+        }
+
+        $decoded = json_decode((string) $raw, true);
+        if (!is_array($decoded)) {
+            return [
+                'ok' => false,
+                'http_status' => $http,
+                'content_type' => $contentType,
+                'message' => 'JSON services endpoint returned non-JSON content.',
+            ];
+        }
+
+        if (isset($decoded['error']) && trim((string) $decoded['error']) !== '') {
+            return [
+                'ok' => false,
+                'data' => $decoded,
+                'http_status' => $http,
+                'content_type' => $contentType,
+                'message' => trim((string) $decoded['error']),
+            ];
+        }
+
+        return [
+            'ok' => true,
+            'data' => $decoded,
+            'http_status' => $http,
+            'content_type' => $contentType,
+        ];
     }
 
     private static function firstNumericValue(array $item, array $paths): ?float
