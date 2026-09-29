@@ -131,17 +131,21 @@ BlueBot از چند Adapter مستقل برای اتصال به پنل‌های 
 <h2 dir="rtl" align="right">⭐ فروش Telegram Stars و Premium</h2>
 
 <p dir="rtl" align="right">
-بخش «فروش خدمات» از سفارش‌های Telegram Stars و Telegram Premium با تأیید دستی ادمین پشتیبانی می‌کند. برای این دو نوع سرویس، BlueBot دیگر از مدیر «کد داخلی محصول» یا <code>Provider Service Code</code> نمی‌خواهد؛ کد داخلی از نوع سرویس و مقدار آن به‌صورت قطعی ساخته می‌شود.
+بخش «فروش خدمات» از Provider <strong>TGTools</strong> برای Telegram Stars و Telegram Premium پشتیبانی می‌کند. سفارش از کیف پول داخلی BlueBot ثبت می‌شود و فقط بعد از تأیید دستی ادمین به Provider فرستاده می‌شود.
 </p>
 
-- Stars: کد داخلی بر اساس تعداد ستاره ساخته می‌شود؛ مانند <code>tgtools-stars-100</code>.
-- Premium: کد داخلی بر اساس مدت ساخته می‌شود؛ مانند <code>tgtools-premium-3m</code>.
-- دکمه «ساخت/همگام‌سازی خودکار محصولات» بسته‌های متداول Stars و پلن‌های ۳، ۶ و ۱۲ ماه Premium را می‌سازد.
-- محصولات تازه با قیمت صفر و غیرفعال ساخته می‌شوند؛ با تعیین قیمت فروش در پنل، فعال می‌شوند.
-- مقصد TGTools برای Stars/Premium باید username معتبر تلگرام باشد.
+- <code>GET /api/purchase/prices</code> — دریافت قیمت‌های زنده و بسته‌های Stars/Premium از TGTools
+- <code>POST /api/purchase/stars</code> — ارسال Stars بر اساس username و مقدار
+- <code>POST /api/purchase/premium</code> — ارسال Premium برای ۳، ۶ یا ۱۲ ماه
+- <code>GET /api/purchase/{transactionId}</code> — پیگیری وضعیت سفارش Provider
+- <code>trackingCode</code> — استفاده از کد سفارش BlueBot برای جلوگیری از ارسال تکراری
+- برای TGTools هیچ <code>Provider Service Code</code> لازم نیست؛ BlueBot کد داخلی را خودش از نوع و مقدار محصول می‌سازد.
+- بسته‌های Stars از پاسخ زنده TGTools تشخیص داده می‌شوند؛ اگر endpoint موقتاً در دسترس نباشد، BlueBot یک کاتالوگ پایه و غیرفعال می‌سازد.
+- محصولات تازه با قیمت فروش صفر و حالت غیرفعال ساخته می‌شوند؛ مدیر قیمت تومان را تعیین می‌کند تا محصول فعال شود.
+- Cron هر ۱۵ دقیقه کاتالوگ TGTools را تازه می‌کند و سفارش‌های درحال‌پردازش را نیز پیگیری می‌کند.
 
-> [!NOTE]
-> مستندات Marketapp/Fragment برای Stars و Premium از endpointهای مبتنی بر مقدار/مدت استفاده می‌کنند، نه شناسه‌ی opaque محصول. BlueBot نیز به همین دلیل شناسه داخلی خودش را تولید می‌کند و نیاز به واردکردن کد محصول خارجی ندارد.
+> [!IMPORTANT]
+> مقصد TGTools برای Stars/Premium باید username معتبر تلگرام باشد. API Key فقط در تنظیمات امن پنل ذخیره می‌شود و به کاربر نمایش داده نمی‌شود.
 
 <a id="payments"></a>
 <h2 dir="rtl" align="right">💳 سیستم پرداخت</h2>
