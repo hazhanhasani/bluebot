@@ -976,6 +976,14 @@ final class BluebotDigitalServices
 
     public static function categoryForProduct(array $product): string
     {
+        // Explicit admin/provider category always wins. This lets the dedicated
+        // Categories page fully control how every digital service appears.
+        $metadata = self::productMetadata($product);
+        $key = strtolower(trim((string) ($metadata['category_key'] ?? '')));
+        if ($key !== '' && preg_match('/^[a-z0-9_-]{1,40}$/', $key)) {
+            return $key;
+        }
+
         $type = (string) ($product['type'] ?? '');
         if ($type === 'telegram_premium') {
             return 'premium';
@@ -985,12 +993,6 @@ final class BluebotDigitalServices
         }
         if ($type === 'virtual_number') {
             return 'virtual_number';
-        }
-
-        $metadata = self::productMetadata($product);
-        $key = strtolower(trim((string) ($metadata['category_key'] ?? '')));
-        if ($key !== '' && preg_match('/^[a-z0-9_-]{1,40}$/', $key)) {
-            return $key;
         }
 
         return 'other';
