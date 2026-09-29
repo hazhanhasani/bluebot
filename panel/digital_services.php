@@ -73,14 +73,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             ds_panel_set_setting($pdo, 'tgtools_api_key', $apiKey, true);
         }
 
-        // Stars and Premium in BlueBot use TGTools as the delivery provider.
-        $migrateProducts = $pdo->prepare(
-            "UPDATE digital_service_products
-             SET provider = 'tgtools', updated_at = NOW()
-             WHERE type IN ('telegram_stars', 'telegram_premium')"
-        );
-        $migrateProducts->execute();
-
+        // TGTools owns only its own synchronized products. Other providers
+        // (for example OZVinoo) may expose the same package sizes and must
+        // remain independent.
         $catalog = BluebotDigitalServices::ensureTgToolsCatalog($pdo);
         $catalogMessage = 'تنظیمات TGTools ذخیره شد. محصولات Stars/Premium همگام شدند: '
             . (int) ($catalog['created'] ?? 0) . ' جدید، '
