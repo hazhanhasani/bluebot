@@ -65,40 +65,52 @@ final class BluebotProviderCatalogService
     ): array {
         $errors = [];
         $candidates = array_values(array_unique(array_filter(array_map('trim', $urls))));
+        $authProfiles = self::authProfiles($apiKey, $authHeader, $authPrefix);
 
-        // First try normal REST/JSON GET catalogs.
+        // Try REST/JSON GET catalogs with the configured auth first, then
+        // common API-key header conventions. This is intentionally read-only.
         foreach ($candidates as $url) {
             if (!self::isSafeHttpsUrl($url)) {
                 continue;
             }
 
-            $response = self::requestCatalogUrl($url, $apiKey, $authHeader, $authPrefix);
-            if (empty($response['ok'])) {
-                $errors[] = $url . ' [GET]: ' . (string) ($response['message'] ?? 'request failed');
-                continue;
-            }
+            foreach ($authProfiles as $profile) {
+                $response = self::requestCatalogUrl(
+                    $url,
+                    $apiKey,
+                    (string) $profile['header'],
+                    (string) $profile['prefix']
+                );
+                if (empty($response['ok'])) {
+                    $errors[] = $url . ' [GET/' . $profile['label'] . ']: '
+                        . (string) ($response['message'] ?? 'request failed');
+                    continue;
+                }
 
-            $body = is_array($response['data'] ?? null) ? $response['data'] : [];
-            $mapping = self::autoDiscoverCatalogMapping($body);
-            if (!empty($mapping['ok'])) {
-                return [
-                    'ok' => true,
-                    'api_style' => 'rest',
-                    'url' => $url,
-                    'products_path' => (string) $mapping['products_path'],
-                    'id_field' => (string) $mapping['id_field'],
-                    'name_field' => (string) $mapping['name_field'],
-                    'category_field' => (string) $mapping['category_field'],
-                    'price_field' => (string) $mapping['price_field'],
-                ];
-            }
+                $body = is_array($response['data'] ?? null) ? $response['data'] : [];
+                $mapping = self::autoDiscoverCatalogMapping($body);
+                if (!empty($mapping['ok'])) {
+                    return [
+                        'ok' => true,
+                        'api_style' => 'rest',
+                        'url' => $url,
+                        'auth_header' => (string) $profile['header'],
+                        'auth_prefix' => (string) $profile['prefix'],
+                        'products_path' => (string) $mapping['products_path'],
+                        'id_field' => (string) $mapping['id_field'],
+                        'name_field' => (string) $mapping['name_field'],
+                        'category_field' => (string) $mapping['category_field'],
+                        'price_field' => (string) $mapping['price_field'],
+                    ];
+                }
 
-            $errors[] = $url . ' [GET]: JSON found but no product list could be detected';
+                $errors[] = $url . ' [GET/' . $profile['label'] . ']: JSON found but no product list was detected';
+            }
         }
 
-        // SMM panels commonly expose products via POST action=services instead
-        // of a GET /services endpoint. OZVinoo/Callinoo-style panels are
-        // therefore probed with the same credentials before we give up.
+        // SMM-compatible panels publish catalogs with POST action=services.
+        // Probe it with the same safe auth variants; the API key is also sent
+        // in the standard form body as "key".
         if (trim($apiKey) !== '') {
             $smmCandidates = [];
             foreach ($candidates as $url) {
@@ -117,7 +129,7 @@ final class BluebotProviderCatalogService
                     continue;
                 }
                 $origin = $scheme . '://' . $host . $port;
-                foreach (['/api/v2', '/api', '/v2', '/'] as $path) {
+                foreach (['/api/v2', '/api/v1', '/api', '/v2', '/v1', '/'] as $path) {
                     $smmCandidates[] = rtrim($origin, '/') . $path;
                 }
             }
@@ -127,35 +139,45 @@ final class BluebotProviderCatalogService
                     continue;
                 }
 
-                $response = self::requestSmmServices($url, $apiKey, $authHeader, $authPrefix);
-                if (empty($response['ok'])) {
-                    $errors[] = $url . ' [SMM POST]: ' . (string) ($response['message'] ?? 'request failed');
-                    continue;
-                }
+                foreach ($authProfiles as $profile) {
+                    $response = self::requestSmmServices(
+                        $url,
+                        $apiKey,
+                        (string) $profile['header'],
+                        (string) $profile['prefix']
+                    );
+                    if (empty($response['ok'])) {
+                        $errors[] = $url . ' [SMM/' . $profile['label'] . ']: '
+                            . (string) ($response['message'] ?? 'request failed');
+                        continue;
+                    }
 
-                $body = is_array($response['data'] ?? null) ? $response['data'] : [];
-                $mapping = self::autoDiscoverCatalogMapping($body);
-                if (!empty($mapping['ok'])) {
-                    return [
-                        'ok' => true,
-                        'api_style' => 'smm',
-                        'url' => $url,
-                        'products_path' => 'smm:' . (string) $mapping['products_path'],
-                        'id_field' => (string) $mapping['id_field'],
-                        'name_field' => (string) $mapping['name_field'],
-                        'category_field' => (string) $mapping['category_field'],
-                        'price_field' => (string) $mapping['price_field'],
-                    ];
-                }
+                    $body = is_array($response['data'] ?? null) ? $response['data'] : [];
+                    $mapping = self::autoDiscoverCatalogMapping($body);
+                    if (!empty($mapping['ok'])) {
+                        return [
+                            'ok' => true,
+                            'api_style' => 'smm',
+                            'url' => $url,
+                            'auth_header' => (string) $profile['header'],
+                            'auth_prefix' => (string) $profile['prefix'],
+                            'products_path' => 'smm:' . (string) $mapping['products_path'],
+                            'id_field' => (string) $mapping['id_field'],
+                            'name_field' => (string) $mapping['name_field'],
+                            'category_field' => (string) $mapping['category_field'],
+                            'price_field' => (string) $mapping['price_field'],
+                        ];
+                    }
 
-                $errors[] = $url . ' [SMM POST]: JSON found but no service list could be detected';
+                    $errors[] = $url . ' [SMM/' . $profile['label'] . ']: JSON found but no service list was detected';
+                }
             }
         }
 
         return [
             'ok' => false,
             'message' => $errors !== []
-                ? implode(' | ', array_slice($errors, 0, 6))
+                ? implode(' | ', array_slice($errors, 0, 8))
                 : 'No compatible catalog endpoint was detected.',
         ];
     }
@@ -561,17 +583,28 @@ final class BluebotProviderCatalogService
     {
         $haystack = mb_strtolower(trim($rawCategory . ' ' . $productName), 'UTF-8');
 
+        // Keep the high-value Telegram purchase families separate, then map
+        // the public OZVinoo service families into stable customer categories.
         $known = [
-            'premium' => ['label' => '🎁 تلگرام پرمیوم', 'needles' => ['premium', 'پرمیوم']],
-            'stars' => ['label' => '⭐ استارز تلگرام', 'needles' => ['stars', 'star ', 'telegram star', 'استار', 'ستاره']],
+            'premium' => ['label' => '🎁 تلگرام پرمیوم', 'needles' => ['telegram premium', 'تلگرام پرمیوم', 'پرمیوم اکانت']],
+            'stars' => ['label' => '⭐ استارز تلگرام', 'needles' => ['telegram stars', 'telegram star', 'استارز', 'استار تلگرام']],
             'telegram' => ['label' => '✈️ خدمات تلگرام', 'needles' => ['telegram', 'تلگرام', 'member', 'ممبر']],
-            'instagram' => ['label' => '📸 خدمات اینستاگرام', 'needles' => ['instagram', 'اینستاگرام', 'follower', 'فالور', 'like']],
+            'instagram' => ['label' => '📸 خدمات اینستاگرام', 'needles' => ['instagram', 'اینستاگرام']],
+            'youtube' => ['label' => '▶️ خدمات یوتیوب', 'needles' => ['youtube', 'یوتیوب']],
+            'twitter' => ['label' => '𝕏 خدمات X / توییتر', 'needles' => ['twitter', 'توییتر', 'x.com']],
+            'tiktok' => ['label' => '🎵 خدمات تیک‌تاک', 'needles' => ['tiktok', 'tik tok', 'تیک تاک', 'تیک‌تاک']],
+            'spotify' => ['label' => '🎧 خدمات اسپاتیفای', 'needles' => ['spotify', 'اسپاتیفای']],
+            'linkedin' => ['label' => '💼 خدمات لینکدین', 'needles' => ['linkedin', 'لینکدین']],
+            'facebook' => ['label' => '📘 خدمات فیسبوک', 'needles' => ['facebook', 'فیسبوک']],
+            'whatsapp' => ['label' => '🟢 خدمات واتساپ', 'needles' => ['whatsapp', 'واتساپ']],
+            'likee' => ['label' => '💜 خدمات Likee', 'needles' => ['likee', 'لایکی']],
+            'naver' => ['label' => '🟩 Naver TV', 'needles' => ['naver', 'ناور']],
+            'virtual_number' => ['label' => '📱 شماره مجازی', 'needles' => ['virtual number', 'شماره مجازی']],
+            'design' => ['label' => '🎨 طراحی و گرافیک', 'needles' => ['design', 'graphic', 'banner', 'طراحی', 'گرافیک', 'بنر']],
             'giftcards' => ['label' => '🎁 گیفت‌کارت', 'needles' => ['gift card', 'giftcard', 'گیفت کارت', 'گیفت‌کارت', 'steam', 'playstation', 'amazon']],
             'games' => ['label' => '🎮 بازی و شارژ', 'needles' => ['game', 'gaming', 'pubg', 'free fire', 'بازی', 'شارژ بازی']],
             'apple' => ['label' => '🍎 خدمات اپل', 'needles' => ['apple', 'اپل', 'icloud']],
             'chatgpt' => ['label' => '🤖 هوش مصنوعی', 'needles' => ['chatgpt', 'openai', 'claude', 'هوش مصنوعی']],
-            'virtual_number' => ['label' => '📱 شماره مجازی', 'needles' => ['virtual number', 'number', 'شماره مجازی']],
-            'design' => ['label' => '🎨 طراحی و دیجیتال', 'needles' => ['design', 'website', 'banner', 'طراحی', 'سایت', 'بنر']],
         ];
 
         foreach ($known as $key => $info) {
@@ -672,6 +705,12 @@ final class BluebotProviderCatalogService
             'services', 'products', 'items', 'list', 'results', 'rows', 'data', 'result', 'response', '.',
         ];
 
+        foreach (self::collectArrayPaths($body, '', 0, 5) as $path) {
+            if (!in_array($path, $paths, true)) {
+                $paths[] = $path;
+            }
+        }
+
         foreach ($paths as $productsPath) {
             $items = $productsPath === '.' ? $body : self::valueAtPath($body, $productsPath);
             if (!is_array($items) || $items === []) {
@@ -696,19 +735,21 @@ final class BluebotProviderCatalogService
 
             $idField = self::firstMatchingField($sample, [
                 '__bluebot_key', 'id', 'service_id', 'serviceId', 'service.id',
-                'service', 'code', 'service_code', 'serviceCode', 'sku',
+                'service', 'code', 'service_code', 'serviceCode', 'sku', 'product_id', 'productId',
             ]);
             $nameField = self::firstMatchingField($sample, [
                 'name', 'title', 'service_name', 'serviceName', 'service.name', 'label',
+                'product_name', 'productName',
             ]);
             $priceField = self::firstMatchingField($sample, [
                 'price', 'cost', 'rate', 'amount', 'base_price', 'basePrice',
                 'wholesale_price', 'wholesalePrice', 'pricing.price', 'pricing.amount',
-                'price.amount',
+                'price.amount', 'final_price', 'finalPrice',
             ]);
             $categoryField = self::firstMatchingField($sample, [
                 'category_name', 'categoryName', 'category.name', 'category.title',
                 'group_name', 'groupName', 'group.name', 'category', 'group', 'type',
+                'platform', 'network',
             ]);
 
             if ($idField === '' || $nameField === '' || $priceField === '') {
@@ -727,6 +768,45 @@ final class BluebotProviderCatalogService
         }
 
         return ['ok' => false, 'message' => 'BlueBot could not auto-detect the provider product list/fields.'];
+    }
+
+    private static function collectArrayPaths(array $node, string $prefix, int $depth, int $maxDepth): array
+    {
+        if ($depth > $maxDepth) {
+            return [];
+        }
+
+        $paths = [];
+        foreach ($node as $key => $value) {
+            if (!is_array($value) || $value === []) {
+                continue;
+            }
+
+            $segment = (string) $key;
+            if (!preg_match('/^[A-Za-z0-9_-]+$/', $segment)) {
+                continue;
+            }
+            $path = $prefix === '' ? $segment : $prefix . '.' . $segment;
+
+            $hasArrayItem = false;
+            foreach ($value as $item) {
+                if (is_array($item)) {
+                    $hasArrayItem = true;
+                    break;
+                }
+            }
+            if ($hasArrayItem) {
+                $paths[] = $path;
+            }
+
+            if (self::isAssoc($value)) {
+                foreach (self::collectArrayPaths($value, $path, $depth + 1, $maxDepth) as $nestedPath) {
+                    $paths[] = $nestedPath;
+                }
+            }
+        }
+
+        return array_values(array_unique($paths));
     }
 
     private static function normaliseItemCollection(array $items): array
@@ -821,6 +901,47 @@ final class BluebotProviderCatalogService
         return $response;
     }
 
+    private static function authProfiles(
+        string $apiKey,
+        string $authHeader,
+        string $authPrefix
+    ): array {
+        if (trim($apiKey) === '') {
+            return [[
+                'header' => '',
+                'prefix' => '',
+                'label' => 'none',
+            ]];
+        }
+
+        $profiles = [
+            ['header' => trim($authHeader), 'prefix' => trim($authPrefix), 'label' => 'configured'],
+            ['header' => 'Authorization', 'prefix' => 'Bearer', 'label' => 'bearer'],
+            ['header' => 'Authorization', 'prefix' => '', 'label' => 'authorization-raw'],
+            ['header' => 'X-API-Key', 'prefix' => '', 'label' => 'x-api-key'],
+            ['header' => 'X-Api-Key', 'prefix' => '', 'label' => 'x-api-key-alt'],
+            ['header' => 'Api-Key', 'prefix' => '', 'label' => 'api-key'],
+        ];
+
+        $unique = [];
+        $result = [];
+        foreach ($profiles as $profile) {
+            $header = trim((string) $profile['header']);
+            $prefix = trim((string) $profile['prefix']);
+            if ($header === '' || !preg_match('/^[A-Za-z0-9-]{1,80}$/', $header)) {
+                continue;
+            }
+            $key = strtolower($header) . '|' . $prefix;
+            if (isset($unique[$key])) {
+                continue;
+            }
+            $unique[$key] = true;
+            $result[] = $profile;
+        }
+
+        return $result;
+    }
+
     private static function requestCatalogUrl(
         string $url,
         string $apiKey,
@@ -832,7 +953,7 @@ final class BluebotProviderCatalogService
         }
 
         $headers = ['Accept: application/json'];
-        if ($apiKey !== '') {
+        if ($apiKey !== '' && trim($authHeader) !== '') {
             $value = trim(($authPrefix !== '' ? $authPrefix . ' ' : '') . $apiKey);
             $headers[] = $authHeader . ': ' . $value;
         }
@@ -851,7 +972,7 @@ final class BluebotProviderCatalogService
             CURLOPT_SSL_VERIFYPEER => true,
             CURLOPT_PROTOCOLS => CURLPROTO_HTTPS,
             CURLOPT_FOLLOWLOCATION => false,
-            CURLOPT_USERAGENT => 'BlueBot/0.5.31 ProviderCatalog',
+            CURLOPT_USERAGENT => 'BlueBot/0.5.32 ProviderCatalog',
         ]);
 
         $raw = curl_exec($ch);
@@ -892,7 +1013,7 @@ final class BluebotProviderCatalogService
             'Content-Type: application/x-www-form-urlencoded',
         ];
         $headerValue = trim(($authPrefix !== '' ? $authPrefix . ' ' : '') . $apiKey);
-        if ($headerValue !== '') {
+        if ($headerValue !== '' && trim($authHeader) !== '') {
             $headers[] = $authHeader . ': ' . $headerValue;
         }
 
@@ -917,7 +1038,7 @@ final class BluebotProviderCatalogService
             CURLOPT_SSL_VERIFYPEER => true,
             CURLOPT_PROTOCOLS => CURLPROTO_HTTPS,
             CURLOPT_FOLLOWLOCATION => false,
-            CURLOPT_USERAGENT => 'BlueBot/0.5.31 ProviderCatalog',
+            CURLOPT_USERAGENT => 'BlueBot/0.5.32 ProviderCatalog',
         ]);
 
         $raw = curl_exec($ch);
