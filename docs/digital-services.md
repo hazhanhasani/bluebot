@@ -1,48 +1,66 @@
 # Digital Services
 
-BlueBot's digital-services module sells non-VPN products such as Telegram Stars,
-Telegram Premium, manually delivered products, and products fulfilled by an
-external provider.
-
-## Safety rule: manual approval before delivery
-
-Creating an order never calls Telegram or an external provider. The wallet is
-charged and the order enters `pending_approval`. Delivery starts only after an
-administrator explicitly clicks **Approve & Send** in the Telegram admin message
-or the web panel.
-
-An administrator can reject a pending/failed order. BlueBot refunds the wallet
-inside the same database transaction and marks the order as `rejected`.
+BlueBot sells Telegram Stars, Telegram Premium, virtual numbers and other
+digital services. Orders are charged from the customer wallet and remain in
+`pending_approval` until an administrator clicks **Approve & Send**.
 
 ## Providers
 
-- `manual`: the administrator performs fulfillment externally and then confirms
-  the send action.
-- `telegram_bot`: currently supports Telegram Premium through
-  `giftPremiumSubscription`. Automatic Premium delivery accepts numeric Telegram
-  user IDs and supports 3, 6, or 12 months.
-- `ozvinoo`: HTTPS-only adapter restricted to `api.ozvinoo.xyz`. Configure the
-  exact order endpoint and API credentials in **Panel > Digital Services** after
-  confirming them against the provider documentation.
+- `tgtools`: Stars and Premium through TGTools.
+- `ozvinoo`: Stars, Premium and Telegram virtual numbers through the official
+  OZVinoo REST endpoints at `https://api.ozvinoo.xyz`.
+- `telegram_bot`: Telegram Premium through Bot API where supported.
+- `manual`: administrator-managed fulfillment.
+- Generic catalog providers remain supported separately through the provider
+  registry.
 
-Telegram Stars are not sent directly through Bot API. Configure Stars products
-as `manual` or use a supported provider such as OZVinoo.
+## OZVinoo / Callinoo
+
+Configure the API token in **Panel → Digital Services → OZVinoo**. BlueBot no
+longer probes the provider's OpenAPI root or treats OZVinoo as a generic SMM
+panel.
+
+Official endpoints used by BlueBot:
+
+- `GET /web/{token}/get-balance`
+- `GET/POST /telegram-services/stars/`
+- `GET/POST /telegram-services/premium/`
+- `GET /telegram-services/status/`
+- `GET/POST /telegram-numbers/numbers/`
+- `GET/POST /telegram-numbers/number-services/`
+- `GET /numbers/getAllOrders/`
+- `GET /numbers/getOpenOrders/`
+- `GET /numbers/getOrder/`
+- `POST /numbers/cancelOrder/`
+
+Stars, Premium packages and available virtual-number countries are synchronized
+into `digital_service_products`. The configured OZVinoo profit percentage is
+applied to every imported wholesale price. Missing products are disabled only
+when their corresponding endpoint synchronized successfully.
+
+For virtual numbers, checkout does not ask the customer for an external target.
+After administrator approval BlueBot reserves the selected country, shows the
+number when available and polls the order until the Telegram verification code
+arrives.
+
+## Background reconciliation
+
+`cronbot/digital_services.php` refreshes provider catalogs and reconciles
+processing orders. Stars/Premium orders are checked through the official status
+endpoint; virtual-number orders are checked through
+`/telegram-numbers/number-services/`.
 
 ## Database
 
-Run the normal BlueBot updater or:
+Run the normal updater or:
 
 ```bash
 php table.php
 ```
 
-The schema adds:
+The module uses:
 
 - `digital_service_products`
 - `digital_service_orders`
 - `digital_service_settings`
-
-## Main keyboard
-
-The main-menu token is `text_digital_services`. It is present in the default
-keyboard and can be enabled/disabled in the keyboard settings page.
+- `digital_service_providers`

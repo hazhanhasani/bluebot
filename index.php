@@ -1026,10 +1026,30 @@ if ($text == "/start" || $datain == "start" || $text == "start") {
     }
 
     savedata('clear', 'digital_service_id', (string) $product['id']);
+
+    $presetTarget = BluebotDigitalServices::presetTarget($product);
+    if ($presetTarget !== null) {
+        savedata('save', 'digital_service_target', $presetTarget);
+        step('digital_service_confirm', $from_id);
+
+        $confirmText = "<b>" . htmlspecialchars($textbotlang['digitalServices']['confirmTitle'], ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . "</b>\n\n"
+            . "📦 " . htmlspecialchars((string) $product['name'], ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . "\n"
+            . "💳 مبلغ: <b>" . number_format((float) $product['price']) . " تومان</b>\n\n"
+            . "پس از ثبت سفارش، شماره رزرو می‌شود و کد ورود به‌صورت خودکار برای شما ارسال خواهد شد.";
+
+        Editmessagetext(
+            $from_id,
+            $message_id,
+            $confirmText,
+            BluebotDigitalServices::confirmKeyboard((int) $product['id'], $textbotlang['users']['backbtn'])
+        );
+        return;
+    }
+
     step('digital_service_target', $from_id);
 
     $targetPrompt = $textbotlang['digitalServices']['targetPrompt'];
-    if (($product['provider'] ?? '') === 'tgtools'
+    if (in_array((string) ($product['provider'] ?? ''), ['tgtools', 'ozvinoo'], true)
         && in_array((string) ($product['type'] ?? ''), ['telegram_stars', 'telegram_premium'], true)) {
         $targetPrompt = "👤 یوزرنیم تلگرام دریافت‌کننده را ارسال کنید.\nمثال: <code>@username</code>";
     } elseif (($product['provider'] ?? '') === 'ozvinoo') {
