@@ -255,8 +255,8 @@ final class BluebotDigitalServices
 
         $find = $pdo->prepare(
             "SELECT * FROM digital_service_products
-             WHERE type = ? AND service_value = ?
-             ORDER BY (provider = 'tgtools') DESC, id ASC
+             WHERE provider = 'tgtools' AND type = ? AND service_value = ?
+             ORDER BY id ASC
              LIMIT 1"
         );
         $update = $pdo->prepare(
@@ -612,15 +612,24 @@ final class BluebotDigitalServices
             $messages[] = 'Premium: ' . (string) ($responses['telegram_premium']['message'] ?? 'request failed');
         }
 
+        $numberDefinitionCount = 0;
         if (!empty($responses['virtual_number']['ok'])) {
-            $successfulTypes[] = 'virtual_number';
             foreach (self::ozvinooResponseList($responses['virtual_number']) as $item) {
                 if (!is_array($item)) {
                     continue;
                 }
 
-                $countryId = self::findScalarByKeys($item, ['id', 'country_id', 'countryId']);
-                $country = trim((string) (self::findScalarByKeys($item, ['country', 'countery', 'name', 'title']) ?? ''));
+                $countryId = self::findScalarByKeys($item, [
+                    'id',
+                    'country_id',
+                    'countryId',
+                    'country_identifier',
+                    'countryIdentifier',
+                ]);
+                $country = trim((string) (self::findScalarByKeys(
+                    $item,
+                    ['country', 'countery', 'country_name', 'countryName', 'name', 'title']
+                ) ?? ''));
                 $price = self::findScalarByKeys($item, ['price', 'cost', 'amount_toman', 'toman']);
                 if ($countryId === null || $countryId === '' || $country === '' || !is_numeric($price) || (float) $price <= 0) {
                     continue;
@@ -628,16 +637,16 @@ final class BluebotDigitalServices
 
                 $range = self::findScalarByKeys($item, ['range', 'dial_code', 'prefix']);
                 $definitions[] = [
-                    'code' => 'auto-ozvinoo-number-' . substr(hash('sha256', (string) $countryId), 0, 12),
+                    'code' => 'auto-ozvinoo-number-v2-' . substr(hash('sha256', (string) $countryId), 0, 12),
                     'name' => '📱 شماره تلگرام · ' . $country,
                     'type' => 'virtual_number',
                     'price' => (float) $price,
                     'service_value' => 1,
                     'provider_service_code' => (string) $countryId,
-                    'description' => 'Telegram virtual number via OZVinoo official API.',
+                    'description' => 'Telegram virtual number via OZVinoo V2 API.',
                     'metadata' => [
                         'source' => 'ozvinoo-official-api',
-                        'api_family' => 'telegram-numbers',
+                        'api_family' => 'telegram-numbers-v2',
                         'category_key' => 'virtual_number',
                         'category_label' => '📱 شماره مجازی تلگرام',
                         'country_id' => (string) $countryId,
@@ -646,12 +655,100 @@ final class BluebotDigitalServices
                         'none_report' => true,
                     ],
                 ];
+                $numberDefinitionCount++;
+            }
+            if ($numberDefinitionCount > 0 && !in_array('virtual_number', $successfulTypes, true)) {
+                $successfulTypes[] = 'virtual_number';
             }
         } else {
             if ((int) ($responses['virtual_number']['http_status'] ?? 0) === 404) {
                 $successfulTypes[] = 'virtual_number';
             }
-            $messages[] = 'Numbers: ' . (string) ($responses['virtual_number']['message'] ?? 'request failed');
+            $messages[] = 'Numbers V2: ' . (string) ($responses['virtual_number']['message'] ?? 'request failed');
+        }
+
+        // Some OZVinoo installations expose the documented V2 endpoint but
+        // omit the country id needed for purchasing. Fall back to the older,
+        // still documented /web API so virtual numbers do not disappear from
+        // the BlueBot catalog.
+        if ($numberDefinitionCount === 0) {
+            $applicationsResponse = $client->applications();
+            $applicationItems = !empty($applicationsResponse['ok'])
+                ? self::ozvinooResponseList($applicationsResponse)
+                : [];
+            $telegramServiceId = 0;
+
+            foreach ($applicationItems as $application) {
+                if (!is_array($application)) {
+                    continue;
+                }
+                $id = self::ozvinooPositiveInt(self::findScalarByKeys($application, ['id', 'service_id']));
+                $code = strtolower(trim((string) (self::findScalarByKeys($application, ['code']) ?? '')));
+                $title = strtolower(trim((string) (self::findScalarByKeys($application, ['title', 'name']) ?? '')));
+                if ($id > 0 && ($code === 'tg' || str_contains($title, 'telegram') || str_contains($title, 'تلگرام'))) {
+                    $telegramServiceId = $id;
+                    break;
+                }
+            }
+
+            if ($telegramServiceId > 0) {
+                $pricesResponse = $client->prices($telegramServiceId);
+                if (!empty($pricesResponse['ok'])) {
+                    if (!in_array('virtual_number', $successfulTypes, true)) {
+                        $successfulTypes[] = 'virtual_number';
+                    }
+                    foreach (self::ozvinooResponseList($pricesResponse) as $item) {
+                        if (!is_array($item)) {
+                            continue;
+                        }
+                        $country = trim((string) (self::findScalarByKeys(
+                            $item,
+                            ['country', 'countery', 'country_name', 'countryName', 'name', 'title']
+                        ) ?? ''));
+                        $range = self::findScalarByKeys($item, ['range', 'dial_code', 'prefix']);
+                        $price = self::findScalarByKeys($item, ['price', 'cost', 'amount_toman', 'toman']);
+                        $availability = strtolower(trim((string) (self::findScalarByKeys(
+                            $item,
+                            ['count', 'status', 'availability', 'available']
+                        ) ?? '')));
+
+                        if ($country === '' || $range === null || $range === '' || !is_numeric($price) || (float) $price <= 0) {
+                            continue;
+                        }
+                        if (str_contains($availability, 'ناموجود')
+                            || in_array($availability, ['0', 'false', 'no', 'unavailable', 'out_of_stock'], true)) {
+                            continue;
+                        }
+
+                        $identity = $telegramServiceId . ':' . (string) $range . ':' . $country;
+                        $definitions[] = [
+                            'code' => 'auto-ozvinoo-number-v1-' . substr(hash('sha256', $identity), 0, 12),
+                            'name' => '📱 شماره تلگرام · ' . $country,
+                            'type' => 'virtual_number',
+                            'price' => (float) $price,
+                            'service_value' => 1,
+                            'provider_service_code' => 'v1:' . $telegramServiceId . ':' . (string) $range,
+                            'description' => 'Telegram virtual number via OZVinoo documented /web API.',
+                            'metadata' => [
+                                'source' => 'ozvinoo-official-api',
+                                'api_family' => 'web-v1',
+                                'category_key' => 'virtual_number',
+                                'category_label' => '📱 شماره مجازی تلگرام',
+                                'service_id' => $telegramServiceId,
+                                'country' => $country,
+                                'range' => (string) $range,
+                            ],
+                        ];
+                        $numberDefinitionCount++;
+                    }
+                } else {
+                    $messages[] = 'Numbers V1 prices: ' . (string) ($pricesResponse['message'] ?? 'request failed');
+                }
+            } elseif (!empty($applicationsResponse['ok'])) {
+                $messages[] = 'Numbers V1: Telegram application was not found.';
+            } else {
+                $messages[] = 'Numbers V1 applications: ' . (string) ($applicationsResponse['message'] ?? 'request failed');
+            }
         }
 
         if ($successfulTypes === []) {
@@ -771,9 +868,17 @@ final class BluebotDigitalServices
         self::setSetting($pdo, 'ozvinoo_auth_header', 'Authorization', false);
         self::setSetting($pdo, 'ozvinoo_auth_prefix', 'Bearer', false);
 
+        $typeCounts = [
+            'stars' => count($seenByType['telegram_stars'] ?? []),
+            'premium' => count($seenByType['telegram_premium'] ?? []),
+            'numbers' => count($seenByType['virtual_number'] ?? []),
+        ];
+        $summary = 'Stars ' . $typeCounts['stars']
+            . ' · Premium ' . $typeCounts['premium']
+            . ' · Numbers ' . $typeCounts['numbers'];
         $message = $messages === []
-            ? 'Official OZVinoo catalogs synchronized.'
-            : 'Partial sync: ' . implode(' | ', $messages);
+            ? 'Official OZVinoo catalogs synchronized. ' . $summary
+            : 'Partial sync: ' . $summary . ' | ' . implode(' | ', $messages);
         self::ozvinooMarkProviderSync($pdo, $messages === [] ? 'success' : 'partial', $message);
 
         return [
@@ -785,6 +890,7 @@ final class BluebotDigitalServices
             'message' => $message,
             'catalog_url' => 'https://api.ozvinoo.xyz/telegram-services/stars/',
             'api_style' => 'official-v1',
+            'type_counts' => $typeCounts,
         ];
     }
 
@@ -872,6 +978,14 @@ final class BluebotDigitalServices
 
     public static function categoryForProduct(array $product): string
     {
+        // Explicit admin/provider category always wins. This lets the dedicated
+        // Categories page fully control how every digital service appears.
+        $metadata = self::productMetadata($product);
+        $key = strtolower(trim((string) ($metadata['category_key'] ?? '')));
+        if ($key !== '' && preg_match('/^[a-z0-9_-]{1,40}$/', $key)) {
+            return $key;
+        }
+
         $type = (string) ($product['type'] ?? '');
         if ($type === 'telegram_premium') {
             return 'premium';
@@ -883,17 +997,169 @@ final class BluebotDigitalServices
             return 'virtual_number';
         }
 
-        $metadata = self::productMetadata($product);
-        $key = strtolower(trim((string) ($metadata['category_key'] ?? '')));
-        if ($key !== '' && preg_match('/^[a-z0-9_-]{1,40}$/', $key)) {
-            return $key;
+        return 'other';
+    }
+
+    public static function ensureManagedCategorySchema(PDO $pdo): bool
+    {
+        try {
+            $pdo->exec(
+                "CREATE TABLE IF NOT EXISTS digital_service_categories (
+                    id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+                    category_key VARCHAR(40) NOT NULL,
+                    name VARCHAR(120) NOT NULL,
+                    emoji VARCHAR(32) NOT NULL DEFAULT '',
+                    sort_order INT NOT NULL DEFAULT 0,
+                    active TINYINT(1) NOT NULL DEFAULT 1,
+                    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                    UNIQUE KEY uniq_digital_service_category_key (category_key)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci"
+            );
+
+            $defaults = [
+                ['premium', 'تلگرام پرمیوم', '🎁', 10],
+                ['stars', 'استارز تلگرام', '⭐', 20],
+                ['virtual_number', 'شماره مجازی تلگرام', '📱', 30],
+                ['telegram', 'خدمات تلگرام', '✈️', 40],
+                ['instagram', 'خدمات اینستاگرام', '📸', 50],
+                ['youtube', 'خدمات یوتیوب', '▶️', 60],
+                ['twitter', 'خدمات X / توییتر', '𝕏', 70],
+                ['tiktok', 'خدمات تیک‌تاک', '🎵', 80],
+                ['spotify', 'خدمات اسپاتیفای', '🎧', 90],
+                ['linkedin', 'خدمات لینکدین', '💼', 100],
+                ['facebook', 'خدمات فیسبوک', '📘', 110],
+                ['whatsapp', 'خدمات واتساپ', '🟢', 120],
+                ['giftcards', 'گیفت‌کارت', '🎁', 130],
+                ['games', 'بازی و شارژ', '🎮', 140],
+                ['apple', 'خدمات اپل', '🍎', 150],
+                ['chatgpt', 'هوش مصنوعی', '🤖', 160],
+                ['design', 'طراحی و گرافیک', '🎨', 170],
+                ['other', 'سایر خدمات', '🧩', 999],
+            ];
+
+            $count = (int) $pdo->query("SELECT COUNT(*) FROM digital_service_categories")->fetchColumn();
+            if ($count === 0) {
+                $insert = $pdo->prepare(
+                    "INSERT INTO digital_service_categories
+                     (category_key, name, emoji, sort_order, active)
+                     VALUES (?, ?, ?, ?, 1)"
+                );
+                foreach ($defaults as [$key, $name, $emoji, $sort]) {
+                    $insert->execute([$key, $name, $emoji, $sort]);
+                }
+            }
+
+            return true;
+        } catch (Throwable $e) {
+            return false;
+        }
+    }
+
+    public static function managedCategories(PDO $pdo, bool $activeOnly = false): array
+    {
+        self::ensureManagedCategorySchema($pdo);
+        try {
+            $exists = $pdo->query("SHOW TABLES LIKE 'digital_service_categories'")->fetchColumn();
+            if (!$exists) {
+                return [];
+            }
+            $sql = "SELECT * FROM digital_service_categories";
+            if ($activeOnly) {
+                $sql .= " WHERE active = 1";
+            }
+            $sql .= " ORDER BY sort_order ASC, id ASC";
+            return $pdo->query($sql)->fetchAll(PDO::FETCH_ASSOC) ?: [];
+        } catch (Throwable $e) {
+            return [];
+        }
+    }
+
+    public static function ensureManagedCategories(PDO $pdo): void
+    {
+        $categories = self::managedCategories($pdo);
+        if ($categories === []) {
+            return;
         }
 
-        return 'other';
+        $known = [];
+        foreach ($categories as $category) {
+            $known[(string) ($category['category_key'] ?? '')] = true;
+        }
+
+        $insert = $pdo->prepare(
+            "INSERT IGNORE INTO digital_service_categories
+             (category_key, name, emoji, sort_order, active)
+             VALUES (?, ?, ?, ?, 1)"
+        );
+        $sort = 500;
+        foreach (self::listActive($pdo) as $product) {
+            $key = self::categoryForProduct($product);
+            if ($key === '' || isset($known[$key])) {
+                continue;
+            }
+            $metadata = self::productMetadata($product);
+            $rawLabel = trim((string) ($metadata['category_label'] ?? ''));
+            $name = $rawLabel !== '' ? $rawLabel : ucfirst(str_replace(['-', '_'], ' ', $key));
+            $insert->execute([$key, $name, '', $sort++]);
+            $known[$key] = true;
+        }
+    }
+
+    public static function managedCategory(PDO $pdo, string $category): ?array
+    {
+        try {
+            $stmt = $pdo->prepare(
+                "SELECT * FROM digital_service_categories WHERE category_key = ? LIMIT 1"
+            );
+            $stmt->execute([$category]);
+            $row = $stmt->fetch(PDO::FETCH_ASSOC);
+            return is_array($row) ? $row : null;
+        } catch (Throwable $e) {
+            return null;
+        }
+    }
+
+    public static function updateProductCategory(PDO $pdo, int $productId, string $category): bool
+    {
+        $category = strtolower(trim($category));
+        if ($productId <= 0 || !preg_match('/^[a-z0-9_-]{1,40}$/', $category)) {
+            return false;
+        }
+
+        $product = self::findProduct($pdo, $productId, false);
+        if (!is_array($product)) {
+            return false;
+        }
+
+        $metadata = self::productMetadata($product);
+        $metadata['category_key'] = $category;
+        $metadata['category_label'] = self::categoryLabel($category, $pdo);
+        $json = json_encode($metadata, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+        if (!is_string($json)) {
+            return false;
+        }
+
+        $stmt = $pdo->prepare(
+            "UPDATE digital_service_products SET metadata = ?, updated_at = NOW() WHERE id = ?"
+        );
+        $stmt->execute([$json, $productId]);
+        return true;
     }
 
     public static function categoryLabel(string $category, ?PDO $pdo = null): string
     {
+        if ($pdo instanceof PDO) {
+            $managed = self::managedCategory($pdo, $category);
+            if (is_array($managed)) {
+                $emoji = trim((string) ($managed['emoji'] ?? ''));
+                $name = trim((string) ($managed['name'] ?? ''));
+                if ($name !== '') {
+                    return trim($emoji . ' ' . $name);
+                }
+            }
+        }
+
         $fixed = [
             'premium' => '🎁 تلگرام پرمیوم',
             'stars' => '⭐ استارز تلگرام',
@@ -912,7 +1178,7 @@ final class BluebotDigitalServices
             'games' => '🎮 بازی و شارژ',
             'apple' => '🍎 خدمات اپل',
             'chatgpt' => '🤖 هوش مصنوعی',
-            'virtual_number' => '📱 شماره مجازی',
+            'virtual_number' => '📱 شماره مجازی تلگرام',
             'design' => '🎨 طراحی و گرافیک',
             'other' => '🧩 سایر خدمات',
         ];
@@ -936,46 +1202,59 @@ final class BluebotDigitalServices
         return '🛍 خدمات';
     }
 
+    private static function categorySortOrder(PDO $pdo, string $category): int
+    {
+        $managed = self::managedCategory($pdo, $category);
+        if (is_array($managed)) {
+            return (int) ($managed['sort_order'] ?? 500);
+        }
+
+        return match ($category) {
+            'premium' => 10,
+            'stars' => 20,
+            'virtual_number' => 30,
+            'telegram' => 40,
+            'instagram' => 50,
+            'youtube' => 60,
+            'twitter' => 70,
+            'tiktok' => 80,
+            'spotify' => 90,
+            'linkedin' => 100,
+            'facebook' => 110,
+            'whatsapp' => 120,
+            'other' => 999,
+            default => 500,
+        };
+    }
+
+    private static function categoryEnabled(PDO $pdo, string $category): bool
+    {
+        $managed = self::managedCategory($pdo, $category);
+        return !is_array($managed) || (int) ($managed['active'] ?? 1) === 1;
+    }
+
     public static function categoryKeyboard(PDO $pdo, string $backText): string
     {
+        self::ensureManagedCategories($pdo);
         $categories = [];
         foreach (self::listActive($pdo) as $product) {
             $category = self::categoryForProduct($product);
+            if (!self::categoryEnabled($pdo, $category)) {
+                continue;
+            }
             if (!isset($categories[$category])) {
                 $categories[$category] = [
                     'count' => 0,
                     'label' => self::categoryLabel($category, $pdo),
+                    'sort' => self::categorySortOrder($pdo, $category),
                 ];
             }
             $categories[$category]['count']++;
         }
 
-        $priority = [
-            'premium' => 10,
-            'stars' => 20,
-            'telegram' => 30,
-            'instagram' => 40,
-            'youtube' => 50,
-            'twitter' => 60,
-            'tiktok' => 70,
-            'spotify' => 80,
-            'linkedin' => 90,
-            'facebook' => 100,
-            'whatsapp' => 110,
-            'virtual_number' => 120,
-            'design' => 130,
-            'likee' => 140,
-            'naver' => 150,
-            'giftcards' => 160,
-            'games' => 170,
-            'apple' => 180,
-            'chatgpt' => 190,
-            'other' => 999,
-        ];
-
-        uksort($categories, static function (string $a, string $b) use ($priority): int {
-            $pa = $priority[$a] ?? 500;
-            $pb = $priority[$b] ?? 500;
+        uksort($categories, static function (string $a, string $b) use ($categories): int {
+            $pa = (int) ($categories[$a]['sort'] ?? 500);
+            $pb = (int) ($categories[$b]['sort'] ?? 500);
             if ($pa !== $pb) {
                 return $pa <=> $pb;
             }
@@ -1004,6 +1283,13 @@ final class BluebotDigitalServices
     public static function catalogKeyboard(PDO $pdo, string $backText, ?string $category = null): string
     {
         $rows = [];
+        if ($category !== null && !self::categoryEnabled($pdo, $category)) {
+            $rows[] = [[
+                'text' => '↩️ دسته‌بندی‌ها',
+                'callback_data' => 'ds_home',
+            ]];
+            return json_encode(['inline_keyboard' => $rows], JSON_UNESCAPED_UNICODE);
+        }
         foreach (self::listActive($pdo) as $product) {
             if ($category !== null && self::categoryForProduct($product) !== $category) {
                 continue;
@@ -1627,17 +1913,7 @@ final class BluebotDigitalServices
                     $service = $type === 'telegram_stars' ? 'stars' : 'premium';
                     $response = $client->telegramOrderStatus($service, $reference);
                     if (empty($response['ok'])) {
-                        if ($http === 422) {
-                            self::failAndRefundProviderOrder(
-                                $pdo,
-                                (int) $order['id'],
-                                'OZVinoo could not access the virtual-number account.',
-                                $response
-                            );
-                            $stats['failed']++;
-                        } else {
-                            $stats['errors']++;
-                        }
+                        $stats['errors']++;
                         continue;
                     }
 
@@ -1670,7 +1946,11 @@ final class BluebotDigitalServices
                 }
 
                 if ($type === 'virtual_number') {
-                    $response = $client->numberStatus($reference);
+                    $metadata = self::productMetadata($product);
+                    $apiFamily = (string) ($metadata['api_family'] ?? 'telegram-numbers-v2');
+                    $response = $apiFamily === 'web-v1'
+                        ? $client->getCodeV1($reference)
+                        : $client->numberStatus($reference);
                     $http = (int) ($response['http_status'] ?? 0);
                     if ($http === 202) {
                         $stats['pending']++;
@@ -1682,7 +1962,7 @@ final class BluebotDigitalServices
                     }
 
                     $body = self::ozvinooResponseBody($response);
-                    $data = is_array($body['data'] ?? null) ? $body['data'] : [];
+                    $data = is_array($body['data'] ?? null) ? $body['data'] : $body;
                     $code = trim((string) ($data['code'] ?? ''));
                     $number = trim((string) ($data['number'] ?? ''));
                     $state = strtolower(trim((string) ($data['status'] ?? '')));
@@ -1761,11 +2041,21 @@ final class BluebotDigitalServices
                 $response = $client->buyPremium($packageId, $username);
             } elseif ($type === 'virtual_number') {
                 $metadata = self::productMetadata($product);
-                $countryId = trim((string) ($metadata['country_id'] ?? $product['provider_service_code'] ?? ''));
-                if ($countryId === '') {
-                    return ['ok' => false, 'retryable' => true, 'error' => 'شناسه کشور شماره مجازی عضوینو پیدا نشد.'];
+                $apiFamily = (string) ($metadata['api_family'] ?? 'telegram-numbers-v2');
+                if ($apiFamily === 'web-v1') {
+                    $serviceId = max(0, (int) ($metadata['service_id'] ?? 0));
+                    $range = trim((string) ($metadata['range'] ?? ''));
+                    if ($serviceId <= 0 || $range === '') {
+                        return ['ok' => false, 'retryable' => true, 'error' => 'اطلاعات سرویس/کشور شماره مجازی عضوینو کامل نیست.'];
+                    }
+                    $response = $client->getNumberV1($serviceId, $range);
+                } else {
+                    $countryId = trim((string) ($metadata['country_id'] ?? $product['provider_service_code'] ?? ''));
+                    if ($countryId === '') {
+                        return ['ok' => false, 'retryable' => true, 'error' => 'شناسه کشور شماره مجازی عضوینو پیدا نشد.'];
+                    }
+                    $response = $client->buyNumber($countryId, true);
                 }
-                $response = $client->buyNumber($countryId, true);
             } else {
                 return ['ok' => false, 'error' => 'Unsupported OZVinoo official service type.'];
             }
@@ -1788,7 +2078,7 @@ final class BluebotDigitalServices
         $reference = '';
 
         if ($type === 'virtual_number') {
-            $reference = trim((string) ($data['order_id'] ?? $data['id'] ?? ''));
+            $reference = trim((string) ($data['order_id'] ?? $data['request_id'] ?? $data['id'] ?? ''));
         } else {
             $reference = trim((string) ($data['code'] ?? $data['order_id'] ?? $data['id'] ?? ''));
         }
