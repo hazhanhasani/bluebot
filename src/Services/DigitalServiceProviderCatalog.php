@@ -211,7 +211,7 @@ final class BluebotProviderCatalogService
         if (!self::isSafeHttpsUrl($catalogUrl)) {
             throw new InvalidArgumentException('Catalog URL must be a public HTTPS address.');
         }
-        if (!preg_match('/^[A-Za-z0-9-]{1,80}$/', $authHeader)) {
+        if ($authHeader !== '' && !preg_match('/^[A-Za-z0-9-]{1,80}$/', $authHeader)) {
             throw new InvalidArgumentException('Authentication header name is invalid.');
         }
         if ($productsPath !== '' && !preg_match('/^(?:smm:)?[A-Za-z0-9_.-]{1,190}$/', $productsPath)) {
