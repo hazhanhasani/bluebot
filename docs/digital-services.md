@@ -70,6 +70,19 @@ of treating the catalog as Telegram-only:
 The V2 Telegram-number endpoint remains only as a fallback when the Callinoo
 application catalog is temporarily unavailable.
 
+### Callinoo application discovery diagnostics
+
+The documented Callinoo `/web/{token}/applications` and
+`/web/{token}/get-prices/{service_id}` endpoints accept both GET and POST.
+BlueBot uses GET first and, when the application list is empty or contains only
+one platform, probes POST and merges unique application IDs. Country/price
+requests similarly fall back to POST when GET returns no usable rows.
+
+The provider panel exposes the GET/POST application counts after every sync.
+If both methods expose only one application, BlueBot does not invent hidden
+service IDs; this indicates the connected Callinoo API token/catalog itself is
+only exposing that application.
+
 ### Catalog schema migration
 
 BlueBot stores an `ozvinoo_catalog_schema_version` marker. When a release
