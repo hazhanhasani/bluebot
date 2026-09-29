@@ -241,7 +241,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $typeCounts = is_array($sync['type_counts'] ?? null) ? $sync['type_counts'] : [];
                 $catalogText = ' · Stars: ' . (int) ($typeCounts['stars'] ?? 0)
                     . ' · Premium: ' . (int) ($typeCounts['premium'] ?? 0)
-                    . ' · شماره: ' . (int) ($typeCounts['numbers'] ?? 0);
+                    . ' · پلتفرم شماره: ' . (int) ($typeCounts['number_apps'] ?? 0)
+                    . ' · شماره/کشور: ' . (int) ($typeCounts['numbers'] ?? 0);
 
                 flash(
                     'success',
@@ -274,7 +275,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     'کاتالوگ عضوینو بروزرسانی شد: '
                     . 'Stars ' . (int) ($typeCounts['stars'] ?? 0)
                     . ' · Premium ' . (int) ($typeCounts['premium'] ?? 0)
-                    . ' · شماره مجازی ' . (int) ($typeCounts['numbers'] ?? 0)
+                    . ' · پلتفرم شماره ' . (int) ($typeCounts['number_apps'] ?? 0)
+                    . ' · شماره/کشور ' . (int) ($typeCounts['numbers'] ?? 0)
                     . ' · ' . (int) ($sync['created'] ?? 0) . ' جدید'
                     . ' · ' . (int) ($sync['updated'] ?? 0) . ' بروزرسانی'
                     . ' · ' . (int) ($sync['disabled'] ?? 0) . ' غیرفعال'
@@ -430,7 +432,7 @@ include __DIR__ . '/inc/layout_head.php';
                     <label>درصد سود همه محصولات عضوینو</label>
                     <input class="input" type="number" name="ozvinoo_profit_percent" min="0" max="1000" step="0.1"
                         value="<?= htmlspecialchars((string) $ozProfitPercent) ?>" required>
-                    <small class="field-hint">روی قیمت عمده Stars، Premium و تمام کشورهای شماره مجازی اعمال می‌شود.</small>
+                    <small class="field-hint">روی قیمت عمده Stars، Premium و همه پلتفرم‌ها/کشورهای شماره مجازی Callinoo اعمال می‌شود.</small>
                 </div>
                 <div class="field">
                     <label>بروزرسانی خودکار (دقیقه)</label>
