@@ -73,6 +73,7 @@ final class BluebotProviderCatalogService
         $startedAt = microtime(true);
         $attempts = 0;
         $budgetExhausted = false;
+        $discoveredEndpointUrls = [];
 
         $canProbe = static function () use (&$attempts, $startedAt, &$budgetExhausted): bool {
             if ($attempts >= self::DISCOVERY_MAX_ATTEMPTS
@@ -118,10 +119,66 @@ final class BluebotProviderCatalogService
                         'price_field' => (string) $mapping['price_field'],
                     ];
                 }
-                $errors[] = $url . ' [GET/' . $primaryProfile['label'] . ']: JSON found but no product list was detected';
+                foreach (self::discoverLinkedApiEndpoints($body, $url) as $linkedUrl) {
+                    if (!in_array($linkedUrl, $discoveredEndpointUrls, true)) {
+                        $discoveredEndpointUrls[] = $linkedUrl;
+                    }
+                }
+                $keys = self::diagnosticTopLevelKeys($body);
+                $errors[] = $url . ' [GET/' . $primaryProfile['label'] . ']: JSON found but no product list was detected'
+                    . ($keys !== '' ? ' (keys: ' . $keys . ')' : '');
             } else {
                 $errors[] = $url . ' [GET/' . $primaryProfile['label'] . ']: '
                     . (string) ($response['message'] ?? 'request failed');
+            }
+        }
+
+        // DRF/FastAPI-style API roots often return a JSON object whose values
+        // are links to resources rather than the resources themselves. Probe
+        // those same-host links first; this is more reliable than guessing paths.
+        if (!$budgetExhausted && $discoveredEndpointUrls !== []) {
+            foreach (array_slice($discoveredEndpointUrls, 0, 8) as $url) {
+                if (!$canProbe()) {
+                    break;
+                }
+
+                $response = self::requestCatalogUrl(
+                    $url,
+                    $apiKey,
+                    (string) $primaryProfile['header'],
+                    (string) $primaryProfile['prefix']
+                );
+                if (empty($response['ok'])) {
+                    $errors[] = $url . ' [GET/discovered]: '
+                        . (string) ($response['message'] ?? 'request failed');
+                    continue;
+                }
+
+                $body = is_array($response['data'] ?? null) ? $response['data'] : [];
+                $mapping = self::autoDiscoverCatalogMapping($body);
+                if (!empty($mapping['ok'])) {
+                    return [
+                        'ok' => true,
+                        'api_style' => 'rest',
+                        'url' => $url,
+                        'auth_header' => (string) $primaryProfile['header'],
+                        'auth_prefix' => (string) $primaryProfile['prefix'],
+                        'products_path' => (string) $mapping['products_path'],
+                        'id_field' => (string) $mapping['id_field'],
+                        'name_field' => (string) $mapping['name_field'],
+                        'category_field' => (string) $mapping['category_field'],
+                        'price_field' => (string) $mapping['price_field'],
+                    ];
+                }
+
+                foreach (self::discoverLinkedApiEndpoints($body, $url) as $linkedUrl) {
+                    if (!in_array($linkedUrl, $discoveredEndpointUrls, true)) {
+                        $discoveredEndpointUrls[] = $linkedUrl;
+                    }
+                }
+                $keys = self::diagnosticTopLevelKeys($body);
+                $errors[] = $url . ' [GET/discovered]: JSON found but no product list was detected'
+                    . ($keys !== '' ? ' (keys: ' . $keys . ')' : '');
             }
         }
 
@@ -979,6 +1036,100 @@ final class BluebotProviderCatalogService
         return $response;
     }
 
+    private static function discoverLinkedApiEndpoints(array $body, string $sourceUrl): array
+    {
+        $sourceHost = strtolower((string) parse_url($sourceUrl, PHP_URL_HOST));
+        $sourceScheme = strtolower((string) parse_url($sourceUrl, PHP_URL_SCHEME));
+        if ($sourceHost === '' || $sourceScheme !== 'https') {
+            return [];
+        }
+
+        $base = $sourceScheme . '://' . $sourceHost;
+        $sourcePort = parse_url($sourceUrl, PHP_URL_PORT);
+        if (is_int($sourcePort) && $sourcePort > 0) {
+            $base .= ':' . $sourcePort;
+        }
+
+        $found = [];
+        $walk = static function ($value, string $key, int $depth) use (&$walk, &$found, $base, $sourceHost): void {
+            if ($depth > 4 || count($found) >= 20) {
+                return;
+            }
+
+            if (is_array($value)) {
+                foreach ($value as $childKey => $childValue) {
+                    $walk($childValue, (string) $childKey, $depth + 1);
+                }
+                return;
+            }
+
+            if (!is_string($value)) {
+                return;
+            }
+
+            $raw = trim($value);
+            if ($raw === '') {
+                return;
+            }
+
+            $candidate = '';
+            if (str_starts_with($raw, '/')) {
+                $candidate = $base . $raw;
+            } elseif (filter_var($raw, FILTER_VALIDATE_URL)) {
+                $candidate = $raw;
+            }
+
+            if ($candidate === '' || !self::isSafeHttpsUrl($candidate)) {
+                return;
+            }
+            $candidateHost = strtolower((string) parse_url($candidate, PHP_URL_HOST));
+            if ($candidateHost !== $sourceHost) {
+                return;
+            }
+
+            $keyText = mb_strtolower($key, 'UTF-8');
+            $pathText = mb_strtolower((string) parse_url($candidate, PHP_URL_PATH), 'UTF-8');
+            $haystack = $keyText . ' ' . $pathText;
+            $priority = 50;
+            foreach ([
+                'service' => 1,
+                'product' => 2,
+                'package' => 3,
+                'catalog' => 4,
+                'plan' => 5,
+                'item' => 6,
+                'category' => 20,
+            ] as $needle => $score) {
+                if (str_contains($haystack, $needle)) {
+                    $priority = min($priority, $score);
+                }
+            }
+            $found[$candidate] = min($found[$candidate] ?? 999, $priority);
+        };
+
+        $walk($body, '', 0);
+        asort($found, SORT_NUMERIC);
+        return array_keys($found);
+    }
+
+    private static function diagnosticTopLevelKeys(array $body): string
+    {
+        if ($body === []) {
+            return '';
+        }
+
+        $keys = array_keys($body);
+        $labels = [];
+        foreach (array_slice($keys, 0, 12) as $key) {
+            $text = trim((string) $key);
+            if ($text !== '' && mb_strlen($text, 'UTF-8') <= 80) {
+                $labels[] = $text;
+            }
+        }
+
+        return implode(', ', $labels);
+    }
+
     private static function authProfiles(
         string $apiKey,
         string $authHeader,
@@ -1052,7 +1203,7 @@ final class BluebotProviderCatalogService
             CURLOPT_SSL_VERIFYPEER => true,
             CURLOPT_PROTOCOLS => CURLPROTO_HTTPS,
             CURLOPT_FOLLOWLOCATION => false,
-            CURLOPT_USERAGENT => 'BlueBot/0.5.35 ProviderCatalog',
+            CURLOPT_USERAGENT => 'BlueBot/0.5.36 ProviderCatalog',
         ]);
 
         $raw = curl_exec($ch);
@@ -1134,7 +1285,7 @@ final class BluebotProviderCatalogService
             CURLOPT_SSL_VERIFYPEER => true,
             CURLOPT_PROTOCOLS => CURLPROTO_HTTPS,
             CURLOPT_FOLLOWLOCATION => false,
-            CURLOPT_USERAGENT => 'BlueBot/0.5.35 ProviderCatalog',
+            CURLOPT_USERAGENT => 'BlueBot/0.5.36 ProviderCatalog',
         ]);
 
         $raw = curl_exec($ch);
