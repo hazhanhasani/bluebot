@@ -1681,6 +1681,78 @@ move_extracted_files() {
     find "$src" -mindepth 1 -maxdepth 1 -exec mv -f -t "$dest/" {} +
 }
 
+bluebot_validate_source_tree() {
+    local root="$1" required rel
+    [ -d "$root" ] || return 1
+
+    required=(
+        "index.php"
+        "table.php"
+        "composer.json"
+        "panel/index.php"
+        "panel/service.php"
+        "panel/invoice.php"
+        "panel/category.php"
+        "panel/digital_services.php"
+        "src/Support/UpdateManager.php"
+        "scripts/bluebot-update-worker.sh"
+    )
+
+    for rel in "${required[@]}"; do
+        [ -f "$root/$rel" ] || {
+            echo "Missing required BlueBot file: $rel" >&2
+            return 1
+        }
+    done
+
+    return 0
+}
+
+bluebot_validate_live_tree() {
+    local root="$1"
+    bluebot_validate_source_tree "$root" || return 1
+    [ -f "$root/config.php" ] || {
+        echo "Missing live config.php" >&2
+        return 1
+    }
+    [ -f "$root/vendor/autoload.php" ] || {
+        echo "Missing vendor/autoload.php" >&2
+        return 1
+    }
+    return 0
+}
+
+bluebot_resolve_extracted_root() {
+    local temp="$1" d found=""
+    [ -d "$temp" ] || return 1
+
+    # Support both flat hosting bundles and GitHub source archives wrapped in a
+    # single top-level directory. Never guess by taking the first directory.
+    if bluebot_validate_source_tree "$temp" >/dev/null 2>&1; then
+        printf '%s' "$temp"
+        return 0
+    fi
+
+    for d in "$temp"/*; do
+        [ -d "$d" ] || continue
+        if bluebot_validate_source_tree "$d" >/dev/null 2>&1; then
+            if [ -n "$found" ]; then
+                echo "Multiple valid BlueBot roots found in update package." >&2
+                return 2
+            fi
+            found="$d"
+        fi
+    done
+
+    [ -n "$found" ] || {
+        echo "No valid BlueBot application root found in update package." >&2
+        return 1
+    }
+
+    printf '%s' "$found"
+    return 0
+}
+
 # vpnbot instance dirs (not Default/update). update_bot wipes BOT_DIR.
 VPNBOT_BACKUP="/tmp/mirza_vpnbot_backup"
 
