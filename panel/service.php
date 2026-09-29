@@ -85,6 +85,14 @@ if ($scope === 'digital') {
       }
       $metadata['category_key'] = $category;
       $metadata['category_label'] = BluebotDigitalServices::categoryLabel($category, $pdo);
+      if ($action === 'digital_edit') {
+        $metadata['admin_category_override'] = true;
+      }
+      if ($active === 0) {
+        $metadata['admin_disabled'] = true;
+      } else {
+        unset($metadata['admin_disabled']);
+      }
       $metadataJson = json_encode($metadata, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
 
       try {
@@ -126,13 +134,24 @@ if ($scope === 'digital') {
 
     if ($action === 'digital_toggle') {
       $id = max(0, (int) ($_POST['id'] ?? 0));
-      $stmt = $pdo->prepare(
-        "UPDATE digital_service_products
-         SET active = IF(active = 1, 0, 1), updated_at = NOW()
-         WHERE id = ? AND price > 0"
+      $product = BluebotDigitalServices::findProduct($pdo, $id, false);
+      if (!is_array($product)) {
+        flash('error', 'سرویس پیدا نشد.');
+        $digitalRedirect();
+      }
+
+      $disable = (int) ($product['active'] ?? 0) === 1;
+      if (!BluebotDigitalServices::setProductAdminDisabled($pdo, $id, $disable)) {
+        flash('error', 'تغییر وضعیت سرویس ذخیره نشد.');
+        $digitalRedirect();
+      }
+
+      flash(
+        'success',
+        $disable
+          ? 'سرویس خاموش شد؛ همگام‌سازی Provider دیگر آن را خودکار روشن نمی‌کند.'
+          : 'سرویس روشن شد و قفل خاموشی دستی برداشته شد.'
       );
-      $stmt->execute([$id]);
-      flash('success', 'وضعیت سرویس تغییر کرد.');
       $digitalRedirect();
     }
 

@@ -547,7 +547,7 @@ final class BluebotProviderCatalogService
         );
         $update = $pdo->prepare(
             "UPDATE digital_service_products
-             SET name = ?, type = ?, price = ?, service_value = ?, description = ?, metadata = ?, active = 1, sort_order = ?, updated_at = NOW()
+             SET name = ?, type = ?, price = ?, service_value = ?, description = ?, metadata = ?, active = ?, sort_order = ?, updated_at = NOW()
              WHERE id = ?"
         );
 
@@ -642,6 +642,10 @@ final class BluebotProviderCatalogService
             $row = $find->fetch(PDO::FETCH_ASSOC);
 
             if (is_array($row)) {
+                $metadata = BluebotDigitalServices::mergeAdminProductMetadata($row, $metadata);
+                $metadataJson = json_encode($metadata, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+                $active = BluebotDigitalServices::providerManagedActive($row, 1);
+
                 $update->execute([
                     $name,
                     $type,
@@ -649,6 +653,7 @@ final class BluebotProviderCatalogService
                     $serviceValue,
                     $description,
                     is_string($metadataJson) ? $metadataJson : null,
+                    $active,
                     $sort,
                     (int) $row['id'],
                 ]);
