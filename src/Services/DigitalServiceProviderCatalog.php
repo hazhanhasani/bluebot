@@ -64,14 +64,17 @@ final class BluebotProviderCatalogService
         string $authPrefix = 'Bearer'
     ): array {
         $errors = [];
-        foreach (array_values(array_unique(array_filter(array_map('trim', $urls)))) as $url) {
+        $candidates = array_values(array_unique(array_filter(array_map('trim', $urls))));
+
+        // First try normal REST/JSON GET catalogs.
+        foreach ($candidates as $url) {
             if (!self::isSafeHttpsUrl($url)) {
                 continue;
             }
 
             $response = self::requestCatalogUrl($url, $apiKey, $authHeader, $authPrefix);
             if (empty($response['ok'])) {
-                $errors[] = $url . ': ' . (string) ($response['message'] ?? 'request failed');
+                $errors[] = $url . ' [GET]: ' . (string) ($response['message'] ?? 'request failed');
                 continue;
             }
 
@@ -80,6 +83,7 @@ final class BluebotProviderCatalogService
             if (!empty($mapping['ok'])) {
                 return [
                     'ok' => true,
+                    'api_style' => 'rest',
                     'url' => $url,
                     'products_path' => (string) $mapping['products_path'],
                     'id_field' => (string) $mapping['id_field'],
@@ -89,13 +93,69 @@ final class BluebotProviderCatalogService
                 ];
             }
 
-            $errors[] = $url . ': JSON found but no product list could be detected';
+            $errors[] = $url . ' [GET]: JSON found but no product list could be detected';
+        }
+
+        // SMM panels commonly expose products via POST action=services instead
+        // of a GET /services endpoint. OZVinoo/Callinoo-style panels are
+        // therefore probed with the same credentials before we give up.
+        if (trim($apiKey) !== '') {
+            $smmCandidates = [];
+            foreach ($candidates as $url) {
+                if (!self::isSafeHttpsUrl($url)) {
+                    continue;
+                }
+                $smmCandidates[] = $url;
+                $parts = parse_url($url);
+                if (!is_array($parts)) {
+                    continue;
+                }
+                $scheme = strtolower((string) ($parts['scheme'] ?? ''));
+                $host = (string) ($parts['host'] ?? '');
+                $port = isset($parts['port']) ? ':' . (int) $parts['port'] : '';
+                if ($scheme !== 'https' || $host === '') {
+                    continue;
+                }
+                $origin = $scheme . '://' . $host . $port;
+                foreach (['/api/v2', '/api', '/v2', '/'] as $path) {
+                    $smmCandidates[] = rtrim($origin, '/') . $path;
+                }
+            }
+
+            foreach (array_values(array_unique($smmCandidates)) as $url) {
+                if (!self::isSafeHttpsUrl($url)) {
+                    continue;
+                }
+
+                $response = self::requestSmmServices($url, $apiKey, $authHeader, $authPrefix);
+                if (empty($response['ok'])) {
+                    $errors[] = $url . ' [SMM POST]: ' . (string) ($response['message'] ?? 'request failed');
+                    continue;
+                }
+
+                $body = is_array($response['data'] ?? null) ? $response['data'] : [];
+                $mapping = self::autoDiscoverCatalogMapping($body);
+                if (!empty($mapping['ok'])) {
+                    return [
+                        'ok' => true,
+                        'api_style' => 'smm',
+                        'url' => $url,
+                        'products_path' => 'smm:' . (string) $mapping['products_path'],
+                        'id_field' => (string) $mapping['id_field'],
+                        'name_field' => (string) $mapping['name_field'],
+                        'category_field' => (string) $mapping['category_field'],
+                        'price_field' => (string) $mapping['price_field'],
+                    ];
+                }
+
+                $errors[] = $url . ' [SMM POST]: JSON found but no service list could be detected';
+            }
         }
 
         return [
             'ok' => false,
             'message' => $errors !== []
-                ? implode(' | ', array_slice($errors, 0, 4))
+                ? implode(' | ', array_slice($errors, 0, 6))
                 : 'No compatible catalog endpoint was detected.',
         ];
     }
@@ -132,7 +192,10 @@ final class BluebotProviderCatalogService
         if (!preg_match('/^[A-Za-z0-9-]{1,80}$/', $authHeader)) {
             throw new InvalidArgumentException('Authentication header name is invalid.');
         }
-        foreach ([$productsPath, $idField, $nameField, $categoryField, $priceField] as $path) {
+        if ($productsPath !== '' && !preg_match('/^(?:smm:)?[A-Za-z0-9_.-]{1,190}$/', $productsPath)) {
+            throw new InvalidArgumentException('Catalog products path is invalid.');
+        }
+        foreach ([$idField, $nameField, $categoryField, $priceField] as $path) {
             if ($path !== '' && !preg_match('/^[A-Za-z0-9_.-]{1,190}$/', $path)) {
                 throw new InvalidArgumentException('Catalog field mapping is invalid.');
             }
@@ -308,6 +371,7 @@ final class BluebotProviderCatalogService
         $provider['price_field'] = $mapping['price_field'];
 
         self::persistDiscoveredMapping($pdo, $providerKey, $mapping);
+        $smmStyle = str_starts_with((string) ($mapping['products_path'] ?? ''), 'smm:');
 
         $find = $pdo->prepare(
             "SELECT * FROM digital_service_products
@@ -317,11 +381,11 @@ final class BluebotProviderCatalogService
         $insert = $pdo->prepare(
             "INSERT INTO digital_service_products
              (code, name, type, provider, price, service_value, provider_service_code, description, metadata, active, sort_order)
-             VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?, 1, ?)"
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)"
         );
         $update = $pdo->prepare(
             "UPDATE digital_service_products
-             SET name = ?, type = ?, price = ?, description = ?, metadata = ?, active = 1, sort_order = ?, updated_at = NOW()
+             SET name = ?, type = ?, price = ?, service_value = ?, description = ?, metadata = ?, active = 1, sort_order = ?, updated_at = NOW()
              WHERE id = ?"
         );
 
@@ -350,6 +414,24 @@ final class BluebotProviderCatalogService
             $cost = (float) $costRaw;
             if ($cost < 0) {
                 continue;
+            }
+
+            $serviceValue = 1;
+            $minQuantity = null;
+            $maxQuantity = null;
+            $ratePerThousand = null;
+            if ($smmStyle) {
+                $minRaw = self::firstNumericValue($item, ['min', 'minimum', 'min_quantity', 'minQuantity']);
+                $maxRaw = self::firstNumericValue($item, ['max', 'maximum', 'max_quantity', 'maxQuantity']);
+                $minQuantity = $minRaw !== null ? max(1, (int) floor($minRaw)) : 1;
+                $maxQuantity = $maxRaw !== null ? max($minQuantity, (int) floor($maxRaw)) : null;
+                $serviceValue = $minQuantity;
+
+                // Standard SMM APIs publish "rate" per 1000 units. Import a
+                // safe fixed package using the provider's minimum quantity so
+                // the customer sees a real payable product immediately.
+                $ratePerThousand = $cost;
+                $cost = $ratePerThousand * ($serviceValue / 1000);
             }
 
             $category = self::normaliseCategory($categoryRaw, $name);
@@ -382,7 +464,15 @@ final class BluebotProviderCatalogService
                 'price_mode' => 'margin',
                 'synced_at' => gmdate(DATE_ATOM),
                 'delivery_mode' => $providerKey === 'ozvinoo' ? 'integrated' : 'manual',
+                'api_style' => $smmStyle ? 'smm' : 'rest',
+                'service_value' => $serviceValue,
             ];
+            if ($smmStyle) {
+                $metadata['minimum_quantity'] = $minQuantity;
+                $metadata['maximum_quantity'] = $maxQuantity;
+                $metadata['wholesale_rate_per_1000'] = $ratePerThousand;
+                $metadata['price_basis'] = 'minimum-package';
+            }
             $metadataJson = json_encode($metadata, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
             $description = 'محصول همگام‌شده از ' . (string) $provider['name'];
 
@@ -394,6 +484,7 @@ final class BluebotProviderCatalogService
                     $name,
                     $type,
                     $sellingPrice,
+                    $serviceValue,
                     $description,
                     is_string($metadataJson) ? $metadataJson : null,
                     $sort,
@@ -408,6 +499,7 @@ final class BluebotProviderCatalogService
                         $type,
                         $providerKey,
                         $sellingPrice,
+                        $serviceValue,
                         $providerId,
                         $description,
                         is_string($metadataJson) ? $metadataJson : null,
@@ -536,6 +628,13 @@ final class BluebotProviderCatalogService
     private static function resolveCatalogMapping(array $body, array $provider): array
     {
         $productsPath = trim((string) ($provider['products_path'] ?? 'auto'));
+        $smmStyle = str_starts_with($productsPath, 'smm:');
+        if ($smmStyle) {
+            $productsPath = substr($productsPath, 4);
+            if ($productsPath === '') {
+                $productsPath = '.';
+            }
+        }
         $idField = trim((string) ($provider['id_field'] ?? 'auto'));
         $nameField = trim((string) ($provider['name_field'] ?? 'auto'));
         $categoryField = trim((string) ($provider['category_field'] ?? 'auto'));
@@ -553,7 +652,7 @@ final class BluebotProviderCatalogService
             return [
                 'ok' => true,
                 'items' => $items,
-                'products_path' => $productsPath,
+                'products_path' => $smmStyle ? 'smm:' . $productsPath : $productsPath,
                 'id_field' => $idField,
                 'name_field' => $nameField,
                 'category_field' => $categoryField,
@@ -695,12 +794,31 @@ final class BluebotProviderCatalogService
 
     private static function fetchCatalog(array $provider): array
     {
-        return self::requestCatalogUrl(
-            trim((string) ($provider['catalog_url'] ?? '')),
-            trim((string) ($provider['api_key'] ?? '')),
-            trim((string) ($provider['auth_header'] ?? 'Authorization')),
-            trim((string) ($provider['auth_prefix'] ?? 'Bearer'))
-        );
+        $url = trim((string) ($provider['catalog_url'] ?? ''));
+        $apiKey = trim((string) ($provider['api_key'] ?? ''));
+        $authHeader = trim((string) ($provider['auth_header'] ?? 'Authorization'));
+        $authPrefix = trim((string) ($provider['auth_prefix'] ?? 'Bearer'));
+        $productsPath = trim((string) ($provider['products_path'] ?? ''));
+
+        if (str_starts_with($productsPath, 'smm:')) {
+            return self::requestSmmServices($url, $apiKey, $authHeader, $authPrefix);
+        }
+
+        $response = self::requestCatalogUrl($url, $apiKey, $authHeader, $authPrefix);
+        if (!empty($response['ok'])) {
+            return $response;
+        }
+
+        // Existing OZVinoo installs may still have an old GET catalog URL.
+        // Try the SMM services contract before reporting a sync failure.
+        if (strtolower((string) ($provider['provider_key'] ?? '')) === 'ozvinoo' && $apiKey !== '') {
+            $smm = self::requestSmmServices($url, $apiKey, $authHeader, $authPrefix);
+            if (!empty($smm['ok'])) {
+                return $smm;
+            }
+        }
+
+        return $response;
     }
 
     private static function requestCatalogUrl(
@@ -733,7 +851,7 @@ final class BluebotProviderCatalogService
             CURLOPT_SSL_VERIFYPEER => true,
             CURLOPT_PROTOCOLS => CURLPROTO_HTTPS,
             CURLOPT_FOLLOWLOCATION => false,
-            CURLOPT_USERAGENT => 'BlueBot/0.5.30 ProviderCatalog',
+            CURLOPT_USERAGENT => 'BlueBot/0.5.31 ProviderCatalog',
         ]);
 
         $raw = curl_exec($ch);
@@ -754,6 +872,90 @@ final class BluebotProviderCatalogService
         }
 
         return ['ok' => true, 'data' => $decoded];
+    }
+
+    private static function requestSmmServices(
+        string $url,
+        string $apiKey,
+        string $authHeader,
+        string $authPrefix
+    ): array {
+        if (!self::isSafeHttpsUrl($url)) {
+            return ['ok' => false, 'message' => 'SMM catalog URL is unsafe.'];
+        }
+        if (trim($apiKey) === '') {
+            return ['ok' => false, 'message' => 'SMM API key is missing.'];
+        }
+
+        $headers = [
+            'Accept: application/json',
+            'Content-Type: application/x-www-form-urlencoded',
+        ];
+        $headerValue = trim(($authPrefix !== '' ? $authPrefix . ' ' : '') . $apiKey);
+        if ($headerValue !== '') {
+            $headers[] = $authHeader . ': ' . $headerValue;
+        }
+
+        $payload = http_build_query([
+            'key' => $apiKey,
+            'action' => 'services',
+        ], '', '&', PHP_QUERY_RFC3986);
+
+        $ch = curl_init($url);
+        if ($ch === false) {
+            return ['ok' => false, 'message' => 'Unable to initialise SMM provider request.'];
+        }
+
+        curl_setopt_array($ch, [
+            CURLOPT_POST => true,
+            CURLOPT_POSTFIELDS => $payload,
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_HTTPHEADER => $headers,
+            CURLOPT_CONNECTTIMEOUT => 5,
+            CURLOPT_TIMEOUT => 20,
+            CURLOPT_SSL_VERIFYHOST => 2,
+            CURLOPT_SSL_VERIFYPEER => true,
+            CURLOPT_PROTOCOLS => CURLPROTO_HTTPS,
+            CURLOPT_FOLLOWLOCATION => false,
+            CURLOPT_USERAGENT => 'BlueBot/0.5.31 ProviderCatalog',
+        ]);
+
+        $raw = curl_exec($ch);
+        $error = curl_error($ch);
+        $http = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        curl_close($ch);
+
+        if ($raw === false) {
+            return ['ok' => false, 'message' => $error !== '' ? $error : 'SMM provider request failed.'];
+        }
+        if ($http < 200 || $http >= 300) {
+            return ['ok' => false, 'message' => 'SMM provider returned HTTP ' . $http . '.'];
+        }
+
+        $decoded = json_decode((string) $raw, true);
+        if (!is_array($decoded)) {
+            return ['ok' => false, 'message' => 'SMM provider returned invalid JSON.'];
+        }
+
+        if (isset($decoded['error']) && trim((string) $decoded['error']) !== '') {
+            return ['ok' => false, 'message' => trim((string) $decoded['error'])];
+        }
+
+        return ['ok' => true, 'data' => $decoded];
+    }
+
+    private static function firstNumericValue(array $item, array $paths): ?float
+    {
+        foreach ($paths as $path) {
+            $value = self::valueAtPath($item, (string) $path);
+            if (is_string($value)) {
+                $value = str_replace([',', ' ', '٬'], '', trim($value));
+            }
+            if (is_numeric($value)) {
+                return (float) $value;
+            }
+        }
+        return null;
     }
 
     private static function isSafeHttpsUrl(string $url): bool
