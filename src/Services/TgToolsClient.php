@@ -43,7 +43,7 @@ final class TgToolsClient
 
     public function purchaseStatus(int $transactionId): array
     {
-        return $this->request('GET', '/api/purchase/' . $transactionId);
+        return $this->request('GET', '/api/transaction/' . $transactionId);
     }
 
     public function wallet(): array
@@ -99,7 +99,7 @@ final class TgToolsClient
             CURLOPT_SSL_VERIFYHOST => 2,
             CURLOPT_SSL_VERIFYPEER => true,
             CURLOPT_PROTOCOLS => CURLPROTO_HTTPS,
-            CURLOPT_USERAGENT => 'BlueBot/0.5.23 TGToolsClient',
+            CURLOPT_USERAGENT => 'BlueBot/0.5.28 TGToolsClient',
         ];
 
         if ($method === 'POST') {
