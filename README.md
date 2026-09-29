@@ -127,6 +127,22 @@ BlueBot از چند Adapter مستقل برای اتصال به پنل‌های 
 - <code>/api/services</code> — دریافت سرویس‌ها
 - <code>/api/stats/overview</code> — نمایش آمار پنل
 
+<a id="digital-services"></a>
+<h2 dir="rtl" align="right">⭐ فروش Telegram Stars و Premium</h2>
+
+<p dir="rtl" align="right">
+بخش «فروش خدمات» از Provider <strong>TGTools</strong> برای ارسال خودکار Telegram Stars و Telegram Premium پشتیبانی می‌کند. سفارش ابتدا از کیف پول داخلی BlueBot ثبت می‌شود، سپس فقط بعد از تأیید دستی ادمین به TGTools فرستاده می‌شود. سفارش‌های Pending هر دقیقه پیگیری می‌شوند و در صورت Failed شدن Provider، مبلغ به‌صورت امن به کیف پول کاربر برمی‌گردد.
+</p>
+
+- <code>POST /api/purchase/stars</code> — ارسال Stars با username و مقدار محصول
+- <code>POST /api/purchase/premium</code> — ارسال Premium برای ۳، ۶ یا ۱۲ ماه
+- <code>GET /api/purchase/{transactionId}</code> — پیگیری خودکار وضعیت تحویل
+- <code>trackingCode</code> — کد سفارش BlueBot برای جلوگیری از ارسال تکراری
+- API Key از پنل وب BlueBot در بخش <strong>فروش خدمات → TGTools API</strong> تنظیم می‌شود.
+
+> [!IMPORTANT]
+> برای TGTools مقصد باید username معتبر تلگرام باشد. Telegram User ID عددی برای این Provider استفاده نمی‌شود.
+
 <a id="payments"></a>
 <h2 dir="rtl" align="right">💳 سیستم پرداخت</h2>
 

@@ -125,7 +125,10 @@ if (preg_match('/^ds_approve:(\d+)$/', (string) $datain, $digitalApproveMatch)
             : BluebotDigitalServices::findOrder($pdo, $orderId);
 
         if (!empty($result['ok'])) {
-            $doneText = "✅ <b>سفارش تأیید و ارسال شد</b>\n\n"
+            $isPendingProvider = !empty($result['pending']);
+            $doneText = ($isPendingProvider
+                    ? "⏳ <b>سفارش تأیید شد و در حال پردازش است</b>\n\n"
+                    : "✅ <b>سفارش تأیید و ارسال شد</b>\n\n")
                 . BluebotDigitalServices::adminOrderText(is_array($order) ? $order : ['id' => $orderId]);
             Editmessagetext(
                 $from_id,
@@ -136,7 +139,9 @@ if (preg_match('/^ds_approve:(\d+)$/', (string) $datain, $digitalApproveMatch)
             if ($callback_query_id) {
                 telegram('answerCallbackQuery', [
                     'callback_query_id' => $callback_query_id,
-                    'text' => !empty($result['already_done']) ? 'قبلاً ارسال شده است.' : 'ارسال انجام شد.',
+                    'text' => !empty($result['already_done'])
+                        ? 'قبلاً ارسال شده است.'
+                        : ($isPendingProvider ? 'در صف TGTools قرار گرفت.' : 'ارسال انجام شد.'),
                     'show_alert' => false,
                 ]);
             }

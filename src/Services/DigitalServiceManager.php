@@ -1,5 +1,7 @@
 <?php
 
+require_once __DIR__ . '/TgToolsClient.php';
+
 final class BluebotDigitalServices
 {
     private const STATUS_PENDING = 'pending_approval';
@@ -134,6 +136,14 @@ final class BluebotDigitalServices
 
         $type = (string) ($product['type'] ?? '');
         $provider = (string) ($product['provider'] ?? 'manual');
+
+        if ($provider === 'tgtools' && in_array($type, ['telegram_stars', 'telegram_premium'], true)) {
+            $normalized = ltrim($target, '@');
+            if (!preg_match('/^[A-Za-z0-9_]{5,32}$/', $normalized)) {
+                return [false, 'برای TGTools باید یوزرنیم معتبر تلگرام وارد شود؛ Telegram User ID پشتیبانی نمی‌شود.'];
+            }
+            return [true, $normalized];
+        }
 
         if ($type === 'telegram_premium' && $provider === 'telegram_bot') {
             $normalized = ltrim($target, '@');
@@ -304,6 +314,9 @@ final class BluebotDigitalServices
             if (!in_array($status, [self::STATUS_PENDING, self::STATUS_FAILED], true)) {
                 throw new RuntimeException('Order is not ready for delivery.');
             }
+            if ($status === self::STATUS_FAILED && (int) ($order['refunded'] ?? 0) === 1) {
+                throw new RuntimeException('This failed order was already refunded. Create a new order before retrying.');
+            }
 
             $claim = $pdo->prepare(
                 "UPDATE digital_service_orders
@@ -344,36 +357,35 @@ final class BluebotDigitalServices
             );
         }
 
-        $responseJson = json_encode($delivery['response'] ?? $delivery, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
-        $reference = trim((string) ($delivery['reference'] ?? ''));
-        $done = $pdo->prepare(
-            "UPDATE digital_service_orders
-             SET status = ?, provider_reference = ?, provider_response = ?, delivered_at = NOW(), updated_at = NOW()
-             WHERE id = ?"
-        );
-        $done->execute([
-            self::STATUS_DELIVERED,
-            $reference !== '' ? $reference : null,
-            is_string($responseJson) ? $responseJson : null,
-            $orderId,
-        ]);
+        if (!empty($delivery['pending'])) {
+            $responseJson = json_encode($delivery['response'] ?? $delivery, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+            $reference = trim((string) ($delivery['reference'] ?? ''));
+            $pending = $pdo->prepare(
+                "UPDATE digital_service_orders
+                 SET status = ?, provider_reference = ?, provider_response = ?, updated_at = NOW()
+                 WHERE id = ?"
+            );
+            $pending->execute([
+                self::STATUS_PROCESSING,
+                $reference !== '' ? $reference : null,
+                is_string($responseJson) ? $responseJson : null,
+                $orderId,
+            ]);
 
-        $finalOrder = self::findOrder($pdo, $orderId) ?? $order;
-        sendmessage(
-            (string) $finalOrder['user_id'],
-            "✅ <b>سفارش شما ارسال شد</b>
+            $processingOrder = self::findOrder($pdo, $orderId) ?? $order;
+            sendmessage(
+                (string) $processingOrder['user_id'],
+                "⏳ <b>سفارش شما تأیید شد و در حال ارسال است</b>\n\n"
+                    . "🧾 کد: <code>" . self::escape((string) $processingOrder['order_code']) . "</code>\n"
+                    . "📦 " . self::escape((string) $processingOrder['service_name']),
+                null,
+                'HTML'
+            );
 
-"
-                . "🧾 کد: <code>" . self::escape((string) $finalOrder['order_code']) . "</code>
-"
-                . "📦 " . self::escape((string) $finalOrder['service_name']) . "
-"
-                . "🎯 <code>" . self::escape((string) $finalOrder['target']) . "</code>",
-            null,
-            'HTML'
-        );
+            return ['ok' => true, 'pending' => true, 'order' => $processingOrder, 'delivery' => $delivery];
+        }
 
-        return ['ok' => true, 'order' => $finalOrder, 'delivery' => $delivery];
+        return self::finalizeDeliveredOrder($pdo, $orderId, $delivery);
     }
 
     public static function rejectAndRefund(PDO $pdo, int $orderId, string $adminId): array
@@ -478,11 +490,300 @@ final class BluebotDigitalServices
             ];
         }
 
+        if ($provider === 'tgtools') {
+            return self::deliverTgTools($pdo, $order, $product);
+        }
+
         if ($provider === 'ozvinoo') {
             return self::deliverOZVinoo($pdo, $order, $product);
         }
 
         return ['ok' => false, 'error' => 'Unsupported digital service provider.'];
+    }
+
+    public static function reconcileTgToolsProcessing(PDO $pdo, int $limit = 25): array
+    {
+        $stats = ['checked' => 0, 'completed' => 0, 'failed' => 0, 'pending' => 0, 'errors' => 0];
+
+        if (!self::isAvailable($pdo)) {
+            return $stats;
+        }
+
+        $apiKey = trim(self::setting($pdo, 'tgtools_api_key', ''));
+        if ($apiKey === '') {
+            return $stats;
+        }
+
+        $limit = max(1, min(100, $limit));
+        $stmt = $pdo->query(
+            "SELECT * FROM digital_service_orders
+             WHERE provider = 'tgtools'
+               AND status = 'processing'
+               AND provider_reference IS NOT NULL
+               AND provider_reference <> ''
+             ORDER BY id ASC
+             LIMIT " . $limit
+        );
+        $orders = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+        $client = new TgToolsClient($apiKey);
+
+        foreach ($orders as $order) {
+            $stats['checked']++;
+            $transactionId = (int) ($order['provider_reference'] ?? 0);
+            if ($transactionId <= 0) {
+                $stats['errors']++;
+                continue;
+            }
+
+            $statusResponse = $client->purchaseStatus($transactionId);
+            if (empty($statusResponse['ok'])) {
+                $stats['errors']++;
+                continue;
+            }
+
+            $data = is_array($statusResponse['data'] ?? null) ? $statusResponse['data'] : [];
+            $status = self::tgToolsStatus($data);
+
+            if ($status === 'completed') {
+                $result = self::finalizeDeliveredOrder($pdo, (int) $order['id'], [
+                    'ok' => true,
+                    'reference' => (string) $transactionId,
+                    'response' => $statusResponse,
+                ]);
+                if (!empty($result['ok'])) {
+                    $stats['completed']++;
+                } else {
+                    $stats['errors']++;
+                }
+                continue;
+            }
+
+            if ($status === 'failed') {
+                self::failAndRefundProviderOrder(
+                    $pdo,
+                    (int) $order['id'],
+                    'TGTools delivery failed.',
+                    $statusResponse
+                );
+                $stats['failed']++;
+                continue;
+            }
+
+            $stats['pending']++;
+        }
+
+        return $stats;
+    }
+
+    private static function deliverTgTools(PDO $pdo, array $order, array $product): array
+    {
+        $apiKey = trim(self::setting($pdo, 'tgtools_api_key', ''));
+        if ($apiKey === '') {
+            return ['ok' => false, 'error' => 'TGTools API key is not configured.'];
+        }
+
+        $type = (string) ($product['type'] ?? '');
+        if (!in_array($type, ['telegram_stars', 'telegram_premium'], true)) {
+            return ['ok' => false, 'error' => 'TGTools provider only supports Telegram Stars and Premium.'];
+        }
+
+        $username = ltrim(trim((string) ($order['target'] ?? '')), '@');
+        if (!preg_match('/^[A-Za-z0-9_]{5,32}$/', $username)) {
+            return ['ok' => false, 'error' => 'TGTools requires a valid Telegram username.'];
+        }
+
+        $client = new TgToolsClient($apiKey);
+        $lookup = $client->lookupUser($username);
+        if (empty($lookup['ok'])) {
+            return [
+                'ok' => false,
+                'error' => trim((string) ($lookup['message'] ?? '')) ?: 'Unable to validate Telegram username with TGTools.',
+                'response' => $lookup,
+            ];
+        }
+
+        $profile = is_array($lookup['data'] ?? null) ? $lookup['data'] : [];
+        if (array_key_exists('found', $profile) && !$profile['found']) {
+            return ['ok' => false, 'error' => 'Telegram username was not found by TGTools.', 'response' => $lookup];
+        }
+
+        $serviceValue = max(1, (int) ($product['service_value'] ?? 1));
+        $trackingCode = (string) ($order['order_code'] ?? ('bluebot-' . (int) ($order['id'] ?? 0)));
+
+        if ($type === 'telegram_premium') {
+            if (!in_array($serviceValue, [3, 6, 12], true)) {
+                return ['ok' => false, 'error' => 'TGTools Premium months must be 3, 6, or 12.'];
+            }
+            if (array_key_exists('premiumEligible', $profile) && !$profile['premiumEligible']) {
+                return ['ok' => false, 'error' => 'This Telegram account is not eligible for Premium.', 'response' => $lookup];
+            }
+            $purchase = $client->purchasePremium($username, $serviceValue, $trackingCode);
+        } else {
+            $purchase = $client->purchaseStars($username, $serviceValue, $trackingCode);
+        }
+
+        if (empty($purchase['ok'])) {
+            return [
+                'ok' => false,
+                'error' => trim((string) ($purchase['message'] ?? '')) ?: 'TGTools purchase request failed.',
+                'response' => $purchase,
+            ];
+        }
+
+        $data = is_array($purchase['data'] ?? null) ? $purchase['data'] : [];
+        $transactionId = (int) ($data['transactionId'] ?? $data['id'] ?? 0);
+        if ($transactionId <= 0) {
+            return [
+                'ok' => false,
+                'error' => 'TGTools did not return a transaction ID.',
+                'response' => $purchase,
+            ];
+        }
+
+        $status = self::tgToolsStatus($data);
+        if ($status === 'failed') {
+            return [
+                'ok' => false,
+                'error' => trim((string) ($data['message'] ?? $purchase['message'] ?? 'TGTools rejected the purchase.')),
+                'reference' => (string) $transactionId,
+                'response' => $purchase,
+            ];
+        }
+
+        return [
+            'ok' => true,
+            'pending' => $status !== 'completed',
+            'reference' => (string) $transactionId,
+            'response' => $purchase,
+        ];
+    }
+
+    private static function tgToolsStatus(array $data): string
+    {
+        $raw = strtolower(trim((string) ($data['status'] ?? '')));
+        if (in_array($raw, ['completed', 'complete', 'delivered', 'success', 'succeeded'], true)) {
+            return 'completed';
+        }
+        if (in_array($raw, ['failed', 'error', 'rejected', 'cancelled', 'canceled', 'refunded'], true)) {
+            return 'failed';
+        }
+        return 'pending';
+    }
+
+    private static function finalizeDeliveredOrder(PDO $pdo, int $orderId, array $delivery): array
+    {
+        $pdo->beginTransaction();
+        try {
+            $stmt = $pdo->prepare("SELECT * FROM digital_service_orders WHERE id = ? FOR UPDATE");
+            $stmt->execute([$orderId]);
+            $order = $stmt->fetch(PDO::FETCH_ASSOC);
+            if (!is_array($order)) {
+                throw new RuntimeException('Order not found during delivery finalization.');
+            }
+
+            if ((string) ($order['status'] ?? '') === self::STATUS_DELIVERED) {
+                $pdo->commit();
+                return ['ok' => true, 'already_done' => true, 'order' => $order, 'delivery' => $delivery];
+            }
+
+            if ((string) ($order['status'] ?? '') !== self::STATUS_PROCESSING) {
+                throw new RuntimeException('Order is not processing.');
+            }
+
+            $responseJson = json_encode($delivery['response'] ?? $delivery, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+            $reference = trim((string) ($delivery['reference'] ?? $order['provider_reference'] ?? ''));
+
+            $done = $pdo->prepare(
+                "UPDATE digital_service_orders
+                 SET status = ?, provider_reference = ?, provider_response = ?, delivered_at = NOW(), updated_at = NOW()
+                 WHERE id = ?"
+            );
+            $done->execute([
+                self::STATUS_DELIVERED,
+                $reference !== '' ? $reference : null,
+                is_string($responseJson) ? $responseJson : null,
+                $orderId,
+            ]);
+            $pdo->commit();
+        } catch (Throwable $e) {
+            if ($pdo->inTransaction()) {
+                $pdo->rollBack();
+            }
+            throw $e;
+        }
+
+        $finalOrder = self::findOrder($pdo, $orderId) ?? $order;
+        sendmessage(
+            (string) $finalOrder['user_id'],
+            "✅ <b>سفارش شما ارسال شد</b>\n\n"
+                . "🧾 کد: <code>" . self::escape((string) $finalOrder['order_code']) . "</code>\n"
+                . "📦 " . self::escape((string) $finalOrder['service_name']) . "\n"
+                . "🎯 <code>" . self::escape((string) $finalOrder['target']) . "</code>",
+            null,
+            'HTML'
+        );
+
+        return ['ok' => true, 'order' => $finalOrder, 'delivery' => $delivery];
+    }
+
+    private static function failAndRefundProviderOrder(PDO $pdo, int $orderId, string $error, array $response): array
+    {
+        $pdo->beginTransaction();
+        try {
+            $stmt = $pdo->prepare("SELECT * FROM digital_service_orders WHERE id = ? FOR UPDATE");
+            $stmt->execute([$orderId]);
+            $order = $stmt->fetch(PDO::FETCH_ASSOC);
+            if (!is_array($order)) {
+                throw new RuntimeException('Order not found during provider failure handling.');
+            }
+
+            if ((string) ($order['status'] ?? '') !== self::STATUS_PROCESSING) {
+                $pdo->commit();
+                return ['ok' => true, 'already_done' => true, 'order' => $order];
+            }
+
+            if ((int) ($order['refunded'] ?? 0) !== 1) {
+                $refund = $pdo->prepare("UPDATE user SET Balance = Balance + ? WHERE id = ?");
+                $refund->execute([(int) $order['amount'], (string) $order['user_id']]);
+                if ($refund->rowCount() !== 1) {
+                    throw new RuntimeException('Provider failure refund could not be credited.');
+                }
+            }
+
+            $payload = json_encode(
+                ['error' => $error, 'response' => $response],
+                JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES
+            );
+            $update = $pdo->prepare(
+                "UPDATE digital_service_orders
+                 SET status = ?, refunded = 1, provider_response = ?, updated_at = NOW()
+                 WHERE id = ?"
+            );
+            $update->execute([
+                self::STATUS_FAILED,
+                is_string($payload) ? $payload : $error,
+                $orderId,
+            ]);
+            $pdo->commit();
+            clearSelectCache('user');
+        } catch (Throwable $e) {
+            if ($pdo->inTransaction()) {
+                $pdo->rollBack();
+            }
+            throw $e;
+        }
+
+        $finalOrder = self::findOrder($pdo, $orderId) ?? $order;
+        sendmessage(
+            (string) $finalOrder['user_id'],
+            "❌ <b>ارسال سفارش ناموفق بود</b>\n\n"
+                . "🧾 کد: <code>" . self::escape((string) $finalOrder['order_code']) . "</code>\n"
+                . "💰 مبلغ سفارش به کیف پول شما برگشت داده شد.",
+            null,
+            'HTML'
+        );
+
+        return ['ok' => false, 'refunded' => true, 'order' => $finalOrder, 'error' => $error];
     }
 
     private static function deliverOZVinoo(PDO $pdo, array $order, array $product): array
