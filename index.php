@@ -990,8 +990,11 @@ if ($text == "/start" || $datain == "start" || $text == "start") {
     };
     $productText = "🎁 <b>" . htmlspecialchars((string) $product['name'], ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . "</b>\n\n"
         . "📦 " . htmlspecialchars($typeLabel, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . "\n"
-        . "💳 قیمت: <b>" . number_format((float) $product['price']) . " تومان</b>\n\n"
-        . "برای ثبت سفارش روی دکمه زیر بزنید 👇";
+        . "💳 قیمت: <b>" . number_format((float) $product['price']) . " تومان</b>";
+    if (($product['provider'] ?? '') === 'ozvinoo' && $serviceValue > 1) {
+        $productText .= "\n📊 مقدار این بسته: <b>" . number_format($serviceValue) . "</b>";
+    }
+    $productText .= "\n\nبرای ثبت سفارش روی دکمه زیر بزنید 👇";
 
     step('home', $from_id);
     update('user', 'Processing_value', '0', 'id', $from_id);
@@ -1029,6 +1032,8 @@ if ($text == "/start" || $datain == "start" || $text == "start") {
     if (($product['provider'] ?? '') === 'tgtools'
         && in_array((string) ($product['type'] ?? ''), ['telegram_stars', 'telegram_premium'], true)) {
         $targetPrompt = "👤 یوزرنیم تلگرام دریافت‌کننده را ارسال کنید.\nمثال: <code>@username</code>";
+    } elseif (($product['provider'] ?? '') === 'ozvinoo') {
+        $targetPrompt = "🔗 لینک، یوزرنیم یا مقصد موردنیاز این سرویس را ارسال کنید.";
     }
 
     // editMessageText only accepts InlineKeyboardMarkup. $backuser becomes a
@@ -1068,8 +1073,11 @@ if ($text == "/start" || $datain == "start" || $text == "start") {
 
     $confirmText = "<b>" . htmlspecialchars($textbotlang['digitalServices']['confirmTitle'], ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . "</b>\n\n"
         . "📦 " . htmlspecialchars((string) $product['name'], ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . "\n"
-        . "👤 مقصد: <code>" . htmlspecialchars((string) $targetValue, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . "</code>\n"
-        . "💳 مبلغ: <b>" . number_format((float) $product['price']) . " تومان</b>\n\n"
+        . "👤 مقصد: <code>" . htmlspecialchars((string) $targetValue, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . "</code>\n";
+    if (($product['provider'] ?? '') === 'ozvinoo' && (int) ($product['service_value'] ?? 1) > 1) {
+        $confirmText .= "📊 مقدار: <b>" . number_format((int) $product['service_value']) . "</b>\n";
+    }
+    $confirmText .= "💳 مبلغ: <b>" . number_format((float) $product['price']) . " تومان</b>\n\n"
         . "برای ثبت نهایی سفارش، دکمه تأیید را بزنید.";
 
     sendmessage(
