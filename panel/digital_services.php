@@ -268,12 +268,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         try {
             $sync = BluebotDigitalServices::syncOZVinooCatalog($pdo);
             if (!empty($sync['ok'])) {
+                $typeCounts = is_array($sync['type_counts'] ?? null) ? $sync['type_counts'] : [];
                 flash(
                     'success',
-                    'محصولات عضوینو از endpointهای رسمی بروزرسانی شدند: '
-                    . (int) ($sync['created'] ?? 0) . ' جدید، '
-                    . (int) ($sync['updated'] ?? 0) . ' بروزرسانی، '
-                    . (int) ($sync['disabled'] ?? 0) . ' غیرفعال.'
+                    'کاتالوگ عضوینو بروزرسانی شد: '
+                    . 'Stars ' . (int) ($typeCounts['stars'] ?? 0)
+                    . ' · Premium ' . (int) ($typeCounts['premium'] ?? 0)
+                    . ' · شماره مجازی ' . (int) ($typeCounts['numbers'] ?? 0)
+                    . ' · ' . (int) ($sync['created'] ?? 0) . ' جدید'
+                    . ' · ' . (int) ($sync['updated'] ?? 0) . ' بروزرسانی'
+                    . ' · ' . (int) ($sync['disabled'] ?? 0) . ' غیرفعال'
                 );
             } else {
                 flash('error', 'همگام‌سازی عضوینو ناموفق بود: ' . (string) ($sync['message'] ?? 'خطای نامشخص'));
