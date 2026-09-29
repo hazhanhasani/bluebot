@@ -66,9 +66,9 @@ final class BluebotDigitalServices
     {
         $serviceValue = max(1, $serviceValue);
         return match ($type) {
-            'telegram_stars' => 'Telegram Stars ' . $serviceValue . ' ⭐',
-            'telegram_premium' => 'Telegram Premium ' . $serviceValue . ' Months',
-            default => 'Digital Service ' . $serviceValue,
+            'telegram_stars' => '⭐ ' . number_format($serviceValue) . ' استار تلگرام',
+            'telegram_premium' => '🎁 تلگرام پرمیوم ' . $serviceValue . ' ماهه',
+            default => 'سرویس دیجیتال ' . $serviceValue,
         };
     }
 
@@ -343,7 +343,7 @@ final class BluebotDigitalServices
         if ($provider === 'tgtools' && in_array($type, ['telegram_stars', 'telegram_premium'], true)) {
             $normalized = ltrim($target, '@');
             if (!preg_match('/^[A-Za-z0-9_]{5,32}$/', $normalized)) {
-                return [false, 'برای TGTools باید یوزرنیم معتبر تلگرام وارد شود؛ Telegram User ID پشتیبانی نمی‌شود.'];
+                return [false, 'یوزرنیم معتبر تلگرام را وارد کنید؛ مثال: @username'];
             }
             return [true, $normalized];
         }
@@ -351,7 +351,7 @@ final class BluebotDigitalServices
         if ($type === 'telegram_premium' && $provider === 'telegram_bot') {
             $normalized = ltrim($target, '@');
             if (!ctype_digit($normalized) || (int) $normalized <= 0) {
-                return [false, 'برای ارسال خودکار Premium باید Telegram User ID عددی وارد شود.'];
+                return [false, 'شناسه عددی معتبر تلگرام را وارد کنید.'];
             }
             return [true, $normalized];
         }
