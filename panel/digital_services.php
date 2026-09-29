@@ -395,6 +395,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
         }
         foreach ([
+            '/api/v2',
+            '/api',
+            '/v2',
             '/api/services',
             '/api/service',
             '/services',
@@ -454,8 +457,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
 
             $catalogUrl = (string) $discovery['url'];
+            $apiStyle = strtolower(trim((string) ($discovery['api_style'] ?? 'rest')));
             $detectedPath = (string) parse_url($catalogUrl, PHP_URL_PATH);
             ds_panel_set_setting($pdo, 'ozvinoo_catalog_path', $detectedPath);
+            ds_panel_set_setting($pdo, 'ozvinoo_api_style', $apiStyle === 'smm' ? 'smm' : 'rest');
+            if ($apiStyle === 'smm' && $detectedPath !== '') {
+                $orderPath = $detectedPath;
+                ds_panel_set_setting($pdo, 'ozvinoo_order_path', $detectedPath);
+            }
 
             BluebotProviderCatalogService::saveProvider($pdo, [
                 'provider_key' => 'ozvinoo',
@@ -482,7 +491,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     'عضوینو ذخیره و همگام شد: '
                     . (int) ($sync['created'] ?? 0) . ' محصول جدید، '
                     . (int) ($sync['updated'] ?? 0) . ' بروزرسانی. '
-                    . 'سود ' . rtrim(rtrim(number_format($profitPercent, 2, '.', ''), '0'), '.') . '٪ اعمال شد.'
+                    . 'سود ' . rtrim(rtrim(number_format($profitPercent, 2, '.', ''), '0'), '.') . '٪ اعمال شد. '
+                    . 'روش API: ' . strtoupper((string) ($discovery['api_style'] ?? 'rest'))
                 );
             } else {
                 flash('warning', 'عضوینو ذخیره شد ولی همگام‌سازی محصولات ناموفق بود: ' . (string) ($sync['message'] ?? 'خطای نامشخص'));
@@ -497,21 +507,38 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     if ($action === 'sync_ozvinoo_catalog') {
         try {
-            $provider = BluebotProviderCatalogService::findProvider($pdo, 'ozvinoo');
-            if (!is_array($provider)) {
-                flash('warning', 'ابتدا تنظیمات عضوینو را ذخیره کنید تا کاتالوگ آن شناسایی شود.');
+            $bootstrap = BluebotDigitalServices::maybeBootstrapOZVinooCatalog($pdo);
+
+            if (empty($bootstrap['ok']) && empty($bootstrap['skipped'])) {
+                flash(
+                    'error',
+                    'شناسایی کاتالوگ عضوینو ناموفق بود: '
+                    . (string) ($bootstrap['message'] ?? 'خطای نامشخص')
+                );
+            } elseif (empty($bootstrap['skipped'])) {
+                flash(
+                    'success',
+                    'کاتالوگ عضوینو شناسایی و همگام شد: '
+                    . (int) ($bootstrap['created'] ?? 0) . ' جدید، '
+                    . (int) ($bootstrap['updated'] ?? 0) . ' بروزرسانی.'
+                );
             } else {
-                $sync = BluebotProviderCatalogService::syncProvider($pdo, 'ozvinoo');
-                if (!empty($sync['ok'])) {
-                    flash(
-                        'success',
-                        'محصولات عضوینو بروزرسانی شدند: '
-                        . (int) ($sync['created'] ?? 0) . ' جدید، '
-                        . (int) ($sync['updated'] ?? 0) . ' بروزرسانی، '
-                        . (int) ($sync['disabled'] ?? 0) . ' غیرفعال.'
-                    );
+                $provider = BluebotProviderCatalogService::findProvider($pdo, 'ozvinoo');
+                if (!is_array($provider)) {
+                    flash('warning', 'ابتدا API Key عضوینو را ذخیره کنید.');
                 } else {
-                    flash('error', 'همگام‌سازی عضوینو ناموفق بود: ' . (string) ($sync['message'] ?? 'خطای نامشخص'));
+                    $sync = BluebotProviderCatalogService::syncProvider($pdo, 'ozvinoo');
+                    if (!empty($sync['ok'])) {
+                        flash(
+                            'success',
+                            'محصولات عضوینو بروزرسانی شدند: '
+                            . (int) ($sync['created'] ?? 0) . ' جدید، '
+                            . (int) ($sync['updated'] ?? 0) . ' بروزرسانی، '
+                            . (int) ($sync['disabled'] ?? 0) . ' غیرفعال.'
+                        );
+                    } else {
+                        flash('error', 'همگام‌سازی عضوینو ناموفق بود: ' . (string) ($sync['message'] ?? 'خطای نامشخص'));
+                    }
                 }
             }
         } catch (Throwable $e) {
@@ -587,6 +614,7 @@ $ozProfitPercent = (float) ds_panel_setting($pdo, 'ozvinoo_profit_percent', '0')
 $ozCurrency = ds_panel_setting($pdo, 'ozvinoo_currency', 'toman');
 $ozExchangeRate = (float) ds_panel_setting($pdo, 'ozvinoo_exchange_rate_toman', '1');
 $ozSyncInterval = (int) ds_panel_setting($pdo, 'ozvinoo_sync_interval_minutes', '15');
+$ozApiStyle = ds_panel_setting($pdo, 'ozvinoo_api_style', 'auto');
 $ozProvider = BluebotProviderCatalogService::findProvider($pdo, 'ozvinoo');
 $ozProductCountStmt = $pdo->query("SELECT COUNT(*) FROM digital_service_products WHERE provider = 'ozvinoo' AND active = 1");
 $ozProductCount = (int) $ozProductCountStmt->fetchColumn();
@@ -833,7 +861,8 @@ include __DIR__ . '/inc/layout_head.php';
             </div>
             <?php if (is_array($ozProvider)): ?>
                 <div class="notice <?= (($ozProvider['last_sync_status'] ?? '') === 'success') ? 'notice-info' : 'notice-warn' ?>">
-                    کاتالوگ: <code><?= htmlspecialchars((string) ($ozProvider['catalog_url'] ?? '—')) ?></code>
+                    روش API: <code><?= htmlspecialchars(strtoupper((string) $ozApiStyle)) ?></code>
+                    · کاتالوگ: <code><?= htmlspecialchars((string) ($ozProvider['catalog_url'] ?? '—')) ?></code>
                     · آخرین Sync: <?= htmlspecialchars((string) ($ozProvider['last_sync_at'] ?? '—')) ?>
                     · وضعیت: <?= htmlspecialchars((string) ($ozProvider['last_sync_status'] ?? '—')) ?>
                     <?php if (!empty($ozProvider['last_sync_message'])): ?>
