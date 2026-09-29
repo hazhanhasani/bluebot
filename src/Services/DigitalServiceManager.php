@@ -1327,6 +1327,13 @@ final class BluebotDigitalServices
             return strcmp($a, $b);
         });
 
+        if (isset($categories['virtual_number'])) {
+            $applicationCount = count(self::virtualNumberApplications($pdo));
+            if ($applicationCount > 0) {
+                $categories['virtual_number']['count'] = $applicationCount;
+            }
+        }
+
         $rows = [];
         foreach ($categories as $category => $info) {
             if ((int) ($info['count'] ?? 0) <= 0) {
@@ -1344,6 +1351,246 @@ final class BluebotDigitalServices
         ]];
 
         return json_encode(['inline_keyboard' => $rows], JSON_UNESCAPED_UNICODE);
+    }
+
+    public static function virtualNumberApplications(PDO $pdo): array
+    {
+        $applications = [];
+
+        foreach (self::listActive($pdo) as $product) {
+            if ((string) ($product['type'] ?? '') !== 'virtual_number') {
+                continue;
+            }
+            if (self::categoryForProduct($product) !== 'virtual_number') {
+                continue;
+            }
+
+            $metadata = self::productMetadata($product);
+            $applicationId = max(0, (int) ($metadata['application_id'] ?? $metadata['service_id'] ?? 0));
+            $applicationName = trim((string) ($metadata['application_name'] ?? ''));
+            $applicationCode = strtolower(trim((string) ($metadata['application_code'] ?? '')));
+
+            if ($applicationName === '') {
+                $applicationName = (($metadata['api_family'] ?? '') === 'telegram-numbers-v2')
+                    ? 'Telegram'
+                    : 'سرویس شماره مجازی';
+            }
+            if ($applicationCode === '') {
+                $applicationCode = $applicationId > 0 ? ('app_' . $applicationId) : 'telegram';
+            }
+
+            $key = (string) $applicationId;
+            if (!isset($applications[$key])) {
+                $applications[$key] = [
+                    'id' => $applicationId,
+                    'code' => $applicationCode,
+                    'name' => $applicationName,
+                    'icon' => self::virtualNumberApplicationIcon($applicationName, $applicationCode),
+                    'count' => 0,
+                    'min_price' => null,
+                ];
+            }
+
+            $applications[$key]['count']++;
+            $price = (float) ($product['price'] ?? 0);
+            if ($price > 0 && (
+                $applications[$key]['min_price'] === null
+                || $price < (float) $applications[$key]['min_price']
+            )) {
+                $applications[$key]['min_price'] = $price;
+            }
+        }
+
+        uasort($applications, static function (array $a, array $b): int {
+            $aName = strtolower((string) ($a['name'] ?? ''));
+            $bName = strtolower((string) ($b['name'] ?? ''));
+
+            $aTelegram = str_contains($aName, 'telegram') || str_contains($aName, 'تلگرام');
+            $bTelegram = str_contains($bName, 'telegram') || str_contains($bName, 'تلگرام');
+            if ($aTelegram !== $bTelegram) {
+                return $aTelegram ? -1 : 1;
+            }
+
+            $idCompare = ((int) ($a['id'] ?? 0)) <=> ((int) ($b['id'] ?? 0));
+            return $idCompare !== 0
+                ? $idCompare
+                : strnatcasecmp((string) ($a['name'] ?? ''), (string) ($b['name'] ?? ''));
+        });
+
+        return array_values($applications);
+    }
+
+    public static function virtualNumberApplication(PDO $pdo, int $applicationId): ?array
+    {
+        foreach (self::virtualNumberApplications($pdo) as $application) {
+            if ((int) ($application['id'] ?? -1) === $applicationId) {
+                return $application;
+            }
+        }
+
+        return null;
+    }
+
+    public static function virtualNumberApplicationsKeyboard(PDO $pdo, string $backText): string
+    {
+        $buttons = [];
+        foreach (self::virtualNumberApplications($pdo) as $application) {
+            $buttons[] = [
+                'text' => trim(
+                    (string) ($application['icon'] ?? '📱')
+                    . ' '
+                    . (string) ($application['name'] ?? 'سرویس')
+                    . ' · '
+                    . number_format((int) ($application['count'] ?? 0))
+                ),
+                'callback_data' => 'ds_vn_app:' . (int) ($application['id'] ?? 0) . ':1',
+            ];
+        }
+
+        $rows = [];
+        foreach (array_chunk($buttons, 2) as $pair) {
+            $rows[] = $pair;
+        }
+
+        if ($rows === []) {
+            $rows[] = [[
+                'text' => 'فعلاً شماره‌ای موجود نیست',
+                'callback_data' => 'ds_home',
+            ]];
+        }
+
+        $rows[] = [[
+            'text' => '↩️ دسته‌بندی‌ها',
+            'callback_data' => 'ds_home',
+        ]];
+        $rows[] = [[
+            'text' => $backText,
+            'callback_data' => 'backuser',
+        ]];
+
+        return json_encode(['inline_keyboard' => $rows], JSON_UNESCAPED_UNICODE);
+    }
+
+    public static function virtualNumberApplicationCatalog(
+        PDO $pdo,
+        int $applicationId,
+        int $page = 1,
+        int $perPage = 18
+    ): array {
+        $products = [];
+
+        foreach (self::listActive($pdo) as $product) {
+            if ((string) ($product['type'] ?? '') !== 'virtual_number') {
+                continue;
+            }
+
+            $metadata = self::productMetadata($product);
+            $productApplicationId = max(0, (int) ($metadata['application_id'] ?? $metadata['service_id'] ?? 0));
+            if ($productApplicationId !== $applicationId) {
+                continue;
+            }
+
+            $products[] = $product;
+        }
+
+        usort($products, static function (array $a, array $b): int {
+            $aMeta = self::productMetadata($a);
+            $bMeta = self::productMetadata($b);
+            $aCountry = (string) ($aMeta['country'] ?? $a['name'] ?? '');
+            $bCountry = (string) ($bMeta['country'] ?? $b['name'] ?? '');
+            return strnatcasecmp($aCountry, $bCountry);
+        });
+
+        $count = count($products);
+        $perPage = max(6, min(30, $perPage));
+        $pages = max(1, (int) ceil($count / $perPage));
+        $page = max(1, min($pages, $page));
+        $slice = array_slice($products, ($page - 1) * $perPage, $perPage);
+
+        $rows = [];
+        foreach ($slice as $product) {
+            $metadata = self::productMetadata($product);
+            $country = trim((string) ($metadata['country'] ?? ''));
+            if ($country === '') {
+                $country = trim((string) ($product['name'] ?? 'شماره مجازی'));
+            }
+
+            $rows[] = [[
+                'text' => '🌍 ' . $country . ' · ' . number_format((float) ($product['price'] ?? 0)) . ' تومان',
+                'callback_data' => 'ds_product:' . (int) $product['id'],
+            ]];
+        }
+
+        if ($pages > 1) {
+            $pager = [];
+            if ($page > 1) {
+                $pager[] = [
+                    'text' => '‹ قبلی',
+                    'callback_data' => 'ds_vn_app:' . $applicationId . ':' . ($page - 1),
+                ];
+            }
+            $pager[] = [
+                'text' => $page . ' / ' . $pages,
+                'callback_data' => 'ds_vn_app:' . $applicationId . ':' . $page,
+            ];
+            if ($page < $pages) {
+                $pager[] = [
+                    'text' => 'بعدی ›',
+                    'callback_data' => 'ds_vn_app:' . $applicationId . ':' . ($page + 1),
+                ];
+            }
+            $rows[] = $pager;
+        }
+
+        $rows[] = [[
+            'text' => '↩️ پلتفرم‌ها',
+            'callback_data' => 'ds_category:virtual_number',
+        ]];
+        $rows[] = [[
+            'text' => '🏠 دسته‌بندی‌ها',
+            'callback_data' => 'ds_home',
+        ]];
+
+        return [
+            'application' => self::virtualNumberApplication($pdo, $applicationId),
+            'count' => $count,
+            'page' => $page,
+            'pages' => $pages,
+            'keyboard' => json_encode(['inline_keyboard' => $rows], JSON_UNESCAPED_UNICODE),
+        ];
+    }
+
+    private static function virtualNumberApplicationIcon(string $name, string $code = ''): string
+    {
+        $value = mb_strtolower(trim($name . ' ' . $code), 'UTF-8');
+        $map = [
+            ['telegram', '✈️'], ['تلگرام', '✈️'],
+            ['whatsapp', '🟢'], ['واتساپ', '🟢'],
+            ['instagram', '📸'], ['اینستاگرام', '📸'],
+            ['google', '🔎'], ['گوگل', '🔎'],
+            ['facebook', '📘'], ['فیسبوک', '📘'],
+            ['discord', '🎮'], ['دیسکورد', '🎮'],
+            ['apple', '🍎'], ['اپل', '🍎'],
+            ['microsoft', '💻'], ['مایکروسافت', '💻'],
+            ['amazon', '📦'], ['آمازون', '📦'],
+            ['tiktok', '🎵'], ['تیک تاک', '🎵'], ['تیک‌تاک', '🎵'],
+            ['twitter', '𝕏'], ['x.com', '𝕏'], ['توییتر', '𝕏'],
+            ['uber', '🚕'], ['اوبر', '🚕'],
+            ['linkedin', '💼'], ['لینکدین', '💼'],
+            ['steam', '🎮'], ['استیم', '🎮'],
+            ['paypal', '💸'], ['پی پال', '💸'], ['پی‌پال', '💸'],
+            ['yahoo', '🌀'], ['یاهو', '🌀'],
+            ['signal', '📶'], ['سیگنال', '📶'],
+            ['wechat', '💬'], ['وی چت', '💬'], ['وی‌چت', '💬'],
+        ];
+
+        foreach ($map as [$needle, $icon]) {
+            if (str_contains($value, $needle)) {
+                return $icon;
+            }
+        }
+
+        return '📱';
     }
 
     public static function catalogKeyboard(PDO $pdo, string $backText, ?string $category = null): string
@@ -1383,6 +1630,12 @@ final class BluebotDigitalServices
     public static function productKeyboard(array $product, string $backText): string
     {
         $category = self::categoryForProduct($product);
+        $backCallback = 'ds_category:' . $category;
+        if ((string) ($product['type'] ?? '') === 'virtual_number') {
+            $metadata = self::productMetadata($product);
+            $applicationId = max(0, (int) ($metadata['application_id'] ?? $metadata['service_id'] ?? 0));
+            $backCallback = 'ds_vn_app:' . $applicationId . ':1';
+        }
 
         return json_encode([
             'inline_keyboard' => [
@@ -1393,7 +1646,7 @@ final class BluebotDigitalServices
                 ]],
                 [[
                     'text' => '↩️ بازگشت',
-                    'callback_data' => 'ds_category:' . $category,
+                    'callback_data' => $backCallback,
                 ]],
                 [[
                     'text' => $backText,
