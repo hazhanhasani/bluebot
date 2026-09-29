@@ -29,6 +29,7 @@ return [
         ['setting_key' => 'ozvinoo_sync_interval_minutes', 'setting_value' => '15', 'is_secret' => 0],
         ['setting_key' => 'ozvinoo_api_style', 'setting_value' => 'official-v1', 'is_secret' => 0],
         ['setting_key' => 'ozvinoo_catalog_last_sync', 'setting_value' => '0', 'is_secret' => 0],
+        ['setting_key' => 'digital_services_keyboard_initialized', 'setting_value' => '0', 'is_secret' => 0],
     ],
 ];
 

@@ -36,6 +36,107 @@ final class BluebotDigitalServices
         return $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
     }
 
+    public static function ensureMainKeyboardButton(PDO $pdo): array
+    {
+        if (!self::isAvailable($pdo)) {
+            return ['ok' => false, 'changed' => false, 'enabled' => false];
+        }
+
+        // One-time compatibility migration for installations upgraded from
+        // versions that predate the Digital Services main-menu button.
+        // Once initialized, a store owner may disable the button intentionally
+        // from Panel > Keyboard without the runtime turning it back on.
+        if (self::setting($pdo, 'digital_services_keyboard_initialized', '0') === '1') {
+            return [
+                'ok' => true,
+                'changed' => false,
+                'enabled' => self::mainKeyboardHasDigitalServices($pdo),
+            ];
+        }
+
+        try {
+            $stmt = $pdo->query("SELECT keyboardmain FROM setting LIMIT 1");
+            $raw = $stmt->fetchColumn();
+            $decoded = json_decode((string) $raw, true);
+            $rows = is_array($decoded['keyboard'] ?? null)
+                ? array_values($decoded['keyboard'])
+                : [];
+
+            if ($rows === []) {
+                return ['ok' => false, 'changed' => false, 'enabled' => false];
+            }
+
+            $hasButton = false;
+            foreach ($rows as $row) {
+                if (!is_array($row)) {
+                    continue;
+                }
+                foreach ($row as $button) {
+                    if (is_array($button) && ($button['text'] ?? '') === 'text_digital_services') {
+                        $hasButton = true;
+                        break 2;
+                    }
+                }
+            }
+
+            $changed = false;
+            if (!$hasButton) {
+                array_splice(
+                    $rows,
+                    min(1, count($rows)),
+                    0,
+                    [[['text' => 'text_digital_services']]]
+                );
+                $json = json_encode(
+                    ['keyboard' => array_values($rows)],
+                    JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES
+                );
+                if (!is_string($json)) {
+                    return ['ok' => false, 'changed' => false, 'enabled' => false];
+                }
+
+                $update = $pdo->prepare("UPDATE setting SET keyboardmain = ? LIMIT 1");
+                $update->execute([$json]);
+                $changed = true;
+                $hasButton = true;
+            }
+
+            self::setSetting($pdo, 'digital_services_keyboard_initialized', '1', false);
+
+            return [
+                'ok' => true,
+                'changed' => $changed,
+                'enabled' => $hasButton,
+            ];
+        } catch (Throwable $e) {
+            return [
+                'ok' => false,
+                'changed' => false,
+                'enabled' => false,
+                'message' => $e->getMessage(),
+            ];
+        }
+    }
+
+    public static function mainKeyboardHasDigitalServices(PDO $pdo): bool
+    {
+        try {
+            $stmt = $pdo->query("SELECT keyboardmain FROM setting LIMIT 1");
+            $decoded = json_decode((string) $stmt->fetchColumn(), true);
+            foreach ((array) ($decoded['keyboard'] ?? []) as $row) {
+                foreach ((array) $row as $button) {
+                    if (is_array($button) && ($button['text'] ?? '') === 'text_digital_services') {
+                        return true;
+                    }
+                }
+            }
+        } catch (Throwable $e) {
+            return false;
+        }
+
+        return false;
+    }
+
     public static function findProduct(PDO $pdo, int $id, bool $activeOnly = true): ?array
     {
         if ($id <= 0 || !self::isAvailable($pdo)) {
@@ -777,6 +878,9 @@ final class BluebotDigitalServices
         }
         if ($type === 'telegram_stars') {
             return 'stars';
+        }
+        if ($type === 'virtual_number') {
+            return 'virtual_number';
         }
 
         $metadata = self::productMetadata($product);

@@ -483,6 +483,7 @@ $ozSyncInterval = (int) ds_panel_setting($pdo, 'ozvinoo_sync_interval_minutes', 
 $ozProvider = BluebotProviderCatalogService::findProvider($pdo, 'ozvinoo');
 $ozProductCountStmt = $pdo->query("SELECT COUNT(*) FROM digital_service_products WHERE provider = 'ozvinoo' AND active = 1");
 $ozProductCount = (int) $ozProductCountStmt->fetchColumn();
+$digitalServicesMenuEnabled = BluebotDigitalServices::mainKeyboardHasDigitalServices($pdo);
 $ozWalletStatus = $ozApiKey !== ''
     ? BluebotDigitalServices::ozvinooWalletStatus($pdo)
     : ['ok' => false, 'configured' => false, 'balance' => null, 'message' => 'API Key تنظیم نشده است.'];
@@ -685,6 +686,14 @@ include __DIR__ . '/inc/layout_head.php';
                 <code>GET /telegram-services/premium/</code> · <code>POST /telegram-services/premium/</code><br>
                 <code>GET/POST /telegram-numbers/numbers/</code> · <code>GET /telegram-numbers/number-services/</code><br>
                 <small>BlueBot دیگر مسیر <code>/api/</code> یا SMM catalog را برای عضوینو probe نمی‌کند.</small>
+            </div>
+
+            <div class="notice <?= $digitalServicesMenuEnabled ? 'notice-info' : 'notice-warn' ?>">
+                <strong>نمایش فروش خدمات در منوی ربات:</strong>
+                <?= $digitalServicesMenuEnabled ? '✅ فعال' : '⚠️ غیرفعال' ?>
+                <?php if (!$digitalServicesMenuEnabled): ?>
+                    <br><small>در نسخه‌های ارتقایافته، مهاجرت خودکار منو با اولین پیام کاربر انجام می‌شود.</small>
+                <?php endif; ?>
             </div>
 
             <div class="notice <?= $ozProductCount > 0 ? 'notice-info' : 'notice-warn' ?>">
