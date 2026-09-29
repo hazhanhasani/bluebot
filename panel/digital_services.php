@@ -147,7 +147,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if ($apiKey !== '') {
             ds_panel_set_setting($pdo, 'tgtools_api_key', $apiKey, true);
         }
-        flash('success', 'تنظیمات TGTools ذخیره شد.');
+
+        // Stars and Premium in BlueBot use TGTools as the delivery provider.
+        $migrateProducts = $pdo->prepare(
+            "UPDATE digital_service_products
+             SET provider = 'tgtools', updated_at = NOW()
+             WHERE type IN ('telegram_stars', 'telegram_premium')"
+        );
+        $migrateProducts->execute();
+
+        flash('success', 'تنظیمات TGTools ذخیره شد و Provider سرویس‌های Stars/Premium روی TGTools قرار گرفت.');
         header('Location: digital_services.php#tgtools');
         exit;
     }
