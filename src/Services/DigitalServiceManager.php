@@ -306,6 +306,166 @@ final class BluebotDigitalServices
         return $result;
     }
 
+    public static function tgToolsWalletStatus(PDO $pdo): array
+    {
+        $apiKey = trim(self::setting($pdo, 'tgtools_api_key', ''));
+        if ($apiKey === '') {
+            return [
+                'ok' => false,
+                'configured' => false,
+                'balance_ton' => null,
+                'deposit_address' => '',
+                'message' => 'کلید API تی‌جی‌تولز تنظیم نشده است.',
+            ];
+        }
+
+        $response = (new TgToolsClient($apiKey))->wallet();
+        if (empty($response['ok'])) {
+            return [
+                'ok' => false,
+                'configured' => true,
+                'balance_ton' => null,
+                'deposit_address' => '',
+                'message' => trim((string) ($response['message'] ?? '')) ?: 'دریافت موجودی کیف پول API تی‌جی‌تولز ناموفق بود.',
+                'response' => $response,
+            ];
+        }
+
+        $data = is_array($response['data'] ?? null) ? $response['data'] : [];
+        $balance = self::findScalarByKeys(
+            $data,
+            ['balanceton', 'tonbalance', 'availableton', 'availablebalance', 'walletbalance', 'balance']
+        );
+        $address = self::findScalarByKeys(
+            $data,
+            ['depositaddress', 'walletaddress', 'tonaddress', 'address']
+        );
+
+        return [
+            'ok' => true,
+            'configured' => true,
+            'balance_ton' => is_numeric($balance) ? (float) $balance : null,
+            'deposit_address' => is_scalar($address) ? trim((string) $address) : '',
+            'message' => '',
+            'response' => $response,
+        ];
+    }
+
+    public static function maybeBootstrapOZVinooCatalog(PDO $pdo): array
+    {
+        if (!self::isAvailable($pdo)) {
+            return ['ok' => false, 'skipped' => true, 'message' => 'Digital services are unavailable.'];
+        }
+
+        $apiKey = trim(self::setting($pdo, 'ozvinoo_api_key', ''));
+        if ($apiKey === '') {
+            return ['ok' => true, 'skipped' => true, 'message' => 'OZVinoo API key is not configured.'];
+        }
+
+        $provider = BluebotProviderCatalogService::findProvider($pdo, 'ozvinoo');
+        $productCountStmt = $pdo->prepare(
+            "SELECT COUNT(*) FROM digital_service_products WHERE provider = 'ozvinoo' AND active = 1"
+        );
+        $productCountStmt->execute();
+        $activeProducts = (int) $productCountStmt->fetchColumn();
+
+        if (is_array($provider) && $activeProducts > 0) {
+            return ['ok' => true, 'skipped' => true, 'products' => $activeProducts];
+        }
+
+        $baseUrl = rtrim(self::setting($pdo, 'ozvinoo_base_url', 'https://api.ozvinoo.xyz'), '/');
+        $catalogPath = trim(self::setting($pdo, 'ozvinoo_catalog_path', ''));
+        $orderPath = trim(self::setting($pdo, 'ozvinoo_order_path', ''));
+        $authHeader = trim(self::setting($pdo, 'ozvinoo_auth_header', 'Authorization'));
+        $authPrefix = trim(self::setting($pdo, 'ozvinoo_auth_prefix', 'Bearer'));
+        $profitPercent = max(0.0, min(1000.0, (float) self::setting($pdo, 'ozvinoo_profit_percent', '0')));
+        $currency = strtolower(trim(self::setting($pdo, 'ozvinoo_currency', 'toman')));
+        $exchangeRate = max(0.000001, (float) self::setting($pdo, 'ozvinoo_exchange_rate_toman', '1'));
+        $syncInterval = max(1, min(1440, (int) self::setting($pdo, 'ozvinoo_sync_interval_minutes', '15')));
+
+        $paths = [];
+        if ($catalogPath !== '') {
+            $paths[] = str_starts_with($catalogPath, '/') ? $catalogPath : '/' . $catalogPath;
+        }
+        if ($orderPath !== '') {
+            $normalizedOrderPath = str_starts_with($orderPath, '/') ? $orderPath : '/' . $orderPath;
+            $orderDir = rtrim(str_replace('\\', '/', dirname($normalizedOrderPath)), '/.');
+            if ($orderDir !== '') {
+                foreach (['/services', '/products', '/catalog', '/packages'] as $sibling) {
+                    $paths[] = $orderDir . $sibling;
+                }
+            }
+        }
+        foreach ([
+            '/api/services',
+            '/api/service',
+            '/services',
+            '/api/services/list',
+            '/api/v1/services',
+            '/api/v1/services/list',
+            '/v1/services',
+            '/api/products',
+            '/products',
+            '/api/v1/products',
+            '/v1/products',
+            '/api/catalog',
+            '/catalog',
+            '/api/packages',
+            '/packages',
+        ] as $path) {
+            $paths[] = $path;
+        }
+
+        $urls = array_map(
+            static fn (string $path): string => $baseUrl . '/' . ltrim($path, '/'),
+            array_values(array_unique($paths))
+        );
+
+        $discovery = BluebotProviderCatalogService::discoverCatalogUrl(
+            $urls,
+            $apiKey,
+            $authHeader,
+            $authPrefix
+        );
+        if (empty($discovery['ok'])) {
+            return [
+                'ok' => false,
+                'skipped' => false,
+                'message' => (string) ($discovery['message'] ?? 'OZVinoo catalog endpoint was not detected.'),
+            ];
+        }
+
+        $catalogUrl = (string) $discovery['url'];
+        $detectedPath = (string) parse_url($catalogUrl, PHP_URL_PATH);
+        if ($detectedPath !== '') {
+            self::setSetting($pdo, 'ozvinoo_catalog_path', $detectedPath, false);
+        }
+
+        BluebotProviderCatalogService::saveProvider($pdo, [
+            'provider_key' => 'ozvinoo',
+            'name' => 'OZVinoo',
+            'catalog_url' => $catalogUrl,
+            'api_key' => $apiKey,
+            'auth_header' => $authHeader,
+            'auth_prefix' => $authPrefix,
+            'products_path' => (string) ($discovery['products_path'] ?? 'auto'),
+            'id_field' => (string) ($discovery['id_field'] ?? 'auto'),
+            'name_field' => (string) ($discovery['name_field'] ?? 'auto'),
+            'category_field' => (string) ($discovery['category_field'] ?? 'auto'),
+            'price_field' => (string) ($discovery['price_field'] ?? 'auto'),
+            'currency' => in_array($currency, ['toman', 'rial', 'usd', 'ton', 'other'], true) ? $currency : 'toman',
+            'exchange_rate_toman' => $exchangeRate,
+            'profit_percent' => $profitPercent,
+            'sync_interval_minutes' => $syncInterval,
+        ]);
+
+        $sync = BluebotProviderCatalogService::syncProvider($pdo, 'ozvinoo');
+        return array_merge(
+            ['ok' => !empty($sync['ok']), 'skipped' => false, 'catalog_url' => $catalogUrl],
+            $sync
+        );
+    }
+
     public static function categoryForProduct(array $product): string
     {
         $type = (string) ($product['type'] ?? '');
@@ -775,20 +935,34 @@ final class BluebotDigitalServices
         try {
             $delivery = self::deliver($pdo, $order, $product);
         } catch (Throwable $e) {
-            return self::failAndRefundProviderOrder(
+            return self::markRetryableProviderFailure(
                 $pdo,
                 $orderId,
                 $e->getMessage(),
-                []
+                [],
+                ['retryable' => true]
             );
         }
 
         if (empty($delivery['ok'])) {
+            $error = (string) ($delivery['error'] ?? 'Unknown provider error');
+            $response = is_array($delivery['response'] ?? null) ? $delivery['response'] : $delivery;
+
+            if (!empty($delivery['retryable'])) {
+                return self::markRetryableProviderFailure(
+                    $pdo,
+                    $orderId,
+                    $error,
+                    $response,
+                    $delivery
+                );
+            }
+
             return self::failAndRefundProviderOrder(
                 $pdo,
                 $orderId,
-                (string) ($delivery['error'] ?? 'Unknown provider error'),
-                is_array($delivery['response'] ?? null) ? $delivery['response'] : $delivery
+                $error,
+                $response
             );
         }
 
@@ -1027,7 +1201,12 @@ final class BluebotDigitalServices
     {
         $apiKey = trim(self::setting($pdo, 'tgtools_api_key', ''));
         if ($apiKey === '') {
-            return ['ok' => false, 'error' => 'TGTools API key is not configured.'];
+            return [
+                'ok' => false,
+                'retryable' => true,
+                'code' => 'TGTOOLS_API_KEY_MISSING',
+                'error' => 'کلید API تی‌جی‌تولز تنظیم نشده است.',
+            ];
         }
 
         $type = (string) ($product['type'] ?? '');
@@ -1037,22 +1216,46 @@ final class BluebotDigitalServices
 
         $username = ltrim(trim((string) ($order['target'] ?? '')), '@');
         if (!preg_match('/^[A-Za-z0-9_]{5,32}$/', $username)) {
-            return ['ok' => false, 'error' => 'TGTools requires a valid Telegram username.'];
+            return ['ok' => false, 'error' => 'یوزرنیم تلگرام مقصد معتبر نیست.'];
         }
 
         $client = new TgToolsClient($apiKey);
+        $wallet = self::tgToolsWalletStatus($pdo);
+        $metadata = self::productMetadata($product);
+        $requiredTon = is_numeric($metadata['wholesale_ton'] ?? null)
+            ? (float) $metadata['wholesale_ton']
+            : null;
+        $balanceTon = is_numeric($wallet['balance_ton'] ?? null)
+            ? (float) $wallet['balance_ton']
+            : null;
+
+        if (!empty($wallet['ok'])
+            && $requiredTon !== null
+            && $requiredTon > 0
+            && $balanceTon !== null
+            && $balanceTon + 0.000000001 < $requiredTon) {
+            return [
+                'ok' => false,
+                'retryable' => true,
+                'code' => 'TGTOOLS_WALLET_INSUFFICIENT',
+                'error' => self::tgToolsInsufficientWalletMessage($wallet, $requiredTon),
+                'response' => ['wallet' => $wallet, 'required_ton' => $requiredTon],
+            ];
+        }
+
         $lookup = $client->lookupUser($username);
         if (empty($lookup['ok'])) {
             return [
                 'ok' => false,
-                'error' => trim((string) ($lookup['message'] ?? '')) ?: 'Unable to validate Telegram username with TGTools.',
+                'retryable' => ((int) ($lookup['http_status'] ?? 0)) >= 500 || (int) ($lookup['http_status'] ?? 0) === 0,
+                'error' => trim((string) ($lookup['message'] ?? '')) ?: 'اعتبارسنجی یوزرنیم در تی‌جی‌تولز ناموفق بود.',
                 'response' => $lookup,
             ];
         }
 
         $profile = is_array($lookup['data'] ?? null) ? $lookup['data'] : [];
         if (array_key_exists('found', $profile) && !$profile['found']) {
-            return ['ok' => false, 'error' => 'Telegram username was not found by TGTools.', 'response' => $lookup];
+            return ['ok' => false, 'error' => 'یوزرنیم تلگرام در تی‌جی‌تولز پیدا نشد.', 'response' => $lookup];
         }
 
         $serviceValue = max(1, (int) ($product['service_value'] ?? 1));
@@ -1060,10 +1263,10 @@ final class BluebotDigitalServices
 
         if ($type === 'telegram_premium') {
             if (!in_array($serviceValue, [3, 6, 12], true)) {
-                return ['ok' => false, 'error' => 'TGTools Premium months must be 3, 6, or 12.'];
+                return ['ok' => false, 'error' => 'مدت Premium باید ۳، ۶ یا ۱۲ ماه باشد.'];
             }
             if (array_key_exists('premiumEligible', $profile) && !$profile['premiumEligible']) {
-                return ['ok' => false, 'error' => 'This Telegram account is not eligible for Premium.', 'response' => $lookup];
+                return ['ok' => false, 'error' => 'این حساب تلگرام واجد شرایط دریافت Premium نیست.', 'response' => $lookup];
             }
             $purchase = $client->purchasePremium($username, $serviceValue, $trackingCode);
         } else {
@@ -1071,9 +1274,27 @@ final class BluebotDigitalServices
         }
 
         if (empty($purchase['ok'])) {
+            $message = trim((string) ($purchase['message'] ?? ''));
+            $httpStatus = (int) ($purchase['http_status'] ?? 0);
+            $lowerMessage = strtolower($message);
+            $insufficient = str_contains($lowerMessage, 'insufficient wallet balance')
+                || str_contains($lowerMessage, 'insufficient balance');
+
+            if ($insufficient) {
+                $freshWallet = self::tgToolsWalletStatus($pdo);
+                return [
+                    'ok' => false,
+                    'retryable' => true,
+                    'code' => 'TGTOOLS_WALLET_INSUFFICIENT',
+                    'error' => self::tgToolsInsufficientWalletMessage($freshWallet, $requiredTon),
+                    'response' => ['purchase' => $purchase, 'wallet' => $freshWallet, 'required_ton' => $requiredTon],
+                ];
+            }
+
             return [
                 'ok' => false,
-                'error' => trim((string) ($purchase['message'] ?? '')) ?: 'TGTools purchase request failed.',
+                'retryable' => $httpStatus === 0 || $httpStatus >= 500,
+                'error' => $message !== '' ? $message : 'درخواست خرید از تی‌جی‌تولز ناموفق بود.',
                 'response' => $purchase,
             ];
         }
@@ -1083,7 +1304,8 @@ final class BluebotDigitalServices
         if ($transactionId <= 0) {
             return [
                 'ok' => false,
-                'error' => 'TGTools did not return a transaction ID.',
+                'retryable' => true,
+                'error' => 'تی‌جی‌تولز شناسه تراکنش برنگرداند؛ قبل از تلاش مجدد تاریخچه تراکنش‌ها را بررسی کنید.',
                 'response' => $purchase,
             ];
         }
@@ -1092,7 +1314,7 @@ final class BluebotDigitalServices
         if ($status === 'failed') {
             return [
                 'ok' => false,
-                'error' => trim((string) ($data['message'] ?? $purchase['message'] ?? 'TGTools rejected the purchase.')),
+                'error' => trim((string) ($data['message'] ?? $purchase['message'] ?? 'تی‌جی‌تولز سفارش را رد کرد.')),
                 'reference' => (string) $transactionId,
                 'response' => $purchase,
             ];
@@ -1172,6 +1394,45 @@ final class BluebotDigitalServices
         );
 
         return ['ok' => true, 'order' => $finalOrder, 'delivery' => $delivery];
+    }
+
+    private static function markRetryableProviderFailure(
+        PDO $pdo,
+        int $orderId,
+        string $error,
+        array $response,
+        array $delivery = []
+    ): array {
+        $payload = json_encode(
+            [
+                'error' => $error,
+                'retryable' => true,
+                'response' => $response,
+            ],
+            JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES
+        );
+
+        $stmt = $pdo->prepare(
+            "UPDATE digital_service_orders
+             SET status = ?, refunded = 0, provider_response = ?, updated_at = NOW()
+             WHERE id = ? AND status = ?"
+        );
+        $stmt->execute([
+            self::STATUS_FAILED,
+            is_string($payload) ? $payload : $error,
+            $orderId,
+            self::STATUS_PROCESSING,
+        ]);
+
+        return [
+            'ok' => false,
+            'retryable' => true,
+            'refunded' => false,
+            'order' => self::findOrder($pdo, $orderId),
+            'error' => $error,
+            'code' => (string) ($delivery['code'] ?? ''),
+            'delivery' => $delivery,
+        ];
     }
 
     private static function failAndRefundProviderOrder(PDO $pdo, int $orderId, string $error, array $response): array
@@ -1338,6 +1599,52 @@ final class BluebotDigitalServices
             'error' => $error,
             'order' => self::findOrder($pdo, $orderId),
         ];
+    }
+
+    private static function tgToolsInsufficientWalletMessage(array $wallet, ?float $requiredTon): string
+    {
+        $parts = ['موجودی کیف پول API تی‌جی‌تولز برای این سفارش کافی نیست.'];
+
+        if (is_numeric($wallet['balance_ton'] ?? null)) {
+            $parts[] = 'موجودی API: ' . rtrim(rtrim(number_format((float) $wallet['balance_ton'], 6, '.', ''), '0'), '.') . ' TON';
+        }
+        if ($requiredTon !== null && $requiredTon > 0) {
+            $parts[] = 'حداقل هزینه این محصول: ' . rtrim(rtrim(number_format($requiredTon, 6, '.', ''), '0'), '.') . ' TON';
+        }
+        if (trim((string) ($wallet['deposit_address'] ?? '')) !== '') {
+            $parts[] = 'آدرس واریز TGTools: ' . trim((string) $wallet['deposit_address']);
+        }
+
+        $parts[] = 'اتصال Tonkeeper به سایت به‌تنهایی موجودی API را شارژ نمی‌کند؛ موجودی باید در کیف پول TGTools قابل مشاهده باشد.';
+        return implode("
+", $parts);
+    }
+
+    private static function findScalarByKeys(array $data, array $keys, int $depth = 0)
+    {
+        if ($depth > 4) {
+            return null;
+        }
+
+        $lookup = array_map(static fn (string $key): string => strtolower($key), $keys);
+        foreach ($data as $key => $value) {
+            $normalizedKey = strtolower((string) $key);
+            if (in_array($normalizedKey, $lookup, true) && is_scalar($value)) {
+                return $value;
+            }
+        }
+
+        foreach ($data as $value) {
+            if (!is_array($value)) {
+                continue;
+            }
+            $found = self::findScalarByKeys($value, $keys, $depth + 1);
+            if ($found !== null && $found !== '') {
+                return $found;
+            }
+        }
+
+        return null;
     }
 
     private static function productMetadata(array $product): array

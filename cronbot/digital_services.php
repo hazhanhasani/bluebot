@@ -33,6 +33,17 @@ try {
         }
     }
 
+    $ozBootstrap = BluebotDigitalServices::maybeBootstrapOZVinooCatalog($pdo);
+    if (empty($ozBootstrap['skipped'])) {
+        bluebotLog(!empty($ozBootstrap['ok']) ? 'info' : 'warning', 'OZVinoo catalog bootstrap checked', [
+            'ok' => !empty($ozBootstrap['ok']),
+            'created' => (int) ($ozBootstrap['created'] ?? 0),
+            'updated' => (int) ($ozBootstrap['updated'] ?? 0),
+            'message' => (string) ($ozBootstrap['message'] ?? ''),
+            'catalog_url' => (string) ($ozBootstrap['catalog_url'] ?? ''),
+        ]);
+    }
+
     $providerStats = BluebotProviderCatalogService::syncDueProviders($pdo);
     if (($providerStats['synced'] ?? 0) > 0 || ($providerStats['failed'] ?? 0) > 0) {
         bluebotLog('info', 'Digital service provider catalogs synchronized', $providerStats);
