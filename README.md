@@ -127,6 +127,20 @@ BlueBot از چند Adapter مستقل برای اتصال به پنل‌های 
 - <code>/api/services</code> — دریافت سرویس‌ها
 - <code>/api/stats/overview</code> — نمایش آمار پنل
 
+<a id="provider-catalogs"></a>
+<h2 dir="rtl" align="right">🧩 Provider Catalog Sync & Profit Pricing</h2>
+
+<p dir="rtl" align="right">
+BlueBot می‌تواند کاتالوگ JSON ارائه‌دهندگان خدمات را به‌صورت خودکار دریافت کند، محصولات را بر اساس دسته‌بندی Provider وارد ربات کند، قیمت فروش را از قیمت عمده + درصد سود بسازد و محصولات حذف‌شده از API را غیرفعال کند.
+</p>
+
+- هر Provider یک <code>Catalog URL</code>، mapping فیلدهای JSON، ارز عمده، نرخ تبدیل به تومان و درصد سود دارد.
+- قیمت فروش با فرمول <code>wholesale × exchange rate × (1 + profit%)</code> محاسبه و به هزار تومان رو به بالا گرد می‌شود.
+- دسته‌ها از فیلد category یا نام محصول تشخیص داده می‌شوند و به‌صورت داینامیک در «فروش خدمات» ظاهر می‌شوند.
+- Sync دستی از پنل و Sync زمان‌بندی‌شده از Cron پشتیبانی می‌شود.
+- برای TGTools، حاشیه سود <strong>Stars</strong> و <strong>Premium</strong> مستقل است و قیمت عمده از <code>/api/purchase/prices</code> خوانده می‌شود.
+- Providerهای عمومی تا زمانی که delivery adapter اختصاصی نداشته باشند، پس از تأیید ادمین با حالت تحویل دستی ثبت می‌شوند؛ Providerهای یکپارچه مثل TGTools/OZVinoo از مسیر اختصاصی خودشان استفاده می‌کنند.
+
 <a id="digital-services"></a>
 <h2 dir="rtl" align="right">⭐ فروش Telegram Stars و Premium</h2>
 
