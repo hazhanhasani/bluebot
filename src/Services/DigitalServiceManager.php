@@ -1,6 +1,7 @@
 <?php
 
 require_once __DIR__ . '/TgToolsClient.php';
+require_once __DIR__ . '/OZVinooClient.php';
 require_once __DIR__ . '/DigitalServiceProviderCatalog.php';
 
 final class BluebotDigitalServices
@@ -362,129 +363,401 @@ final class BluebotDigitalServices
             return ['ok' => true, 'skipped' => true, 'message' => 'OZVinoo API key is not configured.'];
         }
 
-        $provider = BluebotProviderCatalogService::findProvider($pdo, 'ozvinoo');
-        $productCountStmt = $pdo->prepare(
+        $interval = max(1, min(1440, (int) self::setting($pdo, 'ozvinoo_sync_interval_minutes', '15')));
+        $lastSync = (int) self::setting($pdo, 'ozvinoo_catalog_last_sync', '0');
+        $activeProducts = (int) $pdo->query(
             "SELECT COUNT(*) FROM digital_service_products WHERE provider = 'ozvinoo' AND active = 1"
-        );
-        $productCountStmt->execute();
-        $activeProducts = (int) $productCountStmt->fetchColumn();
+        )->fetchColumn();
 
-        if (is_array($provider) && $activeProducts > 0) {
-            return ['ok' => true, 'skipped' => true, 'products' => $activeProducts];
-        }
-
-        $baseUrl = rtrim(self::setting($pdo, 'ozvinoo_base_url', 'https://api.ozvinoo.xyz'), '/');
-        $catalogPath = trim(self::setting($pdo, 'ozvinoo_catalog_path', ''));
-        $orderPath = trim(self::setting($pdo, 'ozvinoo_order_path', ''));
-        $authHeader = trim(self::setting($pdo, 'ozvinoo_auth_header', 'Authorization'));
-        $authPrefix = trim(self::setting($pdo, 'ozvinoo_auth_prefix', 'Bearer'));
-        $profitPercent = max(0.0, min(1000.0, (float) self::setting($pdo, 'ozvinoo_profit_percent', '0')));
-        $currency = strtolower(trim(self::setting($pdo, 'ozvinoo_currency', 'toman')));
-        $exchangeRate = max(0.000001, (float) self::setting($pdo, 'ozvinoo_exchange_rate_toman', '1'));
-        $syncInterval = max(1, min(1440, (int) self::setting($pdo, 'ozvinoo_sync_interval_minutes', '15')));
-
-        $paths = [];
-        if ($catalogPath !== '') {
-            $paths[] = str_starts_with($catalogPath, '/') ? $catalogPath : '/' . $catalogPath;
-        }
-        if ($orderPath !== '') {
-            $normalizedOrderPath = str_starts_with($orderPath, '/') ? $orderPath : '/' . $orderPath;
-            $orderDir = rtrim(str_replace('\\', '/', dirname($normalizedOrderPath)), '/.');
-            if ($orderDir !== '') {
-                foreach (['/services', '/products', '/catalog', '/packages'] as $sibling) {
-                    $paths[] = $orderDir . $sibling;
-                }
-            }
-        }
-        foreach ([
-            '/api/',
-            '/api/v2/',
-            '/api/v1/',
-            '/api/v2',
-            '/api/v1',
-            '/api',
-            '/v2/',
-            '/v1/',
-            '/v2',
-            '/v1',
-            '/api/services',
-            '/api/service',
-            '/services',
-            '/api/services/list',
-            '/api/v1/services',
-            '/api/v1/services/list',
-            '/v1/services',
-            '/api/products',
-            '/products',
-            '/api/v1/products',
-            '/v1/products',
-            '/api/catalog',
-            '/catalog',
-            '/api/packages',
-            '/packages',
-        ] as $path) {
-            $paths[] = $path;
-        }
-
-        $urls = array_map(
-            static fn (string $path): string => $baseUrl . '/' . ltrim($path, '/'),
-            array_values(array_unique($paths))
-        );
-
-        $discovery = BluebotProviderCatalogService::discoverCatalogUrl(
-            $urls,
-            $apiKey,
-            $authHeader,
-            $authPrefix
-        );
-        if (empty($discovery['ok'])) {
+        if ($activeProducts > 0 && $lastSync > 0 && (time() - $lastSync) < ($interval * 60)) {
             return [
-                'ok' => false,
-                'skipped' => false,
-                'message' => (string) ($discovery['message'] ?? 'OZVinoo catalog endpoint was not detected.'),
+                'ok' => true,
+                'skipped' => true,
+                'products' => $activeProducts,
+                'message' => 'OZVinoo official catalog is already fresh.',
             ];
         }
 
-        $catalogUrl = (string) $discovery['url'];
-        $apiStyle = strtolower(trim((string) ($discovery['api_style'] ?? 'rest')));
-        $detectedAuthHeader = trim((string) ($discovery['auth_header'] ?? $authHeader));
-        $detectedAuthPrefix = trim((string) ($discovery['auth_prefix'] ?? $authPrefix));
-        $detectedPath = (string) parse_url($catalogUrl, PHP_URL_PATH);
-        if ($detectedPath !== '') {
-            self::setSetting($pdo, 'ozvinoo_catalog_path', $detectedPath, false);
-            if ($apiStyle === 'smm') {
-                // Standard SMM APIs use the same endpoint for
-                // action=services and action=add.
-                self::setSetting($pdo, 'ozvinoo_order_path', $detectedPath, false);
-            }
+        return self::syncOZVinooCatalog($pdo);
+    }
+
+    public static function syncOZVinooCatalog(PDO $pdo): array
+    {
+        if (!self::isAvailable($pdo)) {
+            return ['ok' => false, 'message' => 'Digital services are unavailable.'];
         }
-        self::setSetting($pdo, 'ozvinoo_api_style', $apiStyle === 'smm' ? 'smm' : 'rest', false);
-        self::setSetting($pdo, 'ozvinoo_auth_header', $detectedAuthHeader, false);
-        self::setSetting($pdo, 'ozvinoo_auth_prefix', $detectedAuthPrefix, false);
+
+        $apiKey = trim(self::setting($pdo, 'ozvinoo_api_key', ''));
+        if ($apiKey === '') {
+            return ['ok' => false, 'message' => 'API Key عضوینو تنظیم نشده است.'];
+        }
+
+        $profitPercent = max(0.0, min(1000.0, (float) self::setting($pdo, 'ozvinoo_profit_percent', '0')));
+        $syncInterval = max(1, min(1440, (int) self::setting($pdo, 'ozvinoo_sync_interval_minutes', '15')));
 
         BluebotProviderCatalogService::saveProvider($pdo, [
             'provider_key' => 'ozvinoo',
             'name' => 'OZVinoo',
-            'catalog_url' => $catalogUrl,
+            'catalog_url' => 'https://api.ozvinoo.xyz/telegram-services/stars/',
             'api_key' => $apiKey,
-            'auth_header' => $detectedAuthHeader,
-            'auth_prefix' => $detectedAuthPrefix,
-            'products_path' => (string) ($discovery['products_path'] ?? 'auto'),
-            'id_field' => (string) ($discovery['id_field'] ?? 'auto'),
-            'name_field' => (string) ($discovery['name_field'] ?? 'auto'),
-            'category_field' => (string) ($discovery['category_field'] ?? 'auto'),
-            'price_field' => (string) ($discovery['price_field'] ?? 'auto'),
-            'currency' => in_array($currency, ['toman', 'rial', 'usd', 'ton', 'other'], true) ? $currency : 'toman',
-            'exchange_rate_toman' => $exchangeRate,
+            'auth_header' => 'Authorization',
+            'auth_prefix' => 'Bearer',
+            'products_path' => 'data',
+            'id_field' => 'id',
+            'name_field' => 'name',
+            'category_field' => 'category',
+            'price_field' => 'price',
+            'currency' => 'toman',
+            'exchange_rate_toman' => 1,
             'profit_percent' => $profitPercent,
             'sync_interval_minutes' => $syncInterval,
         ]);
 
-        $sync = BluebotProviderCatalogService::syncProvider($pdo, 'ozvinoo');
-        return array_merge(
-            ['ok' => !empty($sync['ok']), 'skipped' => false, 'catalog_url' => $catalogUrl],
-            $sync
+        $client = new OZVinooClient($apiKey);
+        $responses = [
+            'telegram_stars' => $client->stars(),
+            'telegram_premium' => $client->premium(),
+            'virtual_number' => $client->countries(true),
+        ];
+
+        $definitions = [];
+        $successfulTypes = [];
+        $messages = [];
+
+        if (!empty($responses['telegram_stars']['ok'])) {
+            $successfulTypes[] = 'telegram_stars';
+            foreach (self::ozvinooResponseList($responses['telegram_stars']) as $item) {
+                if (!is_array($item)) {
+                    continue;
+                }
+
+                $name = trim((string) (self::findScalarByKeys($item, ['package_name', 'name', 'title', 'label']) ?? ''));
+                $count = self::ozvinooPositiveInt(
+                    self::findScalarByKeys($item, ['count', 'stars', 'star_count', 'quantity'])
+                );
+                if ($count <= 0) {
+                    $count = self::ozvinooNumberFromText($name);
+                }
+                $price = self::findScalarByKeys($item, ['price', 'cost', 'amount_toman', 'toman']);
+                if ($count <= 0 || !is_numeric($price) || (float) $price <= 0) {
+                    continue;
+                }
+
+                $definitions[] = [
+                    'code' => 'auto-ozvinoo-stars-' . $count,
+                    'name' => $name !== '' ? $name : ('⭐ ' . number_format($count) . ' استارز تلگرام'),
+                    'type' => 'telegram_stars',
+                    'price' => (float) $price,
+                    'service_value' => $count,
+                    'provider_service_code' => (string) $count,
+                    'description' => 'Telegram Stars via OZVinoo official API.',
+                    'metadata' => [
+                        'source' => 'ozvinoo-official-api',
+                        'api_family' => 'telegram-services',
+                        'category_key' => 'stars',
+                        'category_label' => '⭐ استارز تلگرام',
+                    ],
+                ];
+            }
+        } else {
+            $messages[] = 'Stars: ' . (string) ($responses['telegram_stars']['message'] ?? 'request failed');
+        }
+
+        if (!empty($responses['telegram_premium']['ok'])) {
+            $successfulTypes[] = 'telegram_premium';
+            foreach (self::ozvinooResponseList($responses['telegram_premium']) as $item) {
+                if (!is_array($item)) {
+                    continue;
+                }
+
+                $packageId = self::findScalarByKeys($item, ['id', 'package_id', 'packageId']);
+                $price = self::findScalarByKeys($item, ['price', 'cost', 'amount_toman', 'toman']);
+                if ($packageId === null || $packageId === '' || !is_numeric($price) || (float) $price <= 0) {
+                    continue;
+                }
+
+                $name = trim((string) (self::findScalarByKeys($item, ['package_name', 'name', 'title', 'label']) ?? ''));
+                $months = self::ozvinooPositiveInt(
+                    self::findScalarByKeys($item, ['months', 'month_count', 'duration_months', 'duration'])
+                );
+                if ($months <= 0) {
+                    $months = max(1, self::ozvinooNumberFromText($name));
+                }
+
+                $definitions[] = [
+                    'code' => 'auto-ozvinoo-premium-' . substr(hash('sha256', (string) $packageId), 0, 12),
+                    'name' => $name !== '' ? $name : ('🎁 تلگرام پرمیوم ' . $months . ' ماهه'),
+                    'type' => 'telegram_premium',
+                    'price' => (float) $price,
+                    'service_value' => $months,
+                    'provider_service_code' => (string) $packageId,
+                    'description' => 'Telegram Premium via OZVinoo official API.',
+                    'metadata' => [
+                        'source' => 'ozvinoo-official-api',
+                        'api_family' => 'telegram-services',
+                        'category_key' => 'premium',
+                        'category_label' => '🎁 تلگرام پرمیوم',
+                        'package_id' => (string) $packageId,
+                    ],
+                ];
+            }
+        } else {
+            $messages[] = 'Premium: ' . (string) ($responses['telegram_premium']['message'] ?? 'request failed');
+        }
+
+        if (!empty($responses['virtual_number']['ok'])) {
+            $successfulTypes[] = 'virtual_number';
+            foreach (self::ozvinooResponseList($responses['virtual_number']) as $item) {
+                if (!is_array($item)) {
+                    continue;
+                }
+
+                $countryId = self::findScalarByKeys($item, ['id', 'country_id', 'countryId']);
+                $country = trim((string) (self::findScalarByKeys($item, ['country', 'countery', 'name', 'title']) ?? ''));
+                $price = self::findScalarByKeys($item, ['price', 'cost', 'amount_toman', 'toman']);
+                if ($countryId === null || $countryId === '' || $country === '' || !is_numeric($price) || (float) $price <= 0) {
+                    continue;
+                }
+
+                $range = self::findScalarByKeys($item, ['range', 'dial_code', 'prefix']);
+                $definitions[] = [
+                    'code' => 'auto-ozvinoo-number-' . substr(hash('sha256', (string) $countryId), 0, 12),
+                    'name' => '📱 شماره تلگرام · ' . $country,
+                    'type' => 'virtual_number',
+                    'price' => (float) $price,
+                    'service_value' => 1,
+                    'provider_service_code' => (string) $countryId,
+                    'description' => 'Telegram virtual number via OZVinoo official API.',
+                    'metadata' => [
+                        'source' => 'ozvinoo-official-api',
+                        'api_family' => 'telegram-numbers',
+                        'category_key' => 'virtual_number',
+                        'category_label' => '📱 شماره مجازی تلگرام',
+                        'country_id' => (string) $countryId,
+                        'country' => $country,
+                        'range' => is_scalar($range) ? (string) $range : '',
+                        'none_report' => true,
+                    ],
+                ];
+            }
+        } else {
+            $messages[] = 'Numbers: ' . (string) ($responses['virtual_number']['message'] ?? 'request failed');
+        }
+
+        if ($successfulTypes === []) {
+            $message = $messages !== [] ? implode(' | ', $messages) : 'OZVinoo official endpoints are unavailable.';
+            self::ozvinooMarkProviderSync($pdo, 'failed', $message);
+            return ['ok' => false, 'created' => 0, 'updated' => 0, 'disabled' => 0, 'message' => $message];
+        }
+
+        $find = $pdo->prepare("SELECT * FROM digital_service_products WHERE code = ? LIMIT 1");
+        $insert = $pdo->prepare(
+            "INSERT INTO digital_service_products
+             (code, name, type, provider, price, service_value, provider_service_code, description, metadata, active, sort_order)
+             VALUES (?, ?, ?, 'ozvinoo', ?, ?, ?, ?, ?, 1, ?)"
         );
+        $update = $pdo->prepare(
+            "UPDATE digital_service_products
+             SET name = ?, type = ?, provider = 'ozvinoo', price = ?, service_value = ?,
+                 provider_service_code = ?, description = ?, metadata = ?, active = 1,
+                 sort_order = ?, updated_at = NOW()
+             WHERE id = ?"
+        );
+
+        $created = 0;
+        $updated = 0;
+        $disabled = 0;
+        $sort = 2000;
+        $seenByType = [];
+
+        foreach ($definitions as $definition) {
+            $sellingPrice = BluebotProviderCatalogService::calculateSellingPrice(
+                (float) $definition['price'],
+                'toman',
+                1.0,
+                $profitPercent
+            );
+            if ($sellingPrice <= 0) {
+                continue;
+            }
+
+            $type = (string) $definition['type'];
+            $code = (string) $definition['code'];
+            $seenByType[$type][] = $code;
+            $sort++;
+
+            $metadata = (array) $definition['metadata'];
+            $metadata['auto_imported'] = true;
+            $metadata['provider_key'] = 'ozvinoo';
+            $metadata['wholesale_cost'] = (float) $definition['price'];
+            $metadata['wholesale_currency'] = 'toman';
+            $metadata['profit_percent'] = $profitPercent;
+            $metadata['price_mode'] = 'margin';
+            $metadata['synced_at'] = gmdate(DATE_ATOM);
+            $metadataJson = json_encode($metadata, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+
+            $find->execute([$code]);
+            $existing = $find->fetch(PDO::FETCH_ASSOC);
+            if (is_array($existing)) {
+                $update->execute([
+                    (string) $definition['name'],
+                    $type,
+                    $sellingPrice,
+                    max(1, (int) $definition['service_value']),
+                    (string) $definition['provider_service_code'],
+                    (string) $definition['description'],
+                    is_string($metadataJson) ? $metadataJson : null,
+                    $sort,
+                    (int) $existing['id'],
+                ]);
+                $updated++;
+            } else {
+                $insert->execute([
+                    $code,
+                    (string) $definition['name'],
+                    $type,
+                    $sellingPrice,
+                    max(1, (int) $definition['service_value']),
+                    (string) $definition['provider_service_code'],
+                    (string) $definition['description'],
+                    is_string($metadataJson) ? $metadataJson : null,
+                    $sort,
+                ]);
+                $created++;
+            }
+        }
+
+        foreach ($successfulTypes as $type) {
+            $seenCodes = array_values(array_unique($seenByType[$type] ?? []));
+            if ($seenCodes === []) {
+                $stmt = $pdo->prepare(
+                    "UPDATE digital_service_products
+                     SET active = 0, updated_at = NOW()
+                     WHERE provider = 'ozvinoo' AND type = ? AND code LIKE 'auto-ozvinoo-%'"
+                );
+                $stmt->execute([$type]);
+                $disabled += $stmt->rowCount();
+                continue;
+            }
+
+            $placeholders = implode(',', array_fill(0, count($seenCodes), '?'));
+            $params = array_merge([$type], $seenCodes);
+            $stmt = $pdo->prepare(
+                "UPDATE digital_service_products
+                 SET active = 0, updated_at = NOW()
+                 WHERE provider = 'ozvinoo'
+                   AND type = ?
+                   AND code LIKE 'auto-ozvinoo-%'
+                   AND code NOT IN ($placeholders)"
+            );
+            $stmt->execute($params);
+            $disabled += $stmt->rowCount();
+        }
+
+        self::setSetting($pdo, 'ozvinoo_catalog_last_sync', (string) time(), false);
+        self::setSetting($pdo, 'ozvinoo_api_style', 'official-v1', false);
+        self::setSetting($pdo, 'ozvinoo_catalog_path', '/telegram-services/stars/', false);
+        self::setSetting($pdo, 'ozvinoo_order_path', '/telegram-services/stars/', false);
+        self::setSetting($pdo, 'ozvinoo_auth_header', 'Authorization', false);
+        self::setSetting($pdo, 'ozvinoo_auth_prefix', 'Bearer', false);
+
+        $message = $messages === []
+            ? 'Official OZVinoo catalogs synchronized.'
+            : 'Partial sync: ' . implode(' | ', $messages);
+        self::ozvinooMarkProviderSync($pdo, $messages === [] ? 'success' : 'partial', $message);
+
+        return [
+            'ok' => true,
+            'skipped' => false,
+            'created' => $created,
+            'updated' => $updated,
+            'disabled' => $disabled,
+            'message' => $message,
+            'catalog_url' => 'https://api.ozvinoo.xyz/telegram-services/stars/',
+            'api_style' => 'official-v1',
+        ];
+    }
+
+    public static function ozvinooWalletStatus(PDO $pdo): array
+    {
+        $apiKey = trim(self::setting($pdo, 'ozvinoo_api_key', ''));
+        if ($apiKey === '') {
+            return [
+                'ok' => false,
+                'configured' => false,
+                'balance' => null,
+                'message' => 'API Key عضوینو تنظیم نشده است.',
+            ];
+        }
+
+        try {
+            $response = (new OZVinooClient($apiKey))->balance();
+        } catch (Throwable $e) {
+            return [
+                'ok' => false,
+                'configured' => true,
+                'balance' => null,
+                'message' => $e->getMessage(),
+            ];
+        }
+
+        $body = self::ozvinooResponseBody($response);
+        $balance = self::findScalarByKeys($body, ['balance']);
+        return [
+            'ok' => !empty($response['ok']) && is_numeric($balance),
+            'configured' => true,
+            'balance' => is_numeric($balance) ? (float) $balance : null,
+            'message' => !empty($response['ok'])
+                ? ''
+                : trim((string) ($response['message'] ?? 'دریافت موجودی عضوینو ناموفق بود.')),
+            'response' => $response,
+        ];
+    }
+
+    private static function ozvinooResponseBody(array $response): array
+    {
+        $body = $response['body'] ?? [];
+        return is_array($body) ? $body : [];
+    }
+
+    private static function ozvinooResponseList(array $response): array
+    {
+        $body = self::ozvinooResponseBody($response);
+        $data = $body['data'] ?? $body;
+        if (!is_array($data)) {
+            return [];
+        }
+
+        if (array_is_list($data)) {
+            return array_values(array_filter($data, 'is_array'));
+        }
+
+        $values = array_values($data);
+        if ($values !== [] && count(array_filter($values, 'is_array')) === count($values)) {
+            return $values;
+        }
+
+        return [];
+    }
+
+    private static function ozvinooPositiveInt(mixed $value): int
+    {
+        return is_numeric($value) ? max(0, (int) floor((float) $value)) : 0;
+    }
+
+    private static function ozvinooNumberFromText(string $text): int
+    {
+        return preg_match('/(\d{1,9})/', $text, $match) ? max(0, (int) $match[1]) : 0;
+    }
+
+    private static function ozvinooMarkProviderSync(PDO $pdo, string $status, string $message): void
+    {
+        $stmt = $pdo->prepare(
+            "UPDATE digital_service_providers
+             SET last_sync_at = NOW(), last_sync_status = ?, last_sync_message = ?, updated_at = NOW()
+             WHERE provider_key = 'ozvinoo'"
+        );
+        $stmt->execute([$status, mb_substr($message, 0, 500, 'UTF-8')]);
     }
 
     public static function categoryForProduct(array $product): string
@@ -716,8 +989,28 @@ final class BluebotDigitalServices
         ], JSON_UNESCAPED_UNICODE);
     }
 
+    public static function presetTarget(array $product): ?string
+    {
+        if ((string) ($product['provider'] ?? '') !== 'ozvinoo'
+            || (string) ($product['type'] ?? '') !== 'virtual_number') {
+            return null;
+        }
+
+        $metadata = self::productMetadata($product);
+        $countryId = trim((string) ($metadata['country_id'] ?? $product['provider_service_code'] ?? ''));
+        if ($countryId === '') {
+            return null;
+        }
+
+        return 'country:' . $countryId;
+    }
+
     public static function validateTarget(array $product, string $target): array
     {
+        $presetTarget = self::presetTarget($product);
+        if ($presetTarget !== null) {
+            return [true, $presetTarget];
+        }
         $target = trim($target);
         if ($target === '' || mb_strlen($target, 'UTF-8') > 255) {
             return [false, 'شناسه مقصد معتبر نیست.'];
@@ -725,6 +1018,14 @@ final class BluebotDigitalServices
 
         $type = (string) ($product['type'] ?? '');
         $provider = (string) ($product['provider'] ?? 'manual');
+
+        if ($provider === 'ozvinoo' && in_array($type, ['telegram_stars', 'telegram_premium'], true)) {
+            $normalized = ltrim($target, '@');
+            if (!preg_match('/^[A-Za-z0-9_]{5,32}$/', $normalized)) {
+                return [false, 'یوزرنیم معتبر تلگرام را وارد کنید؛ مثال: @username'];
+            }
+            return [true, $normalized];
+        }
 
         if ($provider === 'tgtools' && in_array($type, ['telegram_stars', 'telegram_premium'], true)) {
             $normalized = ltrim($target, '@');
@@ -1022,11 +1323,15 @@ final class BluebotDigitalServices
             ]);
 
             $processingOrder = self::findOrder($pdo, $orderId) ?? $order;
+            $pendingMessage = trim((string) ($delivery['customer_message_pending'] ?? ''));
+            if ($pendingMessage === '') {
+                $pendingMessage = "⏳ <b>سفارش شما تأیید شد و در حال ارسال است</b>\n\n"
+                    . "🧾 کد: <code>" . self::escape((string) $processingOrder['order_code']) . "</code>\n"
+                    . "📦 " . self::escape((string) $processingOrder['service_name']);
+            }
             sendmessage(
                 (string) $processingOrder['user_id'],
-                "⏳ <b>سفارش شما تأیید شد و در حال ارسال است</b>\n\n"
-                    . "🧾 کد: <code>" . self::escape((string) $processingOrder['order_code']) . "</code>\n"
-                    . "📦 " . self::escape((string) $processingOrder['service_name']),
+                $pendingMessage,
                 null,
                 'HTML'
             );
@@ -1161,6 +1466,241 @@ final class BluebotDigitalServices
         }
 
         return ['ok' => false, 'error' => 'Unsupported digital service provider.'];
+    }
+
+    public static function reconcileOZVinooProcessing(PDO $pdo, int $limit = 25): array
+    {
+        $stats = ['checked' => 0, 'completed' => 0, 'failed' => 0, 'pending' => 0, 'errors' => 0];
+
+        if (!self::isAvailable($pdo)) {
+            return $stats;
+        }
+
+        $apiKey = trim(self::setting($pdo, 'ozvinoo_api_key', ''));
+        if ($apiKey === '') {
+            return $stats;
+        }
+
+        $limit = max(1, min(100, $limit));
+        $stmt = $pdo->query(
+            "SELECT * FROM digital_service_orders
+             WHERE provider = 'ozvinoo'
+               AND status = 'processing'
+               AND provider_reference IS NOT NULL
+               AND provider_reference <> ''
+             ORDER BY id ASC
+             LIMIT " . $limit
+        );
+        $orders = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+        $client = new OZVinooClient($apiKey);
+
+        foreach ($orders as $order) {
+            $stats['checked']++;
+            $product = self::findProduct($pdo, (int) ($order['service_id'] ?? 0), false);
+            if (!is_array($product)) {
+                $stats['errors']++;
+                continue;
+            }
+
+            $type = (string) ($product['type'] ?? '');
+            $reference = trim((string) ($order['provider_reference'] ?? ''));
+            if ($reference === '') {
+                $stats['errors']++;
+                continue;
+            }
+
+            try {
+                if ($type === 'telegram_stars' || $type === 'telegram_premium') {
+                    $service = $type === 'telegram_stars' ? 'stars' : 'premium';
+                    $response = $client->telegramOrderStatus($service, $reference);
+                    if (empty($response['ok'])) {
+                        $stats['errors']++;
+                        continue;
+                    }
+
+                    $body = self::ozvinooResponseBody($response);
+                    $data = is_array($body['data'] ?? null) ? $body['data'] : [];
+                    $state = $data['status'] ?? null;
+                    if ($state === true || in_array(strtolower((string) $state), ['ok', 'done', 'success', 'completed', 'delivered'], true)) {
+                        self::finalizeDeliveredOrder($pdo, (int) $order['id'], [
+                            'ok' => true,
+                            'reference' => $reference,
+                            'response' => $response,
+                        ]);
+                        $stats['completed']++;
+                        continue;
+                    }
+
+                    if (in_array(strtolower((string) $state), ['failed', 'error', 'cancel', 'cancelled', 'canceled', 'rejected'], true)) {
+                        self::failAndRefundProviderOrder(
+                            $pdo,
+                            (int) $order['id'],
+                            'OZVinoo order failed.',
+                            $response
+                        );
+                        $stats['failed']++;
+                        continue;
+                    }
+
+                    $stats['pending']++;
+                    continue;
+                }
+
+                if ($type === 'virtual_number') {
+                    $response = $client->numberStatus($reference);
+                    $http = (int) ($response['http_status'] ?? 0);
+                    if ($http === 202) {
+                        $stats['pending']++;
+                        continue;
+                    }
+                    if (empty($response['ok'])) {
+                        $stats['errors']++;
+                        continue;
+                    }
+
+                    $body = self::ozvinooResponseBody($response);
+                    $data = is_array($body['data'] ?? null) ? $body['data'] : [];
+                    $code = trim((string) ($data['code'] ?? ''));
+                    $number = trim((string) ($data['number'] ?? ''));
+                    $state = strtolower(trim((string) ($data['status'] ?? '')));
+
+                    if ($code !== '') {
+                        $message = "✅ <b>شماره مجازی شما آماده است</b>\n\n"
+                            . "📱 شماره: <code>" . self::escape($number !== '' ? $number : '—') . "</code>\n"
+                            . "🔐 کد ورود: <code>" . self::escape($code) . "</code>\n"
+                            . "🧾 سفارش: <code>" . self::escape((string) $order['order_code']) . "</code>";
+
+                        self::finalizeDeliveredOrder($pdo, (int) $order['id'], [
+                            'ok' => true,
+                            'reference' => $reference,
+                            'response' => $response,
+                            'customer_message' => $message,
+                        ]);
+                        $stats['completed']++;
+                        continue;
+                    }
+
+                    if (in_array($state, ['cancel', 'cancelled', 'canceled', 'failed', 'error'], true)
+                        || str_contains(strtolower((string) ($body['message'] ?? '')), 'cancel')) {
+                        self::failAndRefundProviderOrder(
+                            $pdo,
+                            (int) $order['id'],
+                            'OZVinoo virtual-number order was cancelled.',
+                            $response
+                        );
+                        $stats['failed']++;
+                        continue;
+                    }
+
+                    $stats['pending']++;
+                    continue;
+                }
+
+                $stats['errors']++;
+            } catch (Throwable $e) {
+                $stats['errors']++;
+            }
+        }
+
+        return $stats;
+    }
+
+    private static function deliverOZVinooOfficial(PDO $pdo, array $order, array $product, string $apiKey): array
+    {
+        if ($apiKey === '') {
+            return [
+                'ok' => false,
+                'retryable' => true,
+                'code' => 'OZVINOO_API_KEY_MISSING',
+                'error' => 'API Key عضوینو تنظیم نشده است.',
+            ];
+        }
+
+        $type = (string) ($product['type'] ?? '');
+        $client = new OZVinooClient($apiKey);
+
+        try {
+            if ($type === 'telegram_stars') {
+                $username = ltrim(trim((string) ($order['target'] ?? '')), '@');
+                if (!preg_match('/^[A-Za-z0-9_]{5,32}$/', $username)) {
+                    return ['ok' => false, 'error' => 'یوزرنیم تلگرام مقصد معتبر نیست.'];
+                }
+                $response = $client->buyStars(max(50, (int) ($product['service_value'] ?? 50)), $username);
+            } elseif ($type === 'telegram_premium') {
+                $username = ltrim(trim((string) ($order['target'] ?? '')), '@');
+                if (!preg_match('/^[A-Za-z0-9_]{5,32}$/', $username)) {
+                    return ['ok' => false, 'error' => 'یوزرنیم تلگرام مقصد معتبر نیست.'];
+                }
+                $packageId = (int) ($product['provider_service_code'] ?? 0);
+                if ($packageId <= 0) {
+                    return ['ok' => false, 'retryable' => true, 'error' => 'شناسه بسته Premium عضوینو پیدا نشد.'];
+                }
+                $response = $client->buyPremium($packageId, $username);
+            } elseif ($type === 'virtual_number') {
+                $metadata = self::productMetadata($product);
+                $countryId = trim((string) ($metadata['country_id'] ?? $product['provider_service_code'] ?? ''));
+                if ($countryId === '') {
+                    return ['ok' => false, 'retryable' => true, 'error' => 'شناسه کشور شماره مجازی عضوینو پیدا نشد.'];
+                }
+                $response = $client->buyNumber($countryId, true);
+            } else {
+                return ['ok' => false, 'error' => 'Unsupported OZVinoo official service type.'];
+            }
+        } catch (Throwable $e) {
+            return ['ok' => false, 'retryable' => true, 'error' => $e->getMessage()];
+        }
+
+        $http = (int) ($response['http_status'] ?? 0);
+        if (empty($response['ok'])) {
+            return [
+                'ok' => false,
+                'retryable' => self::ozvinooRetryableHttp($http),
+                'error' => trim((string) ($response['message'] ?? '')) ?: 'درخواست عضوینو ناموفق بود.',
+                'response' => $response,
+            ];
+        }
+
+        $body = self::ozvinooResponseBody($response);
+        $data = is_array($body['data'] ?? null) ? $body['data'] : $body;
+        $reference = '';
+
+        if ($type === 'virtual_number') {
+            $reference = trim((string) ($data['order_id'] ?? $data['id'] ?? ''));
+        } else {
+            $reference = trim((string) ($data['code'] ?? $data['order_id'] ?? $data['id'] ?? ''));
+        }
+
+        if ($reference === '') {
+            return [
+                'ok' => false,
+                'retryable' => true,
+                'error' => 'عضوینو شناسه پیگیری سفارش برنگرداند.',
+                'response' => $response,
+            ];
+        }
+
+        $result = [
+            'ok' => true,
+            'pending' => true,
+            'reference' => $reference,
+            'response' => $response,
+        ];
+
+        if ($type === 'virtual_number') {
+            $number = trim((string) ($data['number'] ?? ''));
+            if ($number !== '') {
+                $result['customer_message_pending'] = "📱 <b>شماره برای شما رزرو شد</b>\n\n"
+                    . "شماره: <code>" . self::escape($number) . "</code>\n"
+                    . "⏳ در انتظار دریافت کد ورود هستیم. به‌محض آماده‌شدن، کد خودکار برای شما ارسال می‌شود.";
+            }
+        }
+
+        return $result;
+    }
+
+    private static function ozvinooRetryableHttp(int $http): bool
+    {
+        return $http === 0 || in_array($http, [401, 402, 408, 425, 429], true) || $http >= 500;
     }
 
     public static function reconcileTgToolsProcessing(PDO $pdo, int $limit = 25): array
@@ -1423,12 +1963,16 @@ final class BluebotDigitalServices
         }
 
         $finalOrder = self::findOrder($pdo, $orderId) ?? $order;
-        sendmessage(
-            (string) $finalOrder['user_id'],
-            "✅ <b>سفارش شما ارسال شد</b>\n\n"
+        $customerMessage = trim((string) ($delivery['customer_message'] ?? ''));
+        if ($customerMessage === '') {
+            $customerMessage = "✅ <b>سفارش شما ارسال شد</b>\n\n"
                 . "🧾 کد: <code>" . self::escape((string) $finalOrder['order_code']) . "</code>\n"
                 . "📦 " . self::escape((string) $finalOrder['service_name']) . "\n"
-                . "🎯 <code>" . self::escape((string) $finalOrder['target']) . "</code>",
+                . "🎯 <code>" . self::escape((string) $finalOrder['target']) . "</code>";
+        }
+        sendmessage(
+            (string) $finalOrder['user_id'],
+            $customerMessage,
             null,
             'HTML'
         );
@@ -1545,6 +2089,10 @@ final class BluebotDigitalServices
         $apiStyle = strtolower(trim(self::setting($pdo, 'ozvinoo_api_style', 'rest')));
         $serviceCode = trim((string) ($product['provider_service_code'] ?? ''));
         $metadata = self::productMetadata($product);
+
+        if (in_array((string) ($product['type'] ?? ''), ['telegram_stars', 'telegram_premium', 'virtual_number'], true)) {
+            return self::deliverOZVinooOfficial($pdo, $order, $product, $apiKey);
+        }
 
         if (($metadata['api_style'] ?? '') === 'smm') {
             $apiStyle = 'smm';
