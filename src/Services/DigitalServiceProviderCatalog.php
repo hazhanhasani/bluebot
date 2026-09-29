@@ -145,7 +145,7 @@ final class BluebotProviderCatalogService
                     continue;
                 }
                 $origin = $scheme . '://' . $host . $port;
-                foreach (['/api/v2', '/api/v1', '/api', '/v2', '/v1', '/'] as $path) {
+                foreach (['/api/', '/api/v2/', '/api/v1/', '/api/v2', '/api/v1', '/api', '/v2/', '/v1/', '/v2', '/v1', '/'] as $path) {
                     $smmCandidates[] = rtrim($origin, '/') . $path;
                 }
                 break;
@@ -1025,7 +1025,8 @@ final class BluebotProviderCatalogService
         string $url,
         string $apiKey,
         string $authHeader,
-        string $authPrefix
+        string $authPrefix,
+        int $redirectsRemaining = 1
     ): array {
         if (!self::isSafeHttpsUrl($url)) {
             return ['ok' => false, 'message' => 'Catalog URL is unsafe.'];
@@ -1051,19 +1052,34 @@ final class BluebotProviderCatalogService
             CURLOPT_SSL_VERIFYPEER => true,
             CURLOPT_PROTOCOLS => CURLPROTO_HTTPS,
             CURLOPT_FOLLOWLOCATION => false,
-            CURLOPT_USERAGENT => 'BlueBot/0.5.34 ProviderCatalog',
+            CURLOPT_USERAGENT => 'BlueBot/0.5.35 ProviderCatalog',
         ]);
 
         $raw = curl_exec($ch);
         $error = curl_error($ch);
         $http = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        $redirectUrl = (string) curl_getinfo($ch, CURLINFO_REDIRECT_URL);
         curl_close($ch);
 
         if ($raw === false) {
             return ['ok' => false, 'message' => $error !== '' ? $error : 'Provider catalog request failed.'];
         }
+        if ($http >= 300 && $http < 400 && $redirectsRemaining > 0 && $redirectUrl !== '') {
+            $sourceHost = strtolower((string) parse_url($url, PHP_URL_HOST));
+            $redirectHost = strtolower((string) parse_url($redirectUrl, PHP_URL_HOST));
+            if ($sourceHost !== '' && $sourceHost === $redirectHost && self::isSafeHttpsUrl($redirectUrl)) {
+                return self::requestCatalogUrl(
+                    $redirectUrl,
+                    $apiKey,
+                    $authHeader,
+                    $authPrefix,
+                    $redirectsRemaining - 1
+                );
+            }
+        }
         if ($http < 200 || $http >= 300) {
-            return ['ok' => false, 'message' => 'Provider catalog returned HTTP ' . $http . '.'];
+            $suffix = $redirectUrl !== '' ? ' Redirect: ' . $redirectUrl : '';
+            return ['ok' => false, 'message' => 'Provider catalog returned HTTP ' . $http . '.' . $suffix];
         }
 
         $decoded = json_decode((string) $raw, true);
@@ -1078,7 +1094,8 @@ final class BluebotProviderCatalogService
         string $url,
         string $apiKey,
         string $authHeader,
-        string $authPrefix
+        string $authPrefix,
+        int $redirectsRemaining = 1
     ): array {
         if (!self::isSafeHttpsUrl($url)) {
             return ['ok' => false, 'message' => 'SMM catalog URL is unsafe.'];
@@ -1117,19 +1134,34 @@ final class BluebotProviderCatalogService
             CURLOPT_SSL_VERIFYPEER => true,
             CURLOPT_PROTOCOLS => CURLPROTO_HTTPS,
             CURLOPT_FOLLOWLOCATION => false,
-            CURLOPT_USERAGENT => 'BlueBot/0.5.34 ProviderCatalog',
+            CURLOPT_USERAGENT => 'BlueBot/0.5.35 ProviderCatalog',
         ]);
 
         $raw = curl_exec($ch);
         $error = curl_error($ch);
         $http = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        $redirectUrl = (string) curl_getinfo($ch, CURLINFO_REDIRECT_URL);
         curl_close($ch);
 
         if ($raw === false) {
             return ['ok' => false, 'message' => $error !== '' ? $error : 'SMM provider request failed.'];
         }
+        if ($http >= 300 && $http < 400 && $redirectsRemaining > 0 && $redirectUrl !== '') {
+            $sourceHost = strtolower((string) parse_url($url, PHP_URL_HOST));
+            $redirectHost = strtolower((string) parse_url($redirectUrl, PHP_URL_HOST));
+            if ($sourceHost !== '' && $sourceHost === $redirectHost && self::isSafeHttpsUrl($redirectUrl)) {
+                return self::requestSmmServices(
+                    $redirectUrl,
+                    $apiKey,
+                    $authHeader,
+                    $authPrefix,
+                    $redirectsRemaining - 1
+                );
+            }
+        }
         if ($http < 200 || $http >= 300) {
-            return ['ok' => false, 'message' => 'SMM provider returned HTTP ' . $http . '.'];
+            $suffix = $redirectUrl !== '' ? ' Redirect: ' . $redirectUrl : '';
+            return ['ok' => false, 'message' => 'SMM provider returned HTTP ' . $http . '.' . $suffix];
         }
 
         $decoded = json_decode((string) $raw, true);
