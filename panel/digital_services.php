@@ -360,7 +360,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
         }
 
-        if (!preg_match('/^[A-Za-z0-9-]{1,80}$/', $authHeader)) {
+        if ($authHeader !== '' && !preg_match('/^[A-Za-z0-9-]{1,80}$/', $authHeader)) {
             flash('error', 'نام هدر احراز هویت معتبر نیست.');
             header('Location: digital_services.php#ozvinoo');
             exit;
@@ -843,7 +843,8 @@ include __DIR__ . '/inc/layout_head.php';
                 <div class="two-col" style="gap:10px;margin-top:12px">
                     <div class="field">
                         <label>Auth header</label>
-                        <input class="input" name="ozvinoo_auth_header" value="<?= htmlspecialchars($ozAuthHeader) ?>" dir="ltr">
+                        <input class="input" name="ozvinoo_auth_header" value="<?= htmlspecialchars($ozAuthHeader) ?>" dir="ltr" placeholder="Authorization / X-API-Key / empty for body-only">
+                        <small class="field-hint">برای APIهای SMM که کلید را فقط در body می‌گیرند، این فیلد می‌تواند خالی باشد.</small>
                     </div>
                     <div class="field">
                         <label>Prefix</label>
