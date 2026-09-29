@@ -614,7 +614,6 @@ final class BluebotDigitalServices
 
         $numberDefinitionCount = 0;
         if (!empty($responses['virtual_number']['ok'])) {
-            $successfulTypes[] = 'virtual_number';
             foreach (self::ozvinooResponseList($responses['virtual_number']) as $item) {
                 if (!is_array($item)) {
                     continue;
@@ -657,6 +656,9 @@ final class BluebotDigitalServices
                     ],
                 ];
                 $numberDefinitionCount++;
+            }
+            if ($numberDefinitionCount > 0 && !in_array('virtual_number', $successfulTypes, true)) {
+                $successfulTypes[] = 'virtual_number';
             }
         } else {
             if ((int) ($responses['virtual_number']['http_status'] ?? 0) === 404) {
