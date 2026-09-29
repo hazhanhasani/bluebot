@@ -27,6 +27,7 @@ return [
         ['setting_key' => 'ozvinoo_currency', 'setting_value' => 'toman', 'is_secret' => 0],
         ['setting_key' => 'ozvinoo_exchange_rate_toman', 'setting_value' => '1', 'is_secret' => 0],
         ['setting_key' => 'ozvinoo_sync_interval_minutes', 'setting_value' => '15', 'is_secret' => 0],
+        ['setting_key' => 'ozvinoo_api_style', 'setting_value' => 'auto', 'is_secret' => 0],
     ],
 ];
 
