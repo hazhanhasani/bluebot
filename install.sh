@@ -1741,6 +1741,26 @@ bluebot_resolve_extracted_root() {
     return 0
 }
 
+
+bluebot_verify_panel_route() {
+    local domain="$1" status="" attempt
+    [ -n "$domain" ] || return 1
+
+    for attempt in 1 2 3; do
+        status=$(curl -sS -o /dev/null -w '%{http_code}' \
+            --resolve "${domain}:443:127.0.0.1" \
+            --connect-timeout 3 --max-time 8 \
+            "https://${domain}/panel/index.php" 2>/dev/null || true)
+        case "$status" in
+            2??|3??|401|403) return 0 ;;
+        esac
+        sleep 1
+    done
+
+    echo "Panel route health check failed with HTTP ${status:-000}" >&2
+    return 1
+}
+
 # vpnbot instance dirs (not Default/update). update_bot wipes BOT_DIR.
 VPNBOT_BACKUP="/tmp/mirza_vpnbot_backup"
 
@@ -2588,6 +2608,7 @@ function update_bot() {
         echo -e "\e[91mError: Update package validation failed. Current installation was not touched.\033[0m"
         rm -rf "$TEMP_DIR"; sleep 2; show_menu; return 1
     fi
+    [ "$EXTRACTED_DIR" = "$TEMP_DIR" ] && rm -f "$TEMP_DIR/bot.zip"
     # Build vendor/ inside the extracted copy first. The live install is still
     # untouched at this point, so a composer or network failure aborts the update
     # instead of leaving the bot without its dependencies.
@@ -2772,15 +2793,35 @@ EOF
         fi
         sudo a2enmod rewrite 2>/dev/null || true
         sudo a2enmod ssl 2>/dev/null || true
-        if sudo apache2ctl configtest >/dev/null 2>&1; then
-            sudo systemctl restart apache2 || {
-                echo -e "\e[91mWarning: Failed to restart Apache2 after updating VirtualHost.\033[0m"
-            }
-            echo -e "\e[92mVirtualHost configuration updated and Apache restarted.\033[0m"
-        else
-            echo -e "\e[93mWarning: Apache configuration test failed. Skipping restart.\033[0m"
-            sudo apache2ctl configtest
+        if ! sudo apache2ctl configtest >/dev/null 2>&1; then
+            echo -e "\e[91mApache configuration test failed; rolling back application files.\033[0m"
+            sudo apache2ctl configtest || true
+            sudo rm -rf "$BOT_DIR"
+            sudo mv "$ROLLBACK_DIR" "$BOT_DIR" 2>/dev/null || true
+            sudo systemctl restart apache2 2>/dev/null || true
+            rm -rf "$TEMP_DIR"
+            return 1
         fi
+
+        if ! sudo systemctl restart apache2; then
+            echo -e "\e[91mApache restart failed; rolling back application files.\033[0m"
+            sudo rm -rf "$BOT_DIR"
+            sudo mv "$ROLLBACK_DIR" "$BOT_DIR" 2>/dev/null || true
+            sudo systemctl restart apache2 2>/dev/null || true
+            rm -rf "$TEMP_DIR"
+            return 1
+        fi
+
+        if ! bluebot_verify_panel_route "$DOMAIN_NAME"; then
+            echo -e "\e[91mPanel route validation failed after deployment; rolling back.\033[0m"
+            sudo rm -rf "$BOT_DIR"
+            sudo mv "$ROLLBACK_DIR" "$BOT_DIR" 2>/dev/null || true
+            sudo systemctl restart apache2 2>/dev/null || true
+            rm -rf "$TEMP_DIR"
+            return 1
+        fi
+
+        echo -e "\e[92mVirtualHost, Apache and /panel route validated successfully.\033[0m"
     fi
     if [ -f "$CONFIG_PATH" ]; then
         run_step "Updating database tables" "cd '$BOT_DIR' && php table.php" \
