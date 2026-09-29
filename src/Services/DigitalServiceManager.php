@@ -241,6 +241,20 @@ final class BluebotDigitalServices
         ];
     }
 
+    public static function maybeSyncTgToolsCatalog(PDO $pdo, int $intervalSeconds = 900): array
+    {
+        $intervalSeconds = max(60, $intervalSeconds);
+        $lastSync = (int) self::setting($pdo, 'tgtools_catalog_last_sync', '0');
+
+        if ($lastSync > 0 && (time() - $lastSync) < $intervalSeconds) {
+            return ['ok' => true, 'skipped' => true, 'created' => 0, 'updated' => 0];
+        }
+
+        $result = self::ensureTgToolsCatalog($pdo);
+        self::setSetting($pdo, 'tgtools_catalog_last_sync', (string) time(), false);
+        return $result;
+    }
+
     public static function catalogKeyboard(PDO $pdo, string $backText): string
     {
         $rows = [];
@@ -1079,6 +1093,21 @@ final class BluebotDigitalServices
             'error' => $error,
             'order' => self::findOrder($pdo, $orderId),
         ];
+    }
+
+    private static function setSetting(PDO $pdo, string $key, string $value, bool $secret = false): void
+    {
+        try {
+            $stmt = $pdo->prepare(
+                "INSERT INTO digital_service_settings (setting_key, setting_value, is_secret)
+                 VALUES (?, ?, ?)
+                 ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value), is_secret = VALUES(is_secret)"
+            );
+            $stmt->execute([$key, $value, $secret ? 1 : 0]);
+        } catch (Throwable $e) {
+            // Catalog sync should never break order processing because a cache
+            // timestamp could not be persisted.
+        }
     }
 
     private static function setting(PDO $pdo, string $key, string $default = ''): string
