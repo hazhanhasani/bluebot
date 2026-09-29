@@ -70,6 +70,17 @@ of treating the catalog as Telegram-only:
 The V2 Telegram-number endpoint remains only as a fallback when the Callinoo
 application catalog is temporarily unavailable.
 
+## Admin visibility overrides
+
+When an administrator disables a digital service from **Services → Digital
+Services**, BlueBot stores an `admin_disabled` flag in the product metadata.
+Provider synchronization may continue updating price, inventory and provider
+metadata, but it cannot re-enable that service. Clicking **Enable** removes the
+manual lock and returns the product to provider-managed availability.
+
+This rule applies consistently to OZVinoo/Callinoo, TGTools and generic catalog
+providers.
+
 ## Background reconciliation
 
 `cronbot/digital_services.php` refreshes provider catalogs and reconciles
