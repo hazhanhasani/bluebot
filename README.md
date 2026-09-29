@@ -140,6 +140,8 @@ BlueBot می‌تواند کاتالوگ JSON ارائه‌دهندگان خدم
 - Sync دستی از پنل و Sync زمان‌بندی‌شده از Cron پشتیبانی می‌شود.
 - برای TGTools، حاشیه سود <strong>Stars</strong> و <strong>Premium</strong> مستقل است و قیمت عمده از <code>/api/purchase/prices</code> خوانده می‌شود.
 - Providerهای عمومی تا زمانی که delivery adapter اختصاصی نداشته باشند، پس از تأیید ادمین با حالت تحویل دستی ثبت می‌شوند؛ Providerهای یکپارچه مثل TGTools/OZVinoo از مسیر اختصاصی خودشان استفاده می‌کنند.
+- OZVinoo با Deep Discovery بررسی می‌شود: REST GET و SMM `action=services`، روش‌های `Bearer`، `X-API-Key`، `Api-Key` و body-only، و ساختارهای تو‌در‌توی JSON به‌صورت خودکار بررسی می‌شوند.
+- دسته‌های عمومی عضوینو مثل Telegram، Instagram، YouTube، X/Twitter، TikTok، Spotify، LinkedIn، Facebook، WhatsApp، Likee و Naver TV به دسته‌های مرتب فروش خدمات نگاشت می‌شوند.
 
 <a id="digital-services"></a>
 <h2 dir="rtl" align="right">⭐ فروش Telegram Stars و Premium</h2>
