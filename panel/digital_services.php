@@ -396,8 +396,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
         foreach ([
             '/api/v2',
+            '/api/v1',
             '/api',
             '/v2',
+            '/v1',
             '/api/services',
             '/api/service',
             '/services',
@@ -458,9 +460,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             $catalogUrl = (string) $discovery['url'];
             $apiStyle = strtolower(trim((string) ($discovery['api_style'] ?? 'rest')));
+            $detectedAuthHeader = trim((string) ($discovery['auth_header'] ?? $authHeader));
+            $detectedAuthPrefix = trim((string) ($discovery['auth_prefix'] ?? $authPrefix));
             $detectedPath = (string) parse_url($catalogUrl, PHP_URL_PATH);
             ds_panel_set_setting($pdo, 'ozvinoo_catalog_path', $detectedPath);
             ds_panel_set_setting($pdo, 'ozvinoo_api_style', $apiStyle === 'smm' ? 'smm' : 'rest');
+            ds_panel_set_setting($pdo, 'ozvinoo_auth_header', $detectedAuthHeader);
+            ds_panel_set_setting($pdo, 'ozvinoo_auth_prefix', $detectedAuthPrefix);
             if ($apiStyle === 'smm' && $detectedPath !== '') {
                 $orderPath = $detectedPath;
                 ds_panel_set_setting($pdo, 'ozvinoo_order_path', $detectedPath);
@@ -471,8 +477,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 'name' => 'OZVinoo',
                 'catalog_url' => $catalogUrl,
                 'api_key' => $effectiveApiKey,
-                'auth_header' => $authHeader,
-                'auth_prefix' => $authPrefix,
+                'auth_header' => $detectedAuthHeader,
+                'auth_prefix' => $detectedAuthPrefix,
                 'products_path' => (string) ($discovery['products_path'] ?? 'auto'),
                 'id_field' => (string) ($discovery['id_field'] ?? 'auto'),
                 'name_field' => (string) ($discovery['name_field'] ?? 'auto'),
@@ -493,6 +499,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     . (int) ($sync['updated'] ?? 0) . ' بروزرسانی. '
                     . 'سود ' . rtrim(rtrim(number_format($profitPercent, 2, '.', ''), '0'), '.') . '٪ اعمال شد. '
                     . 'روش API: ' . strtoupper((string) ($discovery['api_style'] ?? 'rest'))
+                    . ' / Auth: ' . (string) ($discovery['auth_header'] ?? 'auto')
                 );
             } else {
                 flash('warning', 'عضوینو ذخیره شد ولی همگام‌سازی محصولات ناموفق بود: ' . (string) ($sync['message'] ?? 'خطای نامشخص'));
@@ -823,7 +830,7 @@ include __DIR__ . '/inc/layout_head.php';
                 <div class="field">
                     <label>Catalog endpoint (اختیاری)</label>
                     <input class="input" name="ozvinoo_catalog_path" value="<?= htmlspecialchars($ozCatalogPath) ?>" dir="ltr" placeholder="Auto detect">
-                    <small class="field-hint">خالی بگذارید؛ BlueBot چند endpoint رایج را تست و لیست محصولات را خودش تشخیص می‌دهد.</small>
+                    <small class="field-hint">خالی بگذارید؛ BlueBot endpointهای REST/SMM، چند روش احراز هویت و ساختارهای تو‌در‌توی JSON را خودش بررسی می‌کند.</small>
                 </div>
                 <div class="field">
                     <label>Order endpoint path</label>
@@ -847,15 +854,16 @@ include __DIR__ . '/inc/layout_head.php';
 
             <div class="notice notice-info">
                 قیمت فروش = قیمت عمده عضوینو × نرخ تبدیل × (۱ + درصد سود).
-                BlueBot لیست محصولات و فیلدهای ID، نام، دسته و قیمت را نیز تا حد ممکن خودکار تشخیص می‌دهد.
+                BlueBot لیست محصولات، روش احراز هویت، فیلدهای ID/نام/دسته/قیمت و ساختارهای تو‌در‌توی JSON را خودکار تشخیص می‌دهد.
             </div>
 
             <div class="notice <?= $ozProductCount > 0 ? 'notice-info' : 'notice-warn' ?>">
                 <strong>محصولات فعال عضوینو در ربات:</strong> <?= number_format($ozProductCount) ?>
                 <?php if ($ozProductCount === 0): ?>
                     <br><small>
-                        هنوز محصول فعالی از عضوینو وارد نشده است. «ذخیره + شناسایی و همگام‌سازی محصولات» را بزنید؛
-                        اگر API مسیر کاتالوگ متفاوتی دارد، Catalog endpoint را وارد کنید.
+                        هنوز محصول فعالی از عضوینو وارد نشده است. «ذخیره + شناسایی و همگام‌سازی محصولات» را بزنید.
+                        نسخه جدید REST/SMM و روش‌های Bearer، X-API-Key و API-Key را خودکار امتحان می‌کند؛
+                        اگر باز هم صفر بود، خطای دقیق آخرین Sync پایین همین کارت نمایش داده می‌شود.
                     </small>
                 <?php endif; ?>
             </div>
@@ -877,7 +885,7 @@ include __DIR__ . '/inc/layout_head.php';
         <form method="post" class="card-body" style="padding-top:0">
             <input type="hidden" name="_csrf" value="<?= htmlspecialchars(csrf_token()) ?>">
             <input type="hidden" name="action" value="sync_ozvinoo_catalog">
-            <button class="btn btn-ghost" type="submit">↻ همگام‌سازی محصولات عضوینو</button>
+            <button class="btn btn-ghost" type="submit">🔎 تشخیص عمیق API + همگام‌سازی عضوینو</button>
         </form>
     </div>
 
