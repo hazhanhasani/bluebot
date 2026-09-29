@@ -1761,6 +1761,51 @@ bluebot_verify_panel_route() {
     return 1
 }
 
+bluebot_recover_config_from_state() {
+    local root="$1"
+    local domain token chat_id botname dbuser dbpass dbname="mirzaprobot"
+
+    domain="$(state_get DOMAIN)"
+    token="$(state_get BOT_TOKEN)"
+    chat_id="$(state_get CHAT_ID)"
+    botname="$(state_get BOTNAME)"
+    dbuser="$(state_get DBUSER)"
+    dbpass="$(state_get DBPASS)"
+
+    if [ -z "$domain" ] || [ -z "$token" ] || [ -z "$chat_id" ] || [ -z "$dbuser" ] || [ -z "$dbpass" ]; then
+        echo "Install state is incomplete; cannot reconstruct config.php safely." >&2
+        return 1
+    fi
+
+    # Validate the existing database before writing a recovered application
+    # config. This never recreates or drops the database.
+    if ! MYSQL_PWD="$dbpass" mysql -h localhost -u"$dbuser" "$dbname" -N -B -e "SELECT 1" >/dev/null 2>&1; then
+        echo "Saved database credentials could not open the existing mirzaprobot database." >&2
+        return 1
+    fi
+
+    mkdir -p "$root" || return 1
+    cat > "$root/config.php" <<EOF
+<?php
+\$request_exec_timeout = null;
+\$dbhost = 'localhost';
+\$dbname = '$dbname';
+\$usernamedb = '$dbuser';
+\$passworddb = '$dbpass';
+\$options = [ PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION, PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC, PDO::ATTR_EMULATE_PREPARES => false, PDO::MYSQL_ATTR_INIT_COMMAND => "SET NAMES utf8mb4 COLLATE utf8mb4_unicode_ci", ];
+\$dsn = "mysql:host=\$dbhost;dbname=\$dbname;charset=utf8mb4";
+try { \$pdo = new PDO(\$dsn, \$usernamedb, \$passworddb, \$options); } catch (\PDOException \$e) { error_log("Database connection failed: " . \$e->getMessage()); die("error: database connection failed"); }
+\$APIKEY = '$token';
+\$adminnumber = '$chat_id';
+\$domainhosts = '$domain';
+\$usernamebot = '$botname';
+?>
+EOF
+    chown www-data:www-data "$root/config.php" 2>/dev/null || true
+    chmod 640 "$root/config.php" 2>/dev/null || true
+    return 0
+}
+
 # vpnbot instance dirs (not Default/update). update_bot wipes BOT_DIR.
 VPNBOT_BACKUP="/tmp/mirza_vpnbot_backup"
 
@@ -2619,17 +2664,24 @@ function update_bot() {
     CONFIG_PATH="$BOT_DIR/config.php"
     TEMP_CONFIG="/root/mirzapro_config_backup.php"
     rm -f "$TEMP_CONFIG"
-    if [ -f "$CONFIG_PATH" ]; then
-        cp "$CONFIG_PATH" "$TEMP_CONFIG" || {
-            echo -e "\e[91mConfig file backup failed! Update aborted before touching the live install.\033[0m"
+
+    if [ ! -f "$CONFIG_PATH" ]; then
+        echo -e "\e[93mconfig.php is missing; attempting safe recovery from saved install state...\033[0m"
+        if bluebot_recover_config_from_state "$BOT_DIR"; then
+            echo -e "\e[92mRecovered config.php from saved install state and verified the existing database.\033[0m"
+        else
+            echo -e "\e[91mError: config.php is missing and automatic recovery was not possible.\033[0m"
+            echo -e "\e[93mNo database was created, deleted, or modified. Update aborted safely.\033[0m"
             rm -rf "$TEMP_DIR"
             return 1
-        }
-    else
-        echo -e "\e[91mError: config.php is missing. Update aborted before touching the live install.\033[0m"
+        fi
+    fi
+
+    cp "$CONFIG_PATH" "$TEMP_CONFIG" || {
+        echo -e "\e[91mConfig file backup failed! Update aborted before touching the live install.\033[0m"
         rm -rf "$TEMP_DIR"
         return 1
-    fi
+    }
     LANG_OVERRIDE_BACKUP="/root/mirzapro_lang_override_backup"
     rm -rf "$LANG_OVERRIDE_BACKUP"
     [ -d "$BOT_DIR/lang/override" ] && cp -a "$BOT_DIR/lang/override" "$LANG_OVERRIDE_BACKUP"
