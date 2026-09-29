@@ -1,6 +1,26 @@
 (function () {
   'use strict';
 
+  var bootKey = '__BLUEBOT_MINIAPP_BOOT__';
+  var previousBoot = window[bootKey];
+
+  // Telegram WebView/CDN retries can evaluate the bootstrap more than once.
+  // A second React Router mount in the same document triggers the nested
+  // <Router> invariant, so startup must be single-flight.
+  if (previousBoot && previousBoot.started) {
+    console.warn('BlueBot Mini App duplicate bootstrap ignored', previousBoot);
+    return;
+  }
+
+  var bootState = {
+    started: true,
+    loaded: false,
+    failed: false,
+    version: '0.1.6',
+    startedAt: Date.now()
+  };
+  window[bootKey] = bootState;
+
   var finished = false;
   var failureShown = false;
 
@@ -31,6 +51,9 @@
     var diagnostic = reason && reason.message
       ? String(reason.message).slice(0, 180)
       : '';
+
+    bootState.failed = true;
+    bootState.error = diagnostic || 'Unknown startup error';
 
     root.innerHTML =
       '<div class="bluebot-boot">' +
@@ -70,9 +93,12 @@
     }
   }, 10000);
 
-  import('../assets/index-C-2a0Dur.js?v=0.1.5')
+  import('../assets/index-C-2a0Dur.js?v=0.1.6')
     .then(function () {
       finished = true;
+      bootState.loaded = true;
+      bootState.failed = false;
+      bootState.finishedAt = Date.now();
     })
     .catch(function (error) {
       console.error('BlueBot Mini App bundle failed to load', error);
