@@ -255,8 +255,8 @@ final class BluebotDigitalServices
 
         $find = $pdo->prepare(
             "SELECT * FROM digital_service_products
-             WHERE type = ? AND service_value = ?
-             ORDER BY (provider = 'tgtools') DESC, id ASC
+             WHERE provider = 'tgtools' AND type = ? AND service_value = ?
+             ORDER BY id ASC
              LIMIT 1"
         );
         $update = $pdo->prepare(
