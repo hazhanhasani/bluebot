@@ -460,6 +460,9 @@ final class BluebotDigitalServices
                 ];
             }
         } else {
+            if ((int) ($responses['telegram_stars']['http_status'] ?? 0) === 404) {
+                $successfulTypes[] = 'telegram_stars';
+            }
             $messages[] = 'Stars: ' . (string) ($responses['telegram_stars']['message'] ?? 'request failed');
         }
 
@@ -502,6 +505,9 @@ final class BluebotDigitalServices
                 ];
             }
         } else {
+            if ((int) ($responses['telegram_premium']['http_status'] ?? 0) === 404) {
+                $successfulTypes[] = 'telegram_premium';
+            }
             $messages[] = 'Premium: ' . (string) ($responses['telegram_premium']['message'] ?? 'request failed');
         }
 
@@ -541,6 +547,9 @@ final class BluebotDigitalServices
                 ];
             }
         } else {
+            if ((int) ($responses['virtual_number']['http_status'] ?? 0) === 404) {
+                $successfulTypes[] = 'virtual_number';
+            }
             $messages[] = 'Numbers: ' . (string) ($responses['virtual_number']['message'] ?? 'request failed');
         }
 
@@ -1514,7 +1523,17 @@ final class BluebotDigitalServices
                     $service = $type === 'telegram_stars' ? 'stars' : 'premium';
                     $response = $client->telegramOrderStatus($service, $reference);
                     if (empty($response['ok'])) {
-                        $stats['errors']++;
+                        if ($http === 422) {
+                            self::failAndRefundProviderOrder(
+                                $pdo,
+                                (int) $order['id'],
+                                'OZVinoo could not access the virtual-number account.',
+                                $response
+                            );
+                            $stats['failed']++;
+                        } else {
+                            $stats['errors']++;
+                        }
                         continue;
                     }
 
