@@ -35,7 +35,7 @@ try {
 
     $ozBootstrap = BluebotDigitalServices::maybeBootstrapOZVinooCatalog($pdo);
     if (empty($ozBootstrap['skipped'])) {
-        bluebotLog(!empty($ozBootstrap['ok']) ? 'info' : 'warning', 'OZVinoo catalog bootstrap checked', [
+        bluebotLog(!empty($ozBootstrap['ok']) ? 'info' : 'warning', 'OZVinoo official catalog sync checked', [
             'ok' => !empty($ozBootstrap['ok']),
             'created' => (int) ($ozBootstrap['created'] ?? 0),
             'updated' => (int) ($ozBootstrap['updated'] ?? 0),
@@ -53,8 +53,13 @@ try {
     if (($stats['completed'] ?? 0) > 0 || ($stats['failed'] ?? 0) > 0 || ($stats['errors'] ?? 0) > 0) {
         bluebotLog('info', 'TGTools digital service reconciliation completed', $stats);
     }
+
+    $ozStats = BluebotDigitalServices::reconcileOZVinooProcessing($pdo, 25);
+    if (($ozStats['completed'] ?? 0) > 0 || ($ozStats['failed'] ?? 0) > 0 || ($ozStats['errors'] ?? 0) > 0) {
+        bluebotLog('info', 'OZVinoo digital service reconciliation completed', $ozStats);
+    }
 } catch (Throwable $e) {
-    bluebotLog('warning', 'TGTools digital service cron failed', [
+    bluebotLog('warning', 'Digital service cron failed', [
         'error' => $e->getMessage(),
     ]);
 }
