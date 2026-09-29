@@ -613,141 +613,202 @@ final class BluebotDigitalServices
         }
 
         $numberDefinitionCount = 0;
-        if (!empty($responses['virtual_number']['ok'])) {
-            foreach (self::ozvinooResponseList($responses['virtual_number']) as $item) {
+        $virtualNumberApplicationIds = [];
+        $virtualNumberCatalogComplete = false;
+
+        // Callinoo/OZVinoo virtual numbers are application-first: Telegram,
+        // WhatsApp, Google, Instagram, Discord, Apple, etc. Synchronize every
+        // application exposed by the documented /web API, then every country
+        // available for that application. V2 Telegram countries are only a
+        // fallback when the application catalog is unavailable.
+        $applicationsResponse = $client->applications();
+        $applicationItems = !empty($applicationsResponse['ok'])
+            ? self::ozvinooResponseList($applicationsResponse)
+            : [];
+        $applicationPriceFailures = 0;
+        $applicationPriceSuccesses = 0;
+
+        foreach ($applicationItems as $application) {
+            if (!is_array($application)) {
+                continue;
+            }
+
+            $serviceId = self::ozvinooPositiveInt(
+                self::findScalarByKeys($application, ['id', 'service_id', 'serviceId', 'application_id'])
+            );
+            if ($serviceId <= 0) {
+                continue;
+            }
+
+            $applicationName = trim((string) (self::findScalarByKeys(
+                $application,
+                ['title', 'name', 'application', 'app_name', 'appName', 'label']
+            ) ?? ''));
+            $applicationCode = strtolower(trim((string) (self::findScalarByKeys(
+                $application,
+                ['code', 'slug', 'short_code', 'shortCode']
+            ) ?? '')));
+
+            if ($applicationName === '') {
+                $applicationName = $applicationCode !== ''
+                    ? strtoupper($applicationCode)
+                    : ('Service ' . $serviceId);
+            }
+            if ($applicationCode === '') {
+                $applicationCode = 'app_' . $serviceId;
+            }
+
+            $pricesResponse = $client->prices($serviceId);
+            if (empty($pricesResponse['ok'])) {
+                $applicationPriceFailures++;
+                continue;
+            }
+            $applicationPriceSuccesses++;
+
+            foreach (self::ozvinooResponseList($pricesResponse) as $item) {
                 if (!is_array($item)) {
                     continue;
                 }
 
-                $countryId = self::findScalarByKeys($item, [
-                    'id',
-                    'country_id',
-                    'countryId',
-                    'country_identifier',
-                    'countryIdentifier',
-                ]);
                 $country = trim((string) (self::findScalarByKeys(
                     $item,
                     ['country', 'countery', 'country_name', 'countryName', 'name', 'title']
                 ) ?? ''));
+                $range = self::findScalarByKeys($item, [
+                    'range',
+                    'country_code',
+                    'countryCode',
+                    'dial_code',
+                    'dialCode',
+                    'prefix',
+                    'code',
+                ]);
                 $price = self::findScalarByKeys($item, ['price', 'cost', 'amount_toman', 'toman']);
-                if ($countryId === null || $countryId === '' || $country === '' || !is_numeric($price) || (float) $price <= 0) {
+                $availability = strtolower(trim((string) (self::findScalarByKeys(
+                    $item,
+                    ['count', 'status', 'availability', 'available']
+                ) ?? '')));
+
+                if ($country === ''
+                    || $range === null
+                    || $range === ''
+                    || !is_numeric($price)
+                    || (float) $price <= 0) {
+                    continue;
+                }
+                if (str_contains($availability, 'ناموجود')
+                    || in_array($availability, ['0', 'false', 'no', 'unavailable', 'out_of_stock'], true)) {
                     continue;
                 }
 
-                $range = self::findScalarByKeys($item, ['range', 'dial_code', 'prefix']);
+                $identity = $serviceId . ':' . (string) $range . ':' . $country;
                 $definitions[] = [
-                    'code' => 'auto-ozvinoo-number-v2-' . substr(hash('sha256', (string) $countryId), 0, 12),
-                    'name' => '📱 شماره تلگرام · ' . $country,
+                    'code' => 'auto-ozvinoo-number-v1-' . substr(hash('sha256', $identity), 0, 12),
+                    'name' => '📱 ' . $applicationName . ' · ' . $country,
                     'type' => 'virtual_number',
                     'price' => (float) $price,
                     'service_value' => 1,
-                    'provider_service_code' => (string) $countryId,
-                    'description' => 'Telegram virtual number via OZVinoo V2 API.',
+                    'provider_service_code' => 'v1:' . $serviceId . ':' . (string) $range,
+                    'description' => $applicationName . ' virtual number via Callinoo/OZVinoo documented /web API.',
                     'metadata' => [
                         'source' => 'ozvinoo-official-api',
-                        'api_family' => 'telegram-numbers-v2',
+                        'api_family' => 'web-v1',
                         'category_key' => 'virtual_number',
-                        'category_label' => '📱 شماره مجازی تلگرام',
-                        'country_id' => (string) $countryId,
+                        'category_label' => '📱 شماره مجازی',
+                        'application_id' => $serviceId,
+                        'application_code' => $applicationCode,
+                        'application_name' => $applicationName,
+                        'service_id' => $serviceId,
                         'country' => $country,
-                        'range' => is_scalar($range) ? (string) $range : '',
-                        'none_report' => true,
+                        'range' => (string) $range,
                     ],
                 ];
                 $numberDefinitionCount++;
+                $virtualNumberApplicationIds[$serviceId] = true;
             }
-            if ($numberDefinitionCount > 0 && !in_array('virtual_number', $successfulTypes, true)) {
-                $successfulTypes[] = 'virtual_number';
-            }
-        } else {
-            if ((int) ($responses['virtual_number']['http_status'] ?? 0) === 404) {
-                $successfulTypes[] = 'virtual_number';
-            }
-            $messages[] = 'Numbers V2: ' . (string) ($responses['virtual_number']['message'] ?? 'request failed');
         }
 
-        // Some OZVinoo installations expose the documented V2 endpoint but
-        // omit the country id needed for purchasing. Fall back to the older,
-        // still documented /web API so virtual numbers do not disappear from
-        // the BlueBot catalog.
-        if ($numberDefinitionCount === 0) {
-            $applicationsResponse = $client->applications();
-            $applicationItems = !empty($applicationsResponse['ok'])
-                ? self::ozvinooResponseList($applicationsResponse)
-                : [];
-            $telegramServiceId = 0;
-
-            foreach ($applicationItems as $application) {
-                if (!is_array($application)) {
-                    continue;
-                }
-                $id = self::ozvinooPositiveInt(self::findScalarByKeys($application, ['id', 'service_id']));
-                $code = strtolower(trim((string) (self::findScalarByKeys($application, ['code']) ?? '')));
-                $title = strtolower(trim((string) (self::findScalarByKeys($application, ['title', 'name']) ?? '')));
-                if ($id > 0 && ($code === 'tg' || str_contains($title, 'telegram') || str_contains($title, 'تلگرام'))) {
-                    $telegramServiceId = $id;
-                    break;
-                }
+        if ($numberDefinitionCount > 0) {
+            if (!in_array('virtual_number', $successfulTypes, true)) {
+                $successfulTypes[] = 'virtual_number';
+            }
+            // Disable missing virtual-number products only when every
+            // application price request completed. A partial provider outage
+            // must never hide otherwise valid products.
+            $virtualNumberCatalogComplete = $applicationPriceFailures === 0;
+            if ($applicationPriceFailures > 0) {
+                $messages[] = 'Numbers: ' . $applicationPriceFailures
+                    . ' application price request(s) failed; existing products were preserved.';
+            }
+        } else {
+            if (empty($applicationsResponse['ok'])) {
+                $messages[] = 'Numbers applications: '
+                    . (string) ($applicationsResponse['message'] ?? 'request failed');
+            } elseif ($applicationPriceSuccesses === 0 && $applicationItems !== []) {
+                $messages[] = 'Numbers prices: all application price requests failed.';
             }
 
-            if ($telegramServiceId > 0) {
-                $pricesResponse = $client->prices($telegramServiceId);
-                if (!empty($pricesResponse['ok'])) {
+            // V2 currently represents Telegram numbers. Keep it as a fallback
+            // so number sales remain available even if the /web application
+            // catalog is temporarily unavailable.
+            if (!empty($responses['virtual_number']['ok'])) {
+                foreach (self::ozvinooResponseList($responses['virtual_number']) as $item) {
+                    if (!is_array($item)) {
+                        continue;
+                    }
+
+                    $countryId = self::findScalarByKeys($item, [
+                        'id',
+                        'country_id',
+                        'countryId',
+                        'country_identifier',
+                        'countryIdentifier',
+                    ]);
+                    $country = trim((string) (self::findScalarByKeys(
+                        $item,
+                        ['country', 'countery', 'country_name', 'countryName', 'name', 'title']
+                    ) ?? ''));
+                    $price = self::findScalarByKeys($item, ['price', 'cost', 'amount_toman', 'toman']);
+                    if ($countryId === null || $countryId === '' || $country === '' || !is_numeric($price) || (float) $price <= 0) {
+                        continue;
+                    }
+
+                    $range = self::findScalarByKeys($item, ['range', 'dial_code', 'prefix']);
+                    $definitions[] = [
+                        'code' => 'auto-ozvinoo-number-v2-' . substr(hash('sha256', (string) $countryId), 0, 12),
+                        'name' => '📱 Telegram · ' . $country,
+                        'type' => 'virtual_number',
+                        'price' => (float) $price,
+                        'service_value' => 1,
+                        'provider_service_code' => (string) $countryId,
+                        'description' => 'Telegram virtual number via OZVinoo V2 API.',
+                        'metadata' => [
+                            'source' => 'ozvinoo-official-api',
+                            'api_family' => 'telegram-numbers-v2',
+                            'category_key' => 'virtual_number',
+                            'category_label' => '📱 شماره مجازی',
+                            'application_id' => 0,
+                            'application_code' => 'telegram',
+                            'application_name' => 'Telegram',
+                            'country_id' => (string) $countryId,
+                            'country' => $country,
+                            'range' => is_scalar($range) ? (string) $range : '',
+                            'none_report' => true,
+                        ],
+                    ];
+                    $numberDefinitionCount++;
+                    $virtualNumberApplicationIds[0] = true;
+                }
+
+                if ($numberDefinitionCount > 0) {
                     if (!in_array('virtual_number', $successfulTypes, true)) {
                         $successfulTypes[] = 'virtual_number';
                     }
-                    foreach (self::ozvinooResponseList($pricesResponse) as $item) {
-                        if (!is_array($item)) {
-                            continue;
-                        }
-                        $country = trim((string) (self::findScalarByKeys(
-                            $item,
-                            ['country', 'countery', 'country_name', 'countryName', 'name', 'title']
-                        ) ?? ''));
-                        $range = self::findScalarByKeys($item, ['range', 'dial_code', 'prefix']);
-                        $price = self::findScalarByKeys($item, ['price', 'cost', 'amount_toman', 'toman']);
-                        $availability = strtolower(trim((string) (self::findScalarByKeys(
-                            $item,
-                            ['count', 'status', 'availability', 'available']
-                        ) ?? '')));
-
-                        if ($country === '' || $range === null || $range === '' || !is_numeric($price) || (float) $price <= 0) {
-                            continue;
-                        }
-                        if (str_contains($availability, 'ناموجود')
-                            || in_array($availability, ['0', 'false', 'no', 'unavailable', 'out_of_stock'], true)) {
-                            continue;
-                        }
-
-                        $identity = $telegramServiceId . ':' . (string) $range . ':' . $country;
-                        $definitions[] = [
-                            'code' => 'auto-ozvinoo-number-v1-' . substr(hash('sha256', $identity), 0, 12),
-                            'name' => '📱 شماره تلگرام · ' . $country,
-                            'type' => 'virtual_number',
-                            'price' => (float) $price,
-                            'service_value' => 1,
-                            'provider_service_code' => 'v1:' . $telegramServiceId . ':' . (string) $range,
-                            'description' => 'Telegram virtual number via OZVinoo documented /web API.',
-                            'metadata' => [
-                                'source' => 'ozvinoo-official-api',
-                                'api_family' => 'web-v1',
-                                'category_key' => 'virtual_number',
-                                'category_label' => '📱 شماره مجازی تلگرام',
-                                'service_id' => $telegramServiceId,
-                                'country' => $country,
-                                'range' => (string) $range,
-                            ],
-                        ];
-                        $numberDefinitionCount++;
-                    }
-                } else {
-                    $messages[] = 'Numbers V1 prices: ' . (string) ($pricesResponse['message'] ?? 'request failed');
+                    $virtualNumberCatalogComplete = true;
                 }
-            } elseif (!empty($applicationsResponse['ok'])) {
-                $messages[] = 'Numbers V1: Telegram application was not found.';
             } else {
-                $messages[] = 'Numbers V1 applications: ' . (string) ($applicationsResponse['message'] ?? 'request failed');
+                $messages[] = 'Numbers V2: '
+                    . (string) ($responses['virtual_number']['message'] ?? 'request failed');
             }
         }
 
@@ -835,6 +896,9 @@ final class BluebotDigitalServices
         }
 
         foreach ($successfulTypes as $type) {
+            if ($type === 'virtual_number' && !$virtualNumberCatalogComplete) {
+                continue;
+            }
             $seenCodes = array_values(array_unique($seenByType[$type] ?? []));
             if ($seenCodes === []) {
                 $stmt = $pdo->prepare(
@@ -871,10 +935,12 @@ final class BluebotDigitalServices
         $typeCounts = [
             'stars' => count($seenByType['telegram_stars'] ?? []),
             'premium' => count($seenByType['telegram_premium'] ?? []),
+            'number_apps' => count($virtualNumberApplicationIds),
             'numbers' => count($seenByType['virtual_number'] ?? []),
         ];
         $summary = 'Stars ' . $typeCounts['stars']
             . ' · Premium ' . $typeCounts['premium']
+            . ' · Number apps ' . $typeCounts['number_apps']
             . ' · Numbers ' . $typeCounts['numbers'];
         $message = $messages === []
             ? 'Official OZVinoo catalogs synchronized. ' . $summary
