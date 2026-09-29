@@ -8,6 +8,10 @@ $admin = file_get_contents($root . '/admin.php');
 $keyboard = file_get_contents($root . '/keyboard.php');
 $setting = file_get_contents($root . '/db/tables/setting.php');
 $panel = file_get_contents($root . '/panel/digital_services.php');
+$servicePanel = file_get_contents($root . '/panel/service.php');
+$invoicePanel = file_get_contents($root . '/panel/invoice.php');
+$categoryPanel = file_get_contents($root . '/panel/category.php');
+$categoryTable = file_get_contents($root . '/db/tables/digital_service_categories.php');
 $tgTools = file_get_contents($root . '/src/Services/TgToolsClient.php');
 $ozvinooClient = file_get_contents($root . '/src/Services/OZVinooClient.php');
 $providerCatalog = file_get_contents($root . '/src/Services/DigitalServiceProviderCatalog.php');
@@ -144,9 +148,32 @@ $checks = [
     [str_contains($panel, "کیف پول API عضوینو"), 'OZVinoo wallet balance UI missing'],
     [str_contains($panel, "API رسمی"), 'OZVinoo official API UI copy missing'],
     [str_contains($panel, "data-ozvinoo-sync-form"), 'OZVinoo official sync progress guard missing'],
+    [str_contains($panel, "مدیریت APIها"), 'Digital Services settings page purpose copy missing'],
+    [!str_contains($panel, '<div class="card-title">سرویس‌ها</div>'), 'service list leaked back into API settings page'],
+    [!str_contains($panel, '<div class="card-title">سفارش‌ها</div>'), 'order list leaked back into API settings page'],
     [str_contains($panel, "products_path' => \$_POST['products_path'] ?? 'auto'"), 'generic provider mapping must default to auto'],
-    [str_contains($panel, "set_product_price"), 'generated product retail price action missing'],
-    [str_contains($panel, 'value="tgtools"'), 'TGTools product provider option missing'],
+    [str_contains($servicePanel, "digital_add"), 'digital service create action must live under Services'],
+    [str_contains($servicePanel, "digital_edit"), 'digital service edit action must live under Services'],
+    [str_contains($servicePanel, "digital_toggle"), 'digital service activation action must live under Services'],
+    [str_contains($servicePanel, "digital_delete"), 'digital service delete action must live under Services'],
+    [str_contains($servicePanel, "scope=digital"), 'Services digital scope missing'],
+    [str_contains($servicePanel, "'tgtools'"), 'TGTools provider support missing from Services digital scope'],
+    [str_contains($invoicePanel, "digital_approve"), 'digital order approval must live under Orders'],
+    [str_contains($invoicePanel, "digital_reject"), 'digital order rejection must live under Orders'],
+    [str_contains($invoicePanel, "scope=digital"), 'Orders digital scope missing'],
+    [str_contains($categoryPanel, "digital_category_add"), 'digital category create action missing'],
+    [str_contains($categoryPanel, "digital_category_edit"), 'digital category edit action missing'],
+    [str_contains($categoryPanel, "digital_category_delete"), 'digital category delete action missing'],
+    [str_contains($categoryPanel, "scope=digital"), 'Categories digital scope missing'],
+    [str_contains($categoryTable, "category_key"), 'managed digital category table missing'],
+    [str_contains($categoryTable, "virtual_number"), 'virtual-number category seed missing'],
+    [str_contains($manager, "ensureManagedCategorySchema"), 'managed category self-healing schema missing'],
+    [str_contains($manager, "updateProductCategory"), 'product category management API missing'],
+    [!str_contains($panel, "add_product"), 'Digital Services settings page must not manage products'],
+    [!str_contains($panel, "approve_order"), 'Digital Services settings page must not approve orders'],
+    [str_contains($panel, "service.php?scope=digital"), 'Digital Services page must link to Services management'],
+    [str_contains($panel, "invoice.php?scope=digital"), 'Digital Services page must link to Orders management'],
+    [str_contains($panel, "category.php?scope=digital"), 'Digital Services page must link to Categories management'],
     [str_contains($ozvinooClient, "https://api.ozvinoo.xyz"), 'OZVinoo host allowlist missing'],
     [str_contains($ozvinooClient, "CURLOPT_PROTOCOLS => CURLPROTO_HTTPS"), 'OZVinoo must be HTTPS-only'],
     [str_contains($ozvinooClient, "/web/") && str_contains($ozvinooClient, "/get-balance"), 'OZVinoo balance endpoint missing'],
@@ -155,6 +182,13 @@ $checks = [
     [str_contains($ozvinooClient, "/telegram-services/status/"), 'OZVinoo Telegram order status endpoint missing'],
     [str_contains($ozvinooClient, "/telegram-numbers/numbers/"), 'OZVinoo numbers endpoint missing'],
     [str_contains($ozvinooClient, "/telegram-numbers/number-services/"), 'OZVinoo number status endpoint missing'],
+    [str_contains($ozvinooClient, "/applications"), 'OZVinoo V1 applications fallback missing'],
+    [str_contains($ozvinooClient, "/get-prices/"), 'OZVinoo V1 prices fallback missing'],
+    [str_contains($ozvinooClient, "/getNumber/"), 'OZVinoo V1 number purchase fallback missing'],
+    [str_contains($ozvinooClient, "/getCode/"), 'OZVinoo V1 number code fallback missing'],
+    [str_contains($manager, "'api_family' => 'web-v1'"), 'OZVinoo V1 fallback catalog mapping missing'],
+    [str_contains($manager, "getNumberV1"), 'OZVinoo V1 delivery fallback missing'],
+    [str_contains($manager, "getCodeV1"), 'OZVinoo V1 reconciliation fallback missing'],
     [str_contains($ozvinooClient, "/numbers/getAllOrders/"), 'OZVinoo all-orders endpoint missing'],
     [str_contains($ozvinooClient, "/numbers/getOpenOrders/"), 'OZVinoo open-orders endpoint missing'],
     [str_contains($ozvinooClient, "/numbers/getOrder/"), 'OZVinoo get-order endpoint missing'],
@@ -178,8 +212,8 @@ $checks = [
     [str_contains($admin, "مبلغ برگشت خورد"), 'admin refunded provider error UX missing'],
     [str_contains($keyboard, "text_digital_services"), 'main keyboard mapping missing'],
     [str_contains($setting, "text_digital_services"), 'default keyboard token missing'],
-    [str_contains($panel, "approve_order"), 'web approval action missing'],
-    [str_contains($panel, "reject_order"), 'web reject action missing'],
+    [str_contains($invoicePanel, "digital_approve"), 'web approval action missing'],
+    [str_contains($invoicePanel, "digital_reject"), 'web reject action missing'],
     [!str_contains($index, "ارسال فقط بعد از تأیید دستی ادمین انجام می‌شود."), 'customer product page leaks internal approval workflow'],
     [!str_contains($index, "سفارش تا تأیید دستی ادمین ارسال نخواهد شد."), 'customer confirmation leaks internal approval workflow'],
     [!str_contains($langFa, "در صف تأیید و ارسال ادمین"), 'customer queued message leaks internal approval workflow'],
