@@ -30,6 +30,7 @@ return [
     'logs_api',
     'category',
     'digital_service_products',
+    'digital_service_providers',
     'digital_service_orders',
     'digital_service_settings',
     'reagent_report',
