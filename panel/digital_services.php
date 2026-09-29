@@ -11,11 +11,319 @@ if (!BluebotDigitalServices::isAvailable($pdo)) {
     $activeNav = 'digital-services';
     include __DIR__ . '/inc/layout_head.php';
     ?>
+    <div class="notice notice-warn">
+        جدول‌های فروش خدمات هنوز ساخته نشده‌اند. یک‌بار <code>php table.php</code> را اجرا کنید.
+    </div>
+    <?php
+    include __DIR__ . '/inc/layout_foot.php';
+    exit;
+}
+
+function ds_panel_setting(PDO $pdo, string $key, string $default = ''): string
+{
+    $stmt = $pdo->prepare("SELECT setting_value FROM digital_service_settings WHERE setting_key = ? LIMIT 1");
+    $stmt->execute([$key]);
+    $value = $stmt->fetchColumn();
+    return $value === false || $value === null ? $default : (string) $value;
+}
+
+function ds_panel_set_setting(PDO $pdo, string $key, string $value, bool $secret = false): void
+{
+    $stmt = $pdo->prepare(
+        "INSERT INTO digital_service_settings (setting_key, setting_value, is_secret)
+         VALUES (?, ?, ?)
+         ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value), is_secret = VALUES(is_secret)"
+    );
+    $stmt->execute([$key, $value, $secret ? 1 : 0]);
+}
+
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    csrf_check_post();
+    $action = trim((string) ($_POST['action'] ?? ''));
+
+    if ($action === 'save_tgtools') {
+        $apiKey = trim((string) ($_POST['tgtools_api_key'] ?? ''));
+        if ($apiKey !== '' && (strlen($apiKey) > 512 || preg_match('/[\r\n]/', $apiKey))) {
+            flash('error', 'API Key واردشده معتبر نیست.');
+            header('Location: digital_services.php#tgtools');
+            exit;
+        }
+
+        $starsProfit = (float) ($_POST['tgtools_stars_profit_percent'] ?? 0);
+        $premiumProfit = (float) ($_POST['tgtools_premium_profit_percent'] ?? 0);
+        $tonRateToman = (float) ($_POST['tgtools_ton_toman_rate'] ?? 0);
+
+        if ($starsProfit < 0 || $starsProfit > 1000 || $premiumProfit < 0 || $premiumProfit > 1000) {
+            flash('error', 'درصد سود باید بین ۰ تا ۱۰۰۰ باشد.');
+            header('Location: digital_services.php#tgtools');
+            exit;
+        }
+        if ($tonRateToman < 0) {
+            flash('error', 'نرخ TON معتبر نیست.');
+            header('Location: digital_services.php#tgtools');
+            exit;
+        }
+
+        ds_panel_set_setting($pdo, 'tgtools_base_url', 'https://api.tg-tools.shop');
+        ds_panel_set_setting($pdo, 'tgtools_payment_method', 'ton');
+        ds_panel_set_setting($pdo, 'tgtools_stars_profit_percent', (string) $starsProfit);
+        ds_panel_set_setting($pdo, 'tgtools_premium_profit_percent', (string) $premiumProfit);
+        ds_panel_set_setting($pdo, 'tgtools_ton_toman_rate', (string) $tonRateToman);
+        if ($apiKey !== '') {
+            ds_panel_set_setting($pdo, 'tgtools_api_key', $apiKey, true);
+        }
+
+        // Stars and Premium in BlueBot use TGTools as the delivery provider.
+        $migrateProducts = $pdo->prepare(
+            "UPDATE digital_service_products
+             SET provider = 'tgtools', updated_at = NOW()
+             WHERE type IN ('telegram_stars', 'telegram_premium')"
+        );
+        $migrateProducts->execute();
+
+        $catalog = BluebotDigitalServices::ensureTgToolsCatalog($pdo);
+        $catalogMessage = 'تنظیمات TGTools ذخیره شد. محصولات Stars/Premium همگام شدند: '
+            . (int) ($catalog['created'] ?? 0) . ' جدید، '
+            . (int) ($catalog['updated'] ?? 0) . ' بروزرسانی.';
+        if (!empty($catalog['remote_ok'])) {
+            flash('success', $catalogMessage . ' قیمت‌های زنده TGTools نیز دریافت شد.');
+        } else {
+            flash('warning', $catalogMessage . ' دریافت قیمت زنده موقتاً ممکن نبود و کاتالوگ جایگزین استفاده شد.');
+        }
+        header('Location: digital_services.php#tgtools');
+        exit;
+    }
+
+    if ($action === 'sync_tgtools_catalog') {
+        $catalog = BluebotDigitalServices::ensureTgToolsCatalog($pdo);
+        if (!empty($catalog['ok'])) {
+            $catalogMessage = 'محصولات Stars/Premium آماده شدند: '
+                . (int) ($catalog['created'] ?? 0) . ' جدید، '
+                . (int) ($catalog['updated'] ?? 0) . ' بروزرسانی.';
+            if (!empty($catalog['remote_ok'])) {
+                flash('success', $catalogMessage . ' قیمت‌های زنده TGTools دریافت شد.');
+            } else {
+                flash('warning', $catalogMessage . ' قیمت زنده در دسترس نبود؛ کاتالوگ جایگزین استفاده شد.');
+            }
+        } else {
+            flash('error', 'همگام‌سازی محصولات انجام نشد.');
+        }
+        header('Location: digital_services.php#tgtools');
+        exit;
+    }
+
+    if ($action === 'save_provider_catalog') {
+        try {
+            $provider = BluebotProviderCatalogService::saveProvider($pdo, [
+                'provider_key' => $_POST['provider_key'] ?? '',
+                'name' => $_POST['provider_name'] ?? '',
+                'catalog_url' => $_POST['catalog_url'] ?? '',
+                'api_key' => $_POST['provider_api_key'] ?? '',
+                'auth_header' => $_POST['provider_auth_header'] ?? 'Authorization',
+                'auth_prefix' => $_POST['provider_auth_prefix'] ?? 'Bearer',
+                'products_path' => $_POST['products_path'] ?? 'auto',
+                'id_field' => $_POST['id_field'] ?? 'auto',
+                'name_field' => $_POST['name_field'] ?? 'auto',
+                'category_field' => $_POST['category_field'] ?? 'auto',
+                'price_field' => $_POST['price_field'] ?? 'auto',
+                'currency' => $_POST['provider_currency'] ?? 'toman',
+                'exchange_rate_toman' => $_POST['exchange_rate_toman'] ?? 1,
+                'profit_percent' => $_POST['profit_percent'] ?? 0,
+                'sync_interval_minutes' => $_POST['sync_interval_minutes'] ?? 15,
+            ]);
+
+            $sync = BluebotProviderCatalogService::syncProvider($pdo, (string) ($provider['provider_key'] ?? ''));
+            if (!empty($sync['ok'])) {
+                flash(
+                    'success',
+                    'ارائه‌دهنده ذخیره و محصولات همگام شدند: '
+                    . (int) ($sync['created'] ?? 0) . ' جدید، '
+                    . (int) ($sync['updated'] ?? 0) . ' بروزرسانی.'
+                );
+            } else {
+                flash('warning', 'ارائه‌دهنده ذخیره شد اما دریافت محصولات ناموفق بود: ' . (string) ($sync['message'] ?? 'خطای نامشخص'));
+            }
+        } catch (Throwable $e) {
+            flash('error', 'ذخیره ارائه‌دهنده انجام نشد: ' . $e->getMessage());
+        }
+
+        header('Location: digital_services.php#providers');
+        exit;
+    }
+
+    if ($action === 'sync_provider_catalog') {
+        $providerKey = strtolower(trim((string) ($_POST['provider_key'] ?? '')));
+        try {
+            $sync = BluebotProviderCatalogService::syncProvider($pdo, $providerKey);
+            if (!empty($sync['ok'])) {
+                flash(
+                    'success',
+                    'کاتالوگ بروزرسانی شد: '
+                    . (int) ($sync['created'] ?? 0) . ' جدید، '
+                    . (int) ($sync['updated'] ?? 0) . ' بروزرسانی، '
+                    . (int) ($sync['disabled'] ?? 0) . ' غیرفعال.'
+                );
+            } else {
+                flash('error', 'همگام‌سازی ناموفق بود: ' . (string) ($sync['message'] ?? 'خطای نامشخص'));
+            }
+        } catch (Throwable $e) {
+            flash('error', 'همگام‌سازی انجام نشد: ' . $e->getMessage());
+        }
+        header('Location: digital_services.php#providers');
+        exit;
+    }
+
+    if ($action === 'toggle_provider_catalog') {
+        $providerKey = strtolower(trim((string) ($_POST['provider_key'] ?? '')));
+        $provider = BluebotProviderCatalogService::findProvider($pdo, $providerKey);
+        if (is_array($provider)) {
+            BluebotProviderCatalogService::setActive($pdo, $providerKey, (int) ($provider['active'] ?? 0) !== 1);
+            flash('success', 'وضعیت ارائه‌دهنده تغییر کرد.');
+        }
+        header('Location: digital_services.php#providers');
+        exit;
+    }
+
+    if ($action === 'delete_provider_catalog') {
+        $providerKey = strtolower(trim((string) ($_POST['provider_key'] ?? '')));
+        try {
+            if (BluebotProviderCatalogService::deleteProvider($pdo, $providerKey)) {
+                flash('success', 'ارائه‌دهنده و محصولات بدون سفارش آن حذف شدند.');
+            } else {
+                flash('warning', 'این ارائه‌دهنده سفارش ثبت‌شده دارد و حذف نشد؛ آن را غیرفعال کنید.');
+            }
+        } catch (Throwable $e) {
+            flash('error', 'حذف ارائه‌دهنده انجام نشد: ' . $e->getMessage());
+        }
+        header('Location: digital_services.php#providers');
+        exit;
+    }
+
+    if ($action === 'save_ozvinoo') {
+        $apiKey = trim((string) ($_POST['ozvinoo_api_key'] ?? ''));
+        $profitPercent = (float) ($_POST['ozvinoo_profit_percent'] ?? 0);
+        $syncInterval = max(1, min(1440, (int) ($_POST['ozvinoo_sync_interval_minutes'] ?? 15)));
+
+        if ($apiKey !== '' && (strlen($apiKey) > 2048 || preg_match('/[\r\n]/', $apiKey))) {
+            flash('error', 'API Key عضوینو معتبر نیست.');
+            header('Location: digital_services.php#ozvinoo');
+            exit;
+        }
+        if ($profitPercent < 0 || $profitPercent > 1000) {
+            flash('error', 'درصد سود عضوینو باید بین ۰ تا ۱۰۰۰ باشد.');
+            header('Location: digital_services.php#ozvinoo');
+            exit;
+        }
+
+        $effectiveApiKey = $apiKey !== '' ? $apiKey : ds_panel_setting($pdo, 'ozvinoo_api_key');
+        if ($effectiveApiKey === '') {
+            flash('warning', 'ابتدا API Key عضوینو را وارد کنید.');
+            header('Location: digital_services.php#ozvinoo');
+            exit;
+        }
+
+        ds_panel_set_setting($pdo, 'ozvinoo_base_url', 'https://api.ozvinoo.xyz');
+        ds_panel_set_setting($pdo, 'ozvinoo_profit_percent', (string) $profitPercent);
+        ds_panel_set_setting($pdo, 'ozvinoo_sync_interval_minutes', (string) $syncInterval);
+        ds_panel_set_setting($pdo, 'ozvinoo_currency', 'toman');
+        ds_panel_set_setting($pdo, 'ozvinoo_exchange_rate_toman', '1');
+        ds_panel_set_setting($pdo, 'ozvinoo_auth_header', 'Authorization');
+        ds_panel_set_setting($pdo, 'ozvinoo_auth_prefix', 'Bearer');
+        ds_panel_set_setting($pdo, 'ozvinoo_api_style', 'official-v1');
+        ds_panel_set_setting($pdo, 'ozvinoo_catalog_path', '/telegram-services/stars/');
+        ds_panel_set_setting($pdo, 'ozvinoo_order_path', '/telegram-services/stars/');
+        if ($apiKey !== '') {
+            ds_panel_set_setting($pdo, 'ozvinoo_api_key', $apiKey, true);
+        }
+
+        try {
+            $sync = BluebotDigitalServices::syncOZVinooCatalog($pdo);
+            if (!empty($sync['ok'])) {
+                $wallet = BluebotDigitalServices::ozvinooWalletStatus($pdo);
+                $balanceText = !empty($wallet['ok']) && is_numeric($wallet['balance'] ?? null)
+                    ? ' · موجودی API: ' . number_format((float) $wallet['balance']) . ' تومان'
+                    : '';
+                $typeCounts = is_array($sync['type_counts'] ?? null) ? $sync['type_counts'] : [];
+                $catalogText = ' · Stars: ' . (int) ($typeCounts['stars'] ?? 0)
+                    . ' · Premium: ' . (int) ($typeCounts['premium'] ?? 0)
+                    . ' · شماره: ' . (int) ($typeCounts['numbers'] ?? 0);
+
+                flash(
+                    'success',
+                    'عضوینو با API رسمی همگام شد: '
+                    . (int) ($sync['created'] ?? 0) . ' جدید، '
+                    . (int) ($sync['updated'] ?? 0) . ' بروزرسانی، '
+                    . (int) ($sync['disabled'] ?? 0) . ' غیرفعال. '
+                    . 'سود ' . rtrim(rtrim(number_format($profitPercent, 2, '.', ''), '0'), '.') . '٪ اعمال شد'
+                    . $catalogText
+                    . $balanceText
+                );
+            } else {
+                flash('error', 'همگام‌سازی عضوینو ناموفق بود: ' . (string) ($sync['message'] ?? 'خطای نامشخص'));
+            }
+        } catch (Throwable $e) {
+            flash('error', 'ذخیره/همگام‌سازی عضوینو انجام نشد: ' . $e->getMessage());
+        }
+
+        header('Location: digital_services.php#ozvinoo');
+        exit;
+    }
+
+    if ($action === 'sync_ozvinoo_catalog') {
+        try {
+            $sync = BluebotDigitalServices::syncOZVinooCatalog($pdo);
+            if (!empty($sync['ok'])) {
+                flash(
+                    'success',
+                    'محصولات عضوینو از endpointهای رسمی بروزرسانی شدند: '
+                    . (int) ($sync['created'] ?? 0) . ' جدید، '
+                    . (int) ($sync['updated'] ?? 0) . ' بروزرسانی، '
+                    . (int) ($sync['disabled'] ?? 0) . ' غیرفعال.'
+                );
+            } else {
+                flash('error', 'همگام‌سازی عضوینو ناموفق بود: ' . (string) ($sync['message'] ?? 'خطای نامشخص'));
+            }
+        } catch (Throwable $e) {
+            flash('error', 'همگام‌سازی عضوینو انجام نشد: ' . $e->getMessage());
+        }
+        header('Location: digital_services.php#ozvinoo');
+        exit;
+    }
+
+}
+
+$tgApiKey = ds_panel_setting($pdo, 'tgtools_api_key');
+$tgStarsProfit = (float) ds_panel_setting($pdo, 'tgtools_stars_profit_percent', '0');
+$tgPremiumProfit = (float) ds_panel_setting($pdo, 'tgtools_premium_profit_percent', '0');
+$tgTonRateToman = (float) ds_panel_setting($pdo, 'tgtools_ton_toman_rate', '0');
+$tgWalletStatus = $tgApiKey !== ''
+    ? BluebotDigitalServices::tgToolsWalletStatus($pdo)
+    : ['ok' => false, 'configured' => false, 'balance_ton' => null, 'deposit_address' => '', 'message' => 'API Key تنظیم نشده است.'];
+$providerCatalogs = array_values(array_filter(
+    BluebotProviderCatalogService::listProviders($pdo),
+    static fn (array $provider): bool => strtolower((string) ($provider['provider_key'] ?? '')) !== 'ozvinoo'
+));
+$ozApiKey = ds_panel_setting($pdo, 'ozvinoo_api_key');
+$ozProfitPercent = (float) ds_panel_setting($pdo, 'ozvinoo_profit_percent', '0');
+$ozSyncInterval = (int) ds_panel_setting($pdo, 'ozvinoo_sync_interval_minutes', '15');
+$ozProvider = BluebotProviderCatalogService::findProvider($pdo, 'ozvinoo');
+$ozProductCountStmt = $pdo->query("SELECT COUNT(*) FROM digital_service_products WHERE provider = 'ozvinoo' AND active = 1");
+$ozProductCount = (int) $ozProductCountStmt->fetchColumn();
+$digitalServicesMenuEnabled = BluebotDigitalServices::mainKeyboardHasDigitalServices($pdo);
+$ozWalletStatus = $ozApiKey !== ''
+    ? BluebotDigitalServices::ozvinooWalletStatus($pdo)
+    : ['ok' => false, 'configured' => false, 'balance' => null, 'message' => 'API Key تنظیم نشده است.'];
+
+$pageTitle = 'فروش خدمات';
+$pageLede = 'مدیریت APIها، موجودی Providerها، درصد سود و همگام‌سازی کاتالوگ';
+$activeNav = 'digital-services';
+include __DIR__ . '/inc/layout_head.php';
+?>
 <div class="card fade-up" style="margin-bottom:16px">
     <div class="card-head">
         <div>
             <div class="card-title">مدیریت فروش خدمات</div>
-            <div class="card-subtitle">این صفحه فقط برای اتصال API، درصد سود، موجودی و Sync است. مدیریت داده‌ها در بخش‌های اصلی پنل انجام می‌شود.</div>
+            <div class="card-subtitle">این صفحه فقط برای اتصال API، موجودی Providerها، درصد سود و همگام‌سازی است.</div>
         </div>
     </div>
     <div class="card-body" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px">
