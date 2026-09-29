@@ -83,24 +83,65 @@ final class BluebotDigitalServices
     public static function ensureTgToolsCatalog(PDO $pdo): array
     {
         if (!self::isAvailable($pdo)) {
-            return ['ok' => false, 'created' => 0, 'updated' => 0];
+            return ['ok' => false, 'created' => 0, 'updated' => 0, 'remote_ok' => false];
         }
 
+        $client = new TgToolsClient(trim(self::setting($pdo, 'tgtools_api_key', '')));
+        $priceResponse = $client->prices();
+        $remoteOk = !empty($priceResponse['ok']);
+        $priceData = $remoteOk && is_array($priceResponse['data'] ?? null)
+            ? $priceResponse['data']
+            : [];
+
         $definitions = [];
-        foreach ([50, 100, 250, 500, 1000] as $stars) {
-            $definitions[] = [
-                'type' => 'telegram_stars',
-                'value' => $stars,
-                'name' => self::generatedProviderProductName('telegram_stars', $stars),
-                'sort' => 100 + $stars,
-            ];
+        $seenStars = [];
+
+        if (is_array($priceData['packages'] ?? null)) {
+            foreach ($priceData['packages'] as $package) {
+                if (!is_array($package)) {
+                    continue;
+                }
+                $qty = (int) ($package['qty'] ?? 0);
+                if ($qty <= 0 || $qty > 1000000 || isset($seenStars[$qty])) {
+                    continue;
+                }
+                $seenStars[$qty] = true;
+                $definitions[] = [
+                    'type' => 'telegram_stars',
+                    'value' => $qty,
+                    'name' => self::generatedProviderProductName('telegram_stars', $qty),
+                    'sort' => 100 + $qty,
+                    'wholesale_ton' => is_numeric($package['ton'] ?? null) ? (float) $package['ton'] : null,
+                    'wholesale_usd' => is_numeric($package['usd'] ?? null) ? (float) $package['usd'] : null,
+                ];
+            }
         }
+
+        // TGTools supports custom Stars amounts. If the public package list is
+        // temporarily unavailable, keep a small starter catalog so the admin
+        // can still configure retail prices without knowing any provider code.
+        if ($seenStars === []) {
+            foreach ([50, 100, 250, 500, 1000] as $qty) {
+                $definitions[] = [
+                    'type' => 'telegram_stars',
+                    'value' => $qty,
+                    'name' => self::generatedProviderProductName('telegram_stars', $qty),
+                    'sort' => 100 + $qty,
+                    'wholesale_ton' => null,
+                    'wholesale_usd' => null,
+                ];
+            }
+        }
+
         foreach ([3, 6, 12] as $months) {
+            $tonKey = 'premium_' . $months . 'm_ton';
             $definitions[] = [
                 'type' => 'telegram_premium',
                 'value' => $months,
                 'name' => self::generatedProviderProductName('telegram_premium', $months),
                 'sort' => 10000 + $months,
+                'wholesale_ton' => is_numeric($priceData[$tonKey] ?? null) ? (float) $priceData[$tonKey] : null,
+                'wholesale_usd' => null,
             ];
         }
 
@@ -112,8 +153,12 @@ final class BluebotDigitalServices
         );
         $update = $pdo->prepare(
             "UPDATE digital_service_products
-             SET provider = 'tgtools',
+             SET name = ?,
+                 provider = 'tgtools',
                  provider_service_code = NULL,
+                 description = ?,
+                 metadata = ?,
+                 sort_order = ?,
                  updated_at = NOW()
              WHERE id = ?"
         );
@@ -125,16 +170,41 @@ final class BluebotDigitalServices
 
         $created = 0;
         $updated = 0;
+        $commissionRate = is_numeric($priceData['commission_rate'] ?? null)
+            ? (float) $priceData['commission_rate']
+            : null;
+
         foreach ($definitions as $definition) {
+            $metadata = [
+                'source' => $remoteOk ? 'tgtools-live-prices' : 'tgtools-fallback-catalog',
+                'auto_generated' => true,
+                'no_provider_service_code' => true,
+                'synced_at' => gmdate(DATE_ATOM),
+            ];
+            if ($definition['wholesale_ton'] !== null) {
+                $metadata['wholesale_ton'] = $definition['wholesale_ton'];
+            }
+            if ($definition['wholesale_usd'] !== null) {
+                $metadata['wholesale_usd'] = $definition['wholesale_usd'];
+            }
+            if ($commissionRate !== null) {
+                $metadata['commission_rate'] = $commissionRate;
+            }
+            $metadataJson = json_encode($metadata, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+            $description = 'کد داخلی و Provider Service Code توسط BlueBot مدیریت می‌شود.';
+
             $find->execute([$definition['type'], $definition['value']]);
             $row = $find->fetch(PDO::FETCH_ASSOC);
 
             if (is_array($row)) {
-                if ((string) ($row['provider'] ?? '') !== 'tgtools'
-                    || trim((string) ($row['provider_service_code'] ?? '')) !== '') {
-                    $update->execute([(int) $row['id']]);
-                    $updated++;
-                }
+                $update->execute([
+                    $definition['name'],
+                    $description,
+                    is_string($metadataJson) ? $metadataJson : null,
+                    $definition['sort'],
+                    (int) $row['id'],
+                ]);
+                $updated++;
                 continue;
             }
 
@@ -142,11 +212,6 @@ final class BluebotDigitalServices
                 (string) $definition['type'],
                 (int) $definition['value']
             );
-            $metadata = json_encode([
-                'source' => 'provider-catalog',
-                'auto_generated' => true,
-                'no_provider_service_code' => true,
-            ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
 
             try {
                 $insert->execute([
@@ -154,8 +219,8 @@ final class BluebotDigitalServices
                     $definition['name'],
                     $definition['type'],
                     $definition['value'],
-                    'کد داخلی و Provider Service Code توسط BlueBot مدیریت می‌شود.',
-                    is_string($metadata) ? $metadata : null,
+                    $description,
+                    is_string($metadataJson) ? $metadataJson : null,
                     $definition['sort'],
                 ]);
                 $created++;
@@ -166,7 +231,14 @@ final class BluebotDigitalServices
             }
         }
 
-        return ['ok' => true, 'created' => $created, 'updated' => $updated];
+        return [
+            'ok' => true,
+            'created' => $created,
+            'updated' => $updated,
+            'remote_ok' => $remoteOk,
+            'remote_error' => $remoteOk ? '' : (string) ($priceResponse['message'] ?? 'TGTools price endpoint unavailable'),
+            'price_data' => $priceData,
+        ];
     }
 
     public static function catalogKeyboard(PDO $pdo, string $backText): string
