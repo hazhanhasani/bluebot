@@ -1035,7 +1035,7 @@ if ($text == "/start" || $datain == "start" || $text == "start") {
         $confirmText = "<b>" . htmlspecialchars($textbotlang['digitalServices']['confirmTitle'], ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . "</b>\n\n"
             . "📦 " . htmlspecialchars((string) $product['name'], ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . "\n"
             . "💳 مبلغ: <b>" . number_format((float) $product['price']) . " تومان</b>\n\n"
-            . "پس از تأیید ادمین، شماره رزرو می‌شود و کد ورود به‌صورت خودکار برای شما ارسال خواهد شد.";
+            . "پس از ثبت سفارش، شماره رزرو می‌شود و کد ورود به‌صورت خودکار برای شما ارسال خواهد شد.";
 
         Editmessagetext(
             $from_id,
