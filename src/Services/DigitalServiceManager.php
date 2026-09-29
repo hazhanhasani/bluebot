@@ -397,9 +397,14 @@ final class BluebotDigitalServices
             }
         }
         foreach ([
+            '/api/',
+            '/api/v2/',
+            '/api/v1/',
             '/api/v2',
             '/api/v1',
             '/api',
+            '/v2/',
+            '/v1/',
             '/v2',
             '/v1',
             '/api/services',
