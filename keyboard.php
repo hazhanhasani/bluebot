@@ -1,6 +1,5 @@
 <?php
 require_once __DIR__ . '/config.php';
-require_once __DIR__ . '/src/Support/MiniApp.php';
 $setting = select("setting", "*", null, null, "select");
 $setting = is_array($setting) ? $setting : [];
 $textbotlang = languagechange();
@@ -40,11 +39,6 @@ $replacements = [
 ];
 $admin_idss = select("admin", "*", "id_admin", $from_id, "count");
 $temp_addtional_key = [];
-$miniAppUrl = bluebotMiniAppUrl();
-$miniAppButton = $miniAppUrl !== '' ? [
-    'text' => $textbotlang['keyboard']['miniAppOpen'],
-    'web_app' => ['url' => $miniAppUrl],
-] : null;
 $keyboardLayout = json_decode((string) ($setting['keyboardmain'] ?? ''), true);
 $keyboardRows = [];
 if (is_array($keyboardLayout) && isset($keyboardLayout['keyboard']) && is_array($keyboardLayout['keyboard'])) {
@@ -130,9 +124,6 @@ if (($setting['inlinebtnmain'] ?? '') === "oninline" && !empty($keyboardRows)) {
     $keyboard = ['inline_keyboard' => []];
     $keyboardcustom = $trace_keyboard;
     $keyboardcustom = applyKeyboardLabels($keyboardcustom, $replacements);
-    if ($miniAppButton !== null) {
-        $keyboardcustom[] = [$miniAppButton];
-    }
     if (!empty($temp_addtional_key)) {
         $keyboardcustom[] = $temp_addtional_key;
     }
@@ -145,9 +136,6 @@ if (($setting['inlinebtnmain'] ?? '') === "oninline" && !empty($keyboardRows)) {
     $keyboard = ['keyboard' => [], 'resize_keyboard' => true];
     $keyboardcustom = $keyboardRows;
     $keyboardcustom = applyKeyboardLabels($keyboardcustom, $replacements);
-    if ($miniAppButton !== null) {
-        $keyboardcustom[] = [$miniAppButton];
-    }
     if (!empty($temp_addtional_key)) {
         $keyboardcustom[] = $temp_addtional_key;
     }
