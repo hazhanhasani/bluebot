@@ -57,6 +57,49 @@ final class BluebotProviderCatalogService
         return is_array($row) ? $row : null;
     }
 
+    public static function discoverCatalogUrl(
+        array $urls,
+        string $apiKey = '',
+        string $authHeader = 'Authorization',
+        string $authPrefix = 'Bearer'
+    ): array {
+        $errors = [];
+        foreach (array_values(array_unique(array_filter(array_map('trim', $urls)))) as $url) {
+            if (!self::isSafeHttpsUrl($url)) {
+                continue;
+            }
+
+            $response = self::requestCatalogUrl($url, $apiKey, $authHeader, $authPrefix);
+            if (empty($response['ok'])) {
+                $errors[] = $url . ': ' . (string) ($response['message'] ?? 'request failed');
+                continue;
+            }
+
+            $body = is_array($response['data'] ?? null) ? $response['data'] : [];
+            $mapping = self::autoDiscoverCatalogMapping($body);
+            if (!empty($mapping['ok'])) {
+                return [
+                    'ok' => true,
+                    'url' => $url,
+                    'products_path' => (string) $mapping['products_path'],
+                    'id_field' => (string) $mapping['id_field'],
+                    'name_field' => (string) $mapping['name_field'],
+                    'category_field' => (string) $mapping['category_field'],
+                    'price_field' => (string) $mapping['price_field'],
+                ];
+            }
+
+            $errors[] = $url . ': JSON found but no product list could be detected';
+        }
+
+        return [
+            'ok' => false,
+            'message' => $errors !== []
+                ? implode(' | ', array_slice($errors, 0, 4))
+                : 'No compatible catalog endpoint was detected.',
+        ];
+    }
+
     public static function saveProvider(PDO $pdo, array $input): array
     {
         self::ensureStorage($pdo);
@@ -250,15 +293,21 @@ final class BluebotProviderCatalogService
         }
 
         $body = is_array($response['data'] ?? null) ? $response['data'] : [];
-        $items = self::valueAtPath($body, (string) ($provider['products_path'] ?? 'data'));
-        if (!is_array($items)) {
-            self::markSync($pdo, $providerKey, 'failed', 'Products path did not resolve to an array.');
-            return ['ok' => false, 'message' => 'Products path did not resolve to an array.'];
+        $mapping = self::resolveCatalogMapping($body, $provider);
+        if (empty($mapping['ok'])) {
+            $message = (string) ($mapping['message'] ?? 'Unable to detect provider products.');
+            self::markSync($pdo, $providerKey, 'failed', $message);
+            return ['ok' => false, 'message' => $message];
         }
 
-        if (self::isAssoc($items)) {
-            $items = array_values($items);
-        }
+        $items = $mapping['items'];
+        $provider['products_path'] = $mapping['products_path'];
+        $provider['id_field'] = $mapping['id_field'];
+        $provider['name_field'] = $mapping['name_field'];
+        $provider['category_field'] = $mapping['category_field'];
+        $provider['price_field'] = $mapping['price_field'];
+
+        self::persistDiscoveredMapping($pdo, $providerKey, $mapping);
 
         $find = $pdo->prepare(
             "SELECT * FROM digital_service_products
@@ -290,6 +339,9 @@ final class BluebotProviderCatalogService
             $name = trim((string) self::valueAtPath($item, (string) $provider['name_field']));
             $categoryRaw = trim((string) self::valueAtPath($item, (string) $provider['category_field']));
             $costRaw = self::valueAtPath($item, (string) $provider['price_field']);
+            if (is_string($costRaw)) {
+                $costRaw = str_replace([',', ' ', '٬'], '', trim($costRaw));
+            }
 
             if ($providerId === '' || $name === '' || !is_numeric($costRaw)) {
                 continue;
@@ -481,18 +533,188 @@ final class BluebotProviderCatalogService
         return $stmt->rowCount();
     }
 
+    private static function resolveCatalogMapping(array $body, array $provider): array
+    {
+        $productsPath = trim((string) ($provider['products_path'] ?? 'auto'));
+        $idField = trim((string) ($provider['id_field'] ?? 'auto'));
+        $nameField = trim((string) ($provider['name_field'] ?? 'auto'));
+        $categoryField = trim((string) ($provider['category_field'] ?? 'auto'));
+        $priceField = trim((string) ($provider['price_field'] ?? 'auto'));
+
+        $needsAuto = in_array('auto', [$productsPath, $idField, $nameField, $categoryField, $priceField], true);
+        if (!$needsAuto) {
+            $items = self::valueAtPath($body, $productsPath);
+            if (!is_array($items)) {
+                return ['ok' => false, 'message' => 'Products path did not resolve to an array.'];
+            }
+            if (self::isAssoc($items)) {
+                $items = array_values($items);
+            }
+            return [
+                'ok' => true,
+                'items' => $items,
+                'products_path' => $productsPath,
+                'id_field' => $idField,
+                'name_field' => $nameField,
+                'category_field' => $categoryField,
+                'price_field' => $priceField,
+            ];
+        }
+
+        return self::autoDiscoverCatalogMapping($body);
+    }
+
+    private static function autoDiscoverCatalogMapping(array $body): array
+    {
+        $paths = [
+            'data.services', 'data.products', 'data.items', 'data.list', 'data.results', 'data.rows',
+            'result.services', 'result.products', 'result.items', 'result.list', 'result.results',
+            'response.services', 'response.products', 'response.items', 'response.data',
+            'services', 'products', 'items', 'list', 'results', 'rows', 'data', 'result', 'response', '.',
+        ];
+
+        foreach ($paths as $productsPath) {
+            $items = $productsPath === '.' ? $body : self::valueAtPath($body, $productsPath);
+            if (!is_array($items) || $items === []) {
+                continue;
+            }
+
+            $items = self::normaliseItemCollection($items);
+            if ($items === []) {
+                continue;
+            }
+
+            $sample = null;
+            foreach ($items as $item) {
+                if (is_array($item) && $item !== []) {
+                    $sample = $item;
+                    break;
+                }
+            }
+            if (!is_array($sample)) {
+                continue;
+            }
+
+            $idField = self::firstMatchingField($sample, [
+                '__bluebot_key', 'id', 'service_id', 'serviceId', 'service.id',
+                'service', 'code', 'service_code', 'serviceCode', 'sku',
+            ]);
+            $nameField = self::firstMatchingField($sample, [
+                'name', 'title', 'service_name', 'serviceName', 'service.name', 'label',
+            ]);
+            $priceField = self::firstMatchingField($sample, [
+                'price', 'cost', 'rate', 'amount', 'base_price', 'basePrice',
+                'wholesale_price', 'wholesalePrice', 'pricing.price', 'pricing.amount',
+                'price.amount',
+            ]);
+            $categoryField = self::firstMatchingField($sample, [
+                'category_name', 'categoryName', 'category.name', 'category.title',
+                'group_name', 'groupName', 'group.name', 'category', 'group', 'type',
+            ]);
+
+            if ($idField === '' || $nameField === '' || $priceField === '') {
+                continue;
+            }
+
+            return [
+                'ok' => true,
+                'items' => array_values($items),
+                'products_path' => $productsPath,
+                'id_field' => $idField,
+                'name_field' => $nameField,
+                'category_field' => $categoryField !== '' ? $categoryField : 'name',
+                'price_field' => $priceField,
+            ];
+        }
+
+        return ['ok' => false, 'message' => 'BlueBot could not auto-detect the provider product list/fields.'];
+    }
+
+    private static function normaliseItemCollection(array $items): array
+    {
+        if (!self::isAssoc($items)) {
+            return array_values(array_filter($items, 'is_array'));
+        }
+
+        $normalised = [];
+        foreach ($items as $key => $value) {
+            if (!is_array($value) || $value === []) {
+                continue;
+            }
+            $value['__bluebot_key'] = (string) $key;
+            $normalised[] = $value;
+        }
+
+        return $normalised;
+    }
+
+    private static function firstMatchingField(array $item, array $candidates): string
+    {
+        foreach ($candidates as $candidate) {
+            $value = self::valueAtPath($item, $candidate);
+            if ($value !== null && $value !== '' && !is_array($value) && !is_object($value)) {
+                return $candidate;
+            }
+        }
+
+        // One level of nested objects covers common API envelopes such as
+        // pricing.price, service.id and category.name.
+        foreach ($item as $key => $value) {
+            if (!is_array($value) || self::isAssoc($value) === false) {
+                continue;
+            }
+            foreach ($candidates as $candidate) {
+                if (array_key_exists($candidate, $value)
+                    && $value[$candidate] !== null
+                    && $value[$candidate] !== ''
+                    && !is_array($value[$candidate])) {
+                    return (string) $key . '.' . $candidate;
+                }
+            }
+        }
+
+        return '';
+    }
+
+    private static function persistDiscoveredMapping(PDO $pdo, string $providerKey, array $mapping): void
+    {
+        $stmt = $pdo->prepare(
+            "UPDATE digital_service_providers
+             SET products_path = ?, id_field = ?, name_field = ?, category_field = ?, price_field = ?, updated_at = NOW()
+             WHERE provider_key = ?"
+        );
+        $stmt->execute([
+            (string) $mapping['products_path'],
+            (string) $mapping['id_field'],
+            (string) $mapping['name_field'],
+            (string) $mapping['category_field'],
+            (string) $mapping['price_field'],
+            $providerKey,
+        ]);
+    }
+
     private static function fetchCatalog(array $provider): array
     {
-        $url = trim((string) ($provider['catalog_url'] ?? ''));
+        return self::requestCatalogUrl(
+            trim((string) ($provider['catalog_url'] ?? '')),
+            trim((string) ($provider['api_key'] ?? '')),
+            trim((string) ($provider['auth_header'] ?? 'Authorization')),
+            trim((string) ($provider['auth_prefix'] ?? 'Bearer'))
+        );
+    }
+
+    private static function requestCatalogUrl(
+        string $url,
+        string $apiKey,
+        string $authHeader,
+        string $authPrefix
+    ): array {
         if (!self::isSafeHttpsUrl($url)) {
             return ['ok' => false, 'message' => 'Catalog URL is unsafe.'];
         }
 
         $headers = ['Accept: application/json'];
-        $apiKey = trim((string) ($provider['api_key'] ?? ''));
         if ($apiKey !== '') {
-            $authHeader = trim((string) ($provider['auth_header'] ?? 'Authorization'));
-            $authPrefix = trim((string) ($provider['auth_prefix'] ?? 'Bearer'));
             $value = trim(($authPrefix !== '' ? $authPrefix . ' ' : '') . $apiKey);
             $headers[] = $authHeader . ': ' . $value;
         }
@@ -511,7 +733,7 @@ final class BluebotProviderCatalogService
             CURLOPT_SSL_VERIFYPEER => true,
             CURLOPT_PROTOCOLS => CURLPROTO_HTTPS,
             CURLOPT_FOLLOWLOCATION => false,
-            CURLOPT_USERAGENT => 'BlueBot/0.5.27 ProviderCatalog',
+            CURLOPT_USERAGENT => 'BlueBot/0.5.29 ProviderCatalog',
         ]);
 
         $raw = curl_exec($ch);
