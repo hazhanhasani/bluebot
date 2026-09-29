@@ -85,6 +85,7 @@ foreach ([
     'bluebot_validate_live_tree',
     'bluebot_resolve_extracted_root',
     'bluebot_verify_panel_route',
+    'bluebot_recover_config_from_state',
     'STAGED_DIR="${BOT_DIR}.staging"',
     'ROLLBACK_DIR="${BOT_DIR}.rollback"',
     'panel/service.php',
@@ -94,6 +95,25 @@ foreach ([
 ] as $needle) {
     if ($installer === false || !str_contains($installer, $needle)) {
         $failures[] = "Atomic updater safety contract missing: {$needle}";
+    }
+}
+
+if ($installer !== false) {
+    foreach ([
+        'state_get DOMAIN',
+        'state_get BOT_TOKEN',
+        'state_get CHAT_ID',
+        'state_get DBUSER',
+        'state_get DBPASS',
+        'MYSQL_PWD="$dbpass" mysql',
+        'No database was created, deleted, or modified',
+    ] as $needle) {
+        if (!str_contains($installer, $needle)) {
+            $failures[] = "Broken-install recovery contract missing: {$needle}";
+        }
+    }
+    if (str_contains($installer, 'echo "$token"') || str_contains($installer, 'echo "$dbpass"')) {
+        $failures[] = 'Recovery path must never print bot tokens or database passwords.';
     }
 }
 
