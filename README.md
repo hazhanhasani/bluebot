@@ -131,17 +131,17 @@ BlueBot از چند Adapter مستقل برای اتصال به پنل‌های 
 <h2 dir="rtl" align="right">⭐ فروش Telegram Stars و Premium</h2>
 
 <p dir="rtl" align="right">
-بخش «فروش خدمات» از Provider <strong>TGTools</strong> برای ارسال خودکار Telegram Stars و Telegram Premium پشتیبانی می‌کند. سفارش ابتدا از کیف پول داخلی BlueBot ثبت می‌شود، سپس فقط بعد از تأیید دستی ادمین به TGTools فرستاده می‌شود. سفارش‌های Pending هر دقیقه پیگیری می‌شوند و در صورت Failed شدن Provider، مبلغ به‌صورت امن به کیف پول کاربر برمی‌گردد.
+بخش «فروش خدمات» از سفارش‌های Telegram Stars و Telegram Premium با تأیید دستی ادمین پشتیبانی می‌کند. برای این دو نوع سرویس، BlueBot دیگر از مدیر «کد داخلی محصول» یا <code>Provider Service Code</code> نمی‌خواهد؛ کد داخلی از نوع سرویس و مقدار آن به‌صورت قطعی ساخته می‌شود.
 </p>
 
-- <code>POST /api/purchase/stars</code> — ارسال Stars با username و مقدار محصول
-- <code>POST /api/purchase/premium</code> — ارسال Premium برای ۳، ۶ یا ۱۲ ماه
-- <code>GET /api/purchase/{transactionId}</code> — پیگیری خودکار وضعیت تحویل
-- <code>trackingCode</code> — کد سفارش BlueBot برای جلوگیری از ارسال تکراری
-- API Key از پنل وب BlueBot در بخش <strong>فروش خدمات → TGTools API</strong> تنظیم می‌شود.
+- Stars: کد داخلی بر اساس تعداد ستاره ساخته می‌شود؛ مانند <code>tgtools-stars-100</code>.
+- Premium: کد داخلی بر اساس مدت ساخته می‌شود؛ مانند <code>tgtools-premium-3m</code>.
+- دکمه «ساخت/همگام‌سازی خودکار محصولات» بسته‌های متداول Stars و پلن‌های ۳، ۶ و ۱۲ ماه Premium را می‌سازد.
+- محصولات تازه با قیمت صفر و غیرفعال ساخته می‌شوند؛ با تعیین قیمت فروش در پنل، فعال می‌شوند.
+- مقصد TGTools برای Stars/Premium باید username معتبر تلگرام باشد.
 
-> [!IMPORTANT]
-> برای TGTools مقصد باید username معتبر تلگرام باشد. Telegram User ID عددی برای این Provider استفاده نمی‌شود.
+> [!NOTE]
+> مستندات Marketapp/Fragment برای Stars و Premium از endpointهای مبتنی بر مقدار/مدت استفاده می‌کنند، نه شناسه‌ی opaque محصول. BlueBot نیز به همین دلیل شناسه داخلی خودش را تولید می‌کند و نیاز به واردکردن کد محصول خارجی ندارد.
 
 <a id="payments"></a>
 <h2 dir="rtl" align="right">💳 سیستم پرداخت</h2>
