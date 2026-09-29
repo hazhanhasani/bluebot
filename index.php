@@ -398,6 +398,11 @@ require_once __DIR__ . '/src/Support/MiniApp.php';
 require_once __DIR__ . '/function.php';
 require_once __DIR__ . '/src/Services/DigitalServiceManager.php';
 bluebotEnsureInstallerRemoved();
+
+// Upgrade-safe one-time bootstrap: older installations can already have
+// synchronized products while their customized main keyboard predates the
+// Digital Services button. Run before keyboard.php builds the user keyboard.
+BluebotDigitalServices::ensureMainKeyboardButton($pdo);
 require_once __DIR__ . '/keyboard.php';
 require_once __DIR__ . '/vendor/autoload.php';
 require_once __DIR__ . '/panels.php';
