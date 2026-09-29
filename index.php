@@ -967,14 +967,10 @@ if ($text == "/start" || $datain == "start" || $text == "start") {
         'telegram_premium' => $serviceValue . ' ماه Telegram Premium',
         default => 'خدمت دیجیتال',
     };
-    $description = trim((string) ($product['description'] ?? ''));
-    $productText = "🛍 <b>" . htmlspecialchars((string) $product['name'], ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . "</b>\n\n"
+    $productText = "🎁 <b>" . htmlspecialchars((string) $product['name'], ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . "</b>\n\n"
         . "📦 " . htmlspecialchars($typeLabel, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . "\n"
-        . "💳 <b>" . number_format((float) $product['price']) . " تومان</b>";
-    if ($description !== '') {
-        $productText .= "\n\n" . htmlspecialchars($description, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
-    }
-    $productText .= "\n\n🔐 ارسال فقط بعد از تأیید دستی ادمین انجام می‌شود.";
+        . "💳 قیمت: <b>" . number_format((float) $product['price']) . " تومان</b>\n\n"
+        . "برای ثبت سفارش روی دکمه زیر بزنید 👇";
 
     Editmessagetext(
         $from_id,
@@ -996,11 +992,18 @@ if ($text == "/start" || $datain == "start" || $text == "start") {
 
     savedata('clear', 'digital_service_id', (string) $product['id']);
     step('digital_service_target', $from_id);
+
+    $targetPrompt = $textbotlang['digitalServices']['targetPrompt'];
+    if (($product['provider'] ?? '') === 'tgtools'
+        && in_array((string) ($product['type'] ?? ''), ['telegram_stars', 'telegram_premium'], true)) {
+        $targetPrompt = '👤 یوزرنیم تلگرام دریافت‌کننده را ارسال کنید.\nمثال: <code>@username</code>';
+    }
+
     Editmessagetext(
         $from_id,
         $message_id,
         "<b>" . htmlspecialchars((string) $product['name'], ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . "</b>\n\n"
-            . htmlspecialchars($textbotlang['digitalServices']['targetPrompt'], ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'),
+            . $targetPrompt,
         $backuser
     );
     return;
@@ -1030,9 +1033,9 @@ if ($text == "/start" || $datain == "start" || $text == "start") {
 
     $confirmText = "<b>" . htmlspecialchars($textbotlang['digitalServices']['confirmTitle'], ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . "</b>\n\n"
         . "📦 " . htmlspecialchars((string) $product['name'], ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . "\n"
-        . "🎯 <code>" . htmlspecialchars((string) $targetValue, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . "</code>\n"
-        . "💳 <b>" . number_format((float) $product['price']) . " تومان</b>\n\n"
-        . "پس از ثبت، مبلغ از کیف پول کم می‌شود و سفارش تا تأیید دستی ادمین ارسال نخواهد شد.";
+        . "👤 مقصد: <code>" . htmlspecialchars((string) $targetValue, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . "</code>\n"
+        . "💳 مبلغ: <b>" . number_format((float) $product['price']) . " تومان</b>\n\n"
+        . "برای ثبت نهایی سفارش، دکمه تأیید را بزنید.";
 
     sendmessage(
         $from_id,
