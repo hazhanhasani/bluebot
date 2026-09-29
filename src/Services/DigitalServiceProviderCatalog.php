@@ -733,7 +733,7 @@ final class BluebotProviderCatalogService
             CURLOPT_SSL_VERIFYPEER => true,
             CURLOPT_PROTOCOLS => CURLPROTO_HTTPS,
             CURLOPT_FOLLOWLOCATION => false,
-            CURLOPT_USERAGENT => 'BlueBot/0.5.29 ProviderCatalog',
+            CURLOPT_USERAGENT => 'BlueBot/0.5.30 ProviderCatalog',
         ]);
 
         $raw = curl_exec($ch);
