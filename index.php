@@ -1008,21 +1008,33 @@ if ($text == "/start" || $datain == "start" || $text == "start") {
         return;
     }
 
+    if (!empty($callback_query_id)) {
+        telegram('answerCallbackQuery', [
+            'callback_query_id' => $callback_query_id,
+            'text' => 'اطلاعات سفارش را وارد کنید.',
+            'show_alert' => false,
+            'cache_time' => 0,
+        ]);
+    }
+
     savedata('clear', 'digital_service_id', (string) $product['id']);
     step('digital_service_target', $from_id);
 
     $targetPrompt = $textbotlang['digitalServices']['targetPrompt'];
     if (($product['provider'] ?? '') === 'tgtools'
         && in_array((string) ($product['type'] ?? ''), ['telegram_stars', 'telegram_premium'], true)) {
-        $targetPrompt = '👤 یوزرنیم تلگرام دریافت‌کننده را ارسال کنید.\nمثال: <code>@username</code>';
+        $targetPrompt = "👤 یوزرنیم تلگرام دریافت‌کننده را ارسال کنید.\nمثال: <code>@username</code>";
     }
 
+    // editMessageText only accepts InlineKeyboardMarkup. $backuser becomes a
+    // ReplyKeyboardMarkup when the main menu uses reply buttons, which made
+    // Telegram reject this edit and left the customer with no visible order form.
     Editmessagetext(
         $from_id,
         $message_id,
         "<b>" . htmlspecialchars((string) $product['name'], ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . "</b>\n\n"
             . $targetPrompt,
-        $backuser
+        BluebotDigitalServices::targetKeyboard($product)
     );
     return;
 } elseif ($user['step'] === 'digital_service_target') {
@@ -1095,6 +1107,19 @@ if ($text == "/start" || $datain == "start" || $text == "start") {
             sendmessage($from_id, $textbotlang['digitalServices']['insufficient'], $keyboard, 'HTML');
             return;
         }
+        if ($e->getMessage() === 'ORDER_STATE_INVALID') {
+            if (!empty($callback_query_id)) {
+                telegram('answerCallbackQuery', [
+                    'callback_query_id' => $callback_query_id,
+                    'text' => 'این سفارش قبلاً ثبت شده یا منقضی شده است.',
+                    'show_alert' => true,
+                    'cache_time' => 0,
+                ]);
+            } else {
+                sendmessage($from_id, '⚠️ این سفارش قبلاً ثبت شده یا منقضی شده است.', $keyboard, 'HTML');
+            }
+            return;
+        }
         throw $e;
     } catch (InvalidArgumentException $e) {
         sendmessage(
@@ -1114,8 +1139,6 @@ if ($text == "/start" || $datain == "start" || $text == "start") {
         return;
     }
 
-    step('home', $from_id);
-    update('user', 'Processing_value', '0', 'id', $from_id);
     BluebotDigitalServices::notifyAdmins($pdo, $order);
 
     sendmessage(
