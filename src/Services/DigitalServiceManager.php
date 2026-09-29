@@ -601,6 +601,12 @@ final class BluebotDigitalServices
                 throw new RuntimeException('Service is unavailable.');
             }
 
+            [$freshTargetValid, $freshTargetOrError] = self::validateTarget($freshProduct, $target);
+            if (!$freshTargetValid) {
+                throw new InvalidArgumentException((string) $freshTargetOrError);
+            }
+            $target = (string) $freshTargetOrError;
+
             $freshPrice = (int) ($freshProduct['price'] ?? 0);
             if ($freshPrice <= 0) {
                 throw new RuntimeException('Service price is invalid.');
