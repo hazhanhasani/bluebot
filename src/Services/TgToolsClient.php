@@ -99,7 +99,7 @@ final class TgToolsClient
             CURLOPT_SSL_VERIFYHOST => 2,
             CURLOPT_SSL_VERIFYPEER => true,
             CURLOPT_PROTOCOLS => CURLPROTO_HTTPS,
-            CURLOPT_USERAGENT => 'BlueBot/0.5.28 TGToolsClient',
+            CURLOPT_USERAGENT => 'BlueBot/0.5.30 TGToolsClient',
         ];
 
         if ($method === 'POST') {
