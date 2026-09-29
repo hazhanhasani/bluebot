@@ -1681,6 +1681,86 @@ move_extracted_files() {
     find "$src" -mindepth 1 -maxdepth 1 -exec mv -f -t "$dest/" {} +
 }
 
+bluebot_validate_source_tree() {
+    local root="$1" required rel
+    [ -d "$root" ] || return 1
+    required=(
+        "index.php"
+        "table.php"
+        "composer.json"
+        "panel/index.php"
+        "panel/service.php"
+        "panel/invoice.php"
+        "panel/category.php"
+        "panel/digital_services.php"
+        "src/Support/UpdateManager.php"
+        "scripts/bluebot-update-worker.sh"
+    )
+    for rel in "${required[@]}"; do
+        [ -f "$root/$rel" ] || {
+            echo "Missing required BlueBot file: $rel" >&2
+            return 1
+        }
+    done
+    return 0
+}
+
+bluebot_validate_live_tree() {
+    local root="$1"
+    bluebot_validate_source_tree "$root" || return 1
+    [ -f "$root/config.php" ] || { echo "Missing live config.php" >&2; return 1; }
+    [ -f "$root/vendor/autoload.php" ] || { echo "Missing vendor/autoload.php" >&2; return 1; }
+    return 0
+}
+
+bluebot_resolve_extracted_root() {
+    local temp="$1" d found=""
+    [ -d "$temp" ] || return 1
+
+    if bluebot_validate_source_tree "$temp" >/dev/null 2>&1; then
+        printf '%s' "$temp"
+        return 0
+    fi
+
+    for d in "$temp"/*; do
+        [ -d "$d" ] || continue
+        if bluebot_validate_source_tree "$d" >/dev/null 2>&1; then
+            if [ -n "$found" ]; then
+                echo "Multiple valid BlueBot roots found in update package." >&2
+                return 2
+            fi
+            found="$d"
+        fi
+    done
+
+    [ -n "$found" ] || {
+        echo "No valid BlueBot application root found in update package." >&2
+        return 1
+    }
+    printf '%s' "$found"
+    return 0
+}
+
+
+bluebot_verify_panel_route() {
+    local domain="$1" status="" attempt
+    [ -n "$domain" ] || return 1
+
+    for attempt in 1 2 3; do
+        status=$(curl -sS -o /dev/null -w '%{http_code}' \
+            --resolve "${domain}:443:127.0.0.1" \
+            --connect-timeout 3 --max-time 8 \
+            "https://${domain}/panel/index.php" 2>/dev/null || true)
+        case "$status" in
+            2??|3??|401|403) return 0 ;;
+        esac
+        sleep 1
+    done
+
+    echo "Panel route health check failed with HTTP ${status:-000}" >&2
+    return 1
+}
+
 # vpnbot instance dirs (not Default/update). update_bot wipes BOT_DIR.
 VPNBOT_BACKUP="/tmp/mirza_vpnbot_backup"
 
@@ -2519,11 +2599,16 @@ function update_bot() {
         || { show_step_error; echo -e "\e[91mError: Failed to download update package.\033[0m"; exit 1; }
     run_step "Extracting update package" "unzip -o -q '$TEMP_DIR/bot.zip' -d '$TEMP_DIR'" \
         || { show_step_error; echo -e "\e[91mError: Failed to extract update package.\033[0m"; exit 1; }
-    EXTRACTED_DIR=$(find "$TEMP_DIR" -mindepth 1 -maxdepth 1 -type d | head -1)
+    EXTRACTED_DIR="$(bluebot_resolve_extracted_root "$TEMP_DIR")"
     if [ -z "$EXTRACTED_DIR" ] || [ ! -d "$EXTRACTED_DIR" ]; then
-        echo -e "\e[91mError: Extracted update folder not found. Aborting before touching the current install.\033[0m"
+        echo -e "\e[91mError: Update package does not contain a complete BlueBot application tree. Current installation was not touched.\033[0m"
         rm -rf "$TEMP_DIR"; sleep 2; show_menu; return 1
     fi
+    if ! bluebot_validate_source_tree "$EXTRACTED_DIR"; then
+        echo -e "\e[91mError: Update package validation failed. Current installation was not touched.\033[0m"
+        rm -rf "$TEMP_DIR"; sleep 2; show_menu; return 1
+    fi
+    [ "$EXTRACTED_DIR" = "$TEMP_DIR" ] && rm -f "$TEMP_DIR/bot.zip"
     # Build vendor/ inside the extracted copy first. The live install is still
     # untouched at this point, so a composer or network failure aborts the update
     # instead of leaving the bot without its dependencies.
@@ -2533,13 +2618,17 @@ function update_bot() {
              rm -rf "$TEMP_DIR"; sleep 2; show_menu; return 1; }
     CONFIG_PATH="$BOT_DIR/config.php"
     TEMP_CONFIG="/root/mirzapro_config_backup.php"
+    rm -f "$TEMP_CONFIG"
     if [ -f "$CONFIG_PATH" ]; then
         cp "$CONFIG_PATH" "$TEMP_CONFIG" || {
-            echo -e "\e[91mConfig file backup failed!\033[0m"
-            exit 1
+            echo -e "\e[91mConfig file backup failed! Update aborted before touching the live install.\033[0m"
+            rm -rf "$TEMP_DIR"
+            return 1
         }
     else
-        echo -e "\e[93mWarning: config.php not found. Proceeding without backup.\033[0m"
+        echo -e "\e[91mError: config.php is missing. Update aborted before touching the live install.\033[0m"
+        rm -rf "$TEMP_DIR"
+        return 1
     fi
     LANG_OVERRIDE_BACKUP="/root/mirzapro_lang_override_backup"
     rm -rf "$LANG_OVERRIDE_BACKUP"
@@ -2560,50 +2649,83 @@ function update_bot() {
         echo -e "\e[91mError: vpnbot backup incomplete ($_vpnbot_bak/$_vpnbot_live). Update aborted.\033[0m"
         rm -rf "$TEMP_DIR"; sleep 2; show_menu; return 1
     fi
-    sudo rm -rf "$BOT_DIR" || {
-        echo -e "\e[91mFailed to remove old bot files!\033[0m"
-        echo -e "\e[93mvpnbot backup: ${VPNBOT_BACKUP}\033[0m"
-        exit 1
+    STAGED_DIR="${BOT_DIR}.staging"
+    ROLLBACK_DIR="${BOT_DIR}.rollback"
+    sudo rm -rf "$STAGED_DIR"
+    sudo mkdir -p "$STAGED_DIR" || {
+        echo -e "\e[91mFailed to create update staging directory. Current installation was not touched.\033[0m"
+        rm -rf "$TEMP_DIR"; return 1
     }
-    sudo mkdir -p "$BOT_DIR"
+
     purge_installer_dir "$EXTRACTED_DIR"
-    purge_installer_dir "$BOT_DIR"
-    move_extracted_files "$EXTRACTED_DIR" "$BOT_DIR" || {
-        echo -e "\e[91mFile transfer failed!\033[0m"
-        echo -e "\e[93mvpnbot backup: ${VPNBOT_BACKUP}\033[0m"
-        exit 1
+    move_extracted_files "$EXTRACTED_DIR" "$STAGED_DIR" || {
+        echo -e "\e[91mFailed to stage update files. Current installation was not touched.\033[0m"
+        sudo rm -rf "$STAGED_DIR"; rm -rf "$TEMP_DIR"; return 1
     }
-    purge_installer_dir "$BOT_DIR"
+    purge_installer_dir "$STAGED_DIR"
+
+    STAGED_CONFIG="$STAGED_DIR/config.php"
     if [ -f "$TEMP_CONFIG" ]; then
-        sudo mv "$TEMP_CONFIG" "$CONFIG_PATH" || {
-            echo -e "\e[91mConfig file restore failed!\033[0m"
-            echo -e "\e[93mvpnbot backup: ${VPNBOT_BACKUP}\033[0m"
-            exit 1
+        sudo cp -a "$TEMP_CONFIG" "$STAGED_CONFIG" || {
+            echo -e "\e[91mConfig restore into staging failed. Current installation was not touched.\033[0m"
+            sudo rm -rf "$STAGED_DIR"; rm -rf "$TEMP_DIR"; return 1
         }
     fi
     if [ -d "$LANG_OVERRIDE_BACKUP" ]; then
-        sudo rm -rf "$BOT_DIR/lang/override"
-        sudo mv "$LANG_OVERRIDE_BACKUP" "$BOT_DIR/lang/override"
+        sudo mkdir -p "$STAGED_DIR/lang"
+        sudo rm -rf "$STAGED_DIR/lang/override"
+        sudo cp -a "$LANG_OVERRIDE_BACKUP" "$STAGED_DIR/lang/override"
     fi
     if [ -d "$STORAGE_BACKUP" ]; then
-        sudo mkdir -p "$BOT_DIR/storage"
-        sudo cp -a "$STORAGE_BACKUP/." "$BOT_DIR/storage/"
-        sudo rm -rf "$STORAGE_BACKUP"
+        sudo mkdir -p "$STAGED_DIR/storage"
+        sudo cp -a "$STORAGE_BACKUP/." "$STAGED_DIR/storage/"
     fi
     if [ -f "$API_TOKEN_BACKUP" ]; then
-        sudo mkdir -p "$BOT_DIR/api"
-        sudo mv "$API_TOKEN_BACKUP" "$BOT_DIR/api/hash.txt"
-        sudo chmod 640 "$BOT_DIR/api/hash.txt" 2>/dev/null || true
+        sudo mkdir -p "$STAGED_DIR/api"
+        sudo cp -a "$API_TOKEN_BACKUP" "$STAGED_DIR/api/hash.txt"
+        sudo chmod 640 "$STAGED_DIR/api/hash.txt" 2>/dev/null || true
     fi
-    run_step "Restoring vpnbots" "restore_vpnbots '$BOT_DIR'" \
+
+    run_step "Restoring vpnbots into staging" "restore_vpnbots '$STAGED_DIR'" \
         || { show_step_error
-             echo -e "\e[91mError: Failed to restore vpnbots. Backup: ${VPNBOT_BACKUP}\033[0m"; }
+             echo -e "\e[91mError: Failed to restore vpnbots into staging. Current installation was not touched.\033[0m"
+             sudo rm -rf "$STAGED_DIR"; rm -rf "$TEMP_DIR"; return 1; }
+
+    sudo chown -R www-data:www-data "$STAGED_DIR"
+    sudo chmod -R 755 "$STAGED_DIR"
+
+    if ! bluebot_validate_live_tree "$STAGED_DIR"; then
+        echo -e "\e[91mError: Staged BlueBot tree is incomplete. Current installation was not touched.\033[0m"
+        sudo rm -rf "$STAGED_DIR"; rm -rf "$TEMP_DIR"; return 1
+    fi
+
+    sudo rm -rf "$ROLLBACK_DIR"
+    if ! sudo mv "$BOT_DIR" "$ROLLBACK_DIR"; then
+        echo -e "\e[91mFailed to preserve current installation for rollback. Update aborted.\033[0m"
+        sudo rm -rf "$STAGED_DIR"; rm -rf "$TEMP_DIR"; return 1
+    fi
+    if ! sudo mv "$STAGED_DIR" "$BOT_DIR"; then
+        echo -e "\e[91mFailed to activate staged update; restoring previous installation.\033[0m"
+        sudo mv "$ROLLBACK_DIR" "$BOT_DIR" 2>/dev/null || true
+        rm -rf "$TEMP_DIR"; return 1
+    fi
+
+    CONFIG_PATH="$BOT_DIR/config.php"
+    if ! bluebot_validate_live_tree "$BOT_DIR"; then
+        echo -e "\e[91mActivated update failed validation; rolling back immediately.\033[0m"
+        sudo rm -rf "$BOT_DIR"
+        sudo mv "$ROLLBACK_DIR" "$BOT_DIR" 2>/dev/null || true
+        rm -rf "$TEMP_DIR"; return 1
+    fi
+
     _vpnbot_restored=$(vpnbot_instance_count "$BOT_DIR/vpnbot")
     if [ "$_vpnbot_bak" -gt 0 ] && [ "$_vpnbot_restored" -lt "$_vpnbot_bak" ]; then
-        echo -e "\e[91mError: vpnbot restore incomplete ($_vpnbot_restored/$_vpnbot_bak). Backup kept at ${VPNBOT_BACKUP}\033[0m"
-    else
-        rm -rf "$VPNBOT_BACKUP"
+        echo -e "\e[91mError: vpnbot restore incomplete ($_vpnbot_restored/$_vpnbot_bak); rolling back.\033[0m"
+        sudo rm -rf "$BOT_DIR"
+        sudo mv "$ROLLBACK_DIR" "$BOT_DIR" 2>/dev/null || true
+        rm -rf "$TEMP_DIR"; return 1
     fi
+
     if [ -f "$BOT_DIR/install.sh" ]; then
         sed -i 's/\r$//' "$BOT_DIR/install.sh"
         if bash -n "$BOT_DIR/install.sh" 2>/dev/null; then
@@ -2675,15 +2797,35 @@ EOF
         fi
         sudo a2enmod rewrite 2>/dev/null || true
         sudo a2enmod ssl 2>/dev/null || true
-        if sudo apache2ctl configtest >/dev/null 2>&1; then
-            sudo systemctl restart apache2 || {
-                echo -e "\e[91mWarning: Failed to restart Apache2 after updating VirtualHost.\033[0m"
-            }
-            echo -e "\e[92mVirtualHost configuration updated and Apache restarted.\033[0m"
-        else
-            echo -e "\e[93mWarning: Apache configuration test failed. Skipping restart.\033[0m"
-            sudo apache2ctl configtest
+        if ! sudo apache2ctl configtest >/dev/null 2>&1; then
+            echo -e "\e[91mApache configuration test failed; rolling back application files.\033[0m"
+            sudo apache2ctl configtest || true
+            sudo rm -rf "$BOT_DIR"
+            sudo mv "$ROLLBACK_DIR" "$BOT_DIR" 2>/dev/null || true
+            sudo systemctl restart apache2 2>/dev/null || true
+            rm -rf "$TEMP_DIR"
+            return 1
         fi
+
+        if ! sudo systemctl restart apache2; then
+            echo -e "\e[91mApache restart failed; rolling back application files.\033[0m"
+            sudo rm -rf "$BOT_DIR"
+            sudo mv "$ROLLBACK_DIR" "$BOT_DIR" 2>/dev/null || true
+            sudo systemctl restart apache2 2>/dev/null || true
+            rm -rf "$TEMP_DIR"
+            return 1
+        fi
+
+        if ! bluebot_verify_panel_route "$DOMAIN_NAME"; then
+            echo -e "\e[91mPanel route validation failed after deployment; rolling back.\033[0m"
+            sudo rm -rf "$BOT_DIR"
+            sudo mv "$ROLLBACK_DIR" "$BOT_DIR" 2>/dev/null || true
+            sudo systemctl restart apache2 2>/dev/null || true
+            rm -rf "$TEMP_DIR"
+            return 1
+        fi
+
+        echo -e "\e[92mVirtualHost, Apache and /panel route validated successfully.\033[0m"
     fi
     if [ -f "$CONFIG_PATH" ]; then
         run_step "Updating database tables" "cd '$BOT_DIR' && php table.php" \
@@ -2703,6 +2845,14 @@ EOF
             || echo -e "\e[93mWarning: installed build metadata could not be recorded.\033[0m"
     fi
 
+    if ! bluebot_validate_live_tree "$BOT_DIR"; then
+        echo -e "\e[91mFinal BlueBot validation failed. Rollback tree kept at $ROLLBACK_DIR.\033[0m"
+        return 1
+    fi
+
+    sudo rm -rf "$ROLLBACK_DIR"
+    rm -rf "$VPNBOT_BACKUP" "$LANG_OVERRIDE_BACKUP" "$STORAGE_BACKUP"
+    rm -f "$TEMP_CONFIG" "$API_TOKEN_BACKUP"
     rm -rf "$TEMP_DIR"
     local installed_display
     installed_display="$(get_installed_version)"
