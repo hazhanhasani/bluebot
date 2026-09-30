@@ -39,6 +39,79 @@ final class BluebotDigitalServices
         return $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
     }
 
+    public static function providerSupportsAutomaticDelivery(PDO $pdo, string $providerKey): bool
+    {
+        $providerKey = strtolower(trim($providerKey));
+        if ($providerKey === '') {
+            return false;
+        }
+
+        if (in_array($providerKey, ['tgtools', 'ozvinoo', 'tivanovin'], true)) {
+            return true;
+        }
+
+        $provider = BluebotProviderCatalogService::findProvider($pdo, $providerKey);
+        if (!is_array($provider)) {
+            return false;
+        }
+
+        return str_starts_with((string) ($provider['products_path'] ?? ''), 'smm:')
+            && trim((string) ($provider['api_key'] ?? '')) !== '';
+    }
+
+    public static function providerApprovalMode(PDO $pdo, string $providerKey): string
+    {
+        $providerKey = strtolower(trim($providerKey));
+        if ($providerKey === '') {
+            return 'manual';
+        }
+
+        $mode = strtolower(trim(self::setting(
+            $pdo,
+            self::providerApprovalSettingKey($providerKey),
+            'manual'
+        )));
+
+        if ($mode !== 'automatic') {
+            return 'manual';
+        }
+
+        return self::providerSupportsAutomaticDelivery($pdo, $providerKey)
+            ? 'automatic'
+            : 'manual';
+    }
+
+    public static function setProviderApprovalMode(PDO $pdo, string $providerKey, string $mode): void
+    {
+        $providerKey = strtolower(trim($providerKey));
+        if (!preg_match('/^[a-z][a-z0-9_-]{1,49}$/', $providerKey)) {
+            throw new InvalidArgumentException('Provider key is invalid.');
+        }
+
+        $mode = strtolower(trim($mode));
+        if (!in_array($mode, ['manual', 'automatic'], true)) {
+            throw new InvalidArgumentException('Approval mode must be manual or automatic.');
+        }
+
+        if ($mode === 'automatic' && !self::providerSupportsAutomaticDelivery($pdo, $providerKey)) {
+            throw new InvalidArgumentException('این Provider مسیر ارسال خودکار سازگار ندارد و فقط حالت دستی قابل استفاده است.');
+        }
+
+        self::setSetting($pdo, self::providerApprovalSettingKey($providerKey), $mode, false);
+    }
+
+    public static function maybeAutoApproveOrder(PDO $pdo, array $order): array
+    {
+        $provider = strtolower(trim((string) ($order['provider'] ?? 'manual')));
+        if (self::providerApprovalMode($pdo, $provider) !== 'automatic') {
+            return ['automatic' => false, 'order' => $order];
+        }
+
+        $result = self::approveAndDeliver($pdo, (int) ($order['id'] ?? 0), 'auto');
+        $result['automatic'] = true;
+        return $result;
+    }
+
     public static function ensureMainKeyboardButton(PDO $pdo): array
     {
         if (!self::isAvailable($pdo)) {
@@ -2762,6 +2835,10 @@ final class BluebotDigitalServices
 
         $registeredProvider = BluebotProviderCatalogService::findProvider($pdo, $provider);
         if (is_array($registeredProvider)) {
+            if (str_starts_with((string) ($registeredProvider['products_path'] ?? ''), 'smm:')) {
+                return self::deliverRegisteredSmmProvider($registeredProvider, $order, $product);
+            }
+
             return [
                 'ok' => true,
                 'reference' => 'manual-provider:' . $provider . ':' . ($order['order_code'] ?? $order['id']),
@@ -2774,6 +2851,53 @@ final class BluebotDigitalServices
         }
 
         return ['ok' => false, 'error' => 'Unsupported digital service provider.'];
+    }
+
+    private static function deliverRegisteredSmmProvider(array $provider, array $order, array $product): array
+    {
+        $providerKey = strtolower(trim((string) ($provider['provider_key'] ?? '')));
+        $serviceCode = trim((string) ($product['provider_service_code'] ?? ''));
+        if ($providerKey === '' || $serviceCode === '') {
+            return ['ok' => false, 'error' => 'Provider or service code is missing.'];
+        }
+
+        try {
+            $client = new SmmPanelClient(
+                (string) ($provider['catalog_url'] ?? ''),
+                (string) ($provider['api_key'] ?? ''),
+                $providerKey
+            );
+            $response = $client->addOrder(
+                $serviceCode,
+                (string) ($order['target'] ?? ''),
+                max(1, (int) ($order['quantity'] ?? $product['service_value'] ?? 1))
+            );
+        } catch (Throwable $e) {
+            return [
+                'ok' => false,
+                'retryable' => true,
+                'error' => $e->getMessage(),
+            ];
+        }
+
+        if (empty($response['ok'])) {
+            return [
+                'ok' => false,
+                'retryable' => !empty($response['retryable']),
+                'error' => trim((string) ($response['message'] ?? '')) ?: 'SMM provider order request failed.',
+                'response' => $response,
+            ];
+        }
+
+        return [
+            'ok' => true,
+            'pending' => true,
+            'reference' => (string) ($response['reference'] ?? ''),
+            'response' => $response,
+            'customer_message_pending' => "⏳ <b>سفارش شما ثبت شد و در حال انجام است</b>\n\n"
+                . "🧾 کد: <code>" . self::escape((string) ($order['order_code'] ?? '')) . "</code>\n"
+                . "📦 " . self::escape((string) ($order['service_name'] ?? $product['name'] ?? '')),
+        ];
     }
 
     private static function deliverTivaNovin(PDO $pdo, array $order, array $product): array
@@ -2825,6 +2949,116 @@ final class BluebotDigitalServices
                 . "🧾 کد: <code>" . self::escape((string) ($order['order_code'] ?? '')) . "</code>\n"
                 . "📦 " . self::escape((string) ($order['service_name'] ?? $product['name'] ?? '')),
         ];
+    }
+
+    public static function reconcileRegisteredSmmProcessing(PDO $pdo, int $limit = 50): array
+    {
+        $stats = ['checked' => 0, 'completed' => 0, 'failed' => 0, 'pending' => 0, 'partial' => 0, 'errors' => 0];
+        $limit = max(1, min(100, $limit));
+        $remaining = $limit;
+
+        foreach (BluebotProviderCatalogService::listProviders($pdo, true) as $provider) {
+            if ($remaining <= 0) {
+                break;
+            }
+
+            $providerKey = strtolower(trim((string) ($provider['provider_key'] ?? '')));
+            if ($providerKey === ''
+                || in_array($providerKey, ['ozvinoo', 'tivanovin'], true)
+                || !str_starts_with((string) ($provider['products_path'] ?? ''), 'smm:')
+                || trim((string) ($provider['api_key'] ?? '')) === '') {
+                continue;
+            }
+
+            try {
+                $client = new SmmPanelClient(
+                    (string) ($provider['catalog_url'] ?? ''),
+                    (string) ($provider['api_key'] ?? ''),
+                    $providerKey
+                );
+            } catch (Throwable $e) {
+                $stats['errors']++;
+                continue;
+            }
+
+            $stmt = $pdo->prepare(
+                "SELECT * FROM digital_service_orders
+                 WHERE provider = ? AND status = ? AND provider_reference IS NOT NULL
+                 ORDER BY id ASC
+                 LIMIT " . $remaining
+            );
+            $stmt->execute([$providerKey, self::STATUS_PROCESSING]);
+            $orders = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+
+            foreach ($orders as $order) {
+                if ($remaining <= 0) {
+                    break 2;
+                }
+
+                $remaining--;
+                $stats['checked']++;
+                $reference = trim((string) ($order['provider_reference'] ?? ''));
+                if ($reference === '') {
+                    $stats['errors']++;
+                    continue;
+                }
+
+                try {
+                    $status = $client->status($reference);
+                } catch (Throwable $e) {
+                    $stats['errors']++;
+                    continue;
+                }
+
+                if (empty($status['ok'])) {
+                    $stats['errors']++;
+                    continue;
+                }
+
+                $payload = json_encode($status, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+                $update = $pdo->prepare(
+                    "UPDATE digital_service_orders
+                     SET provider_response = ?, updated_at = NOW()
+                     WHERE id = ? AND status = ?"
+                );
+                $update->execute([
+                    is_string($payload) ? $payload : null,
+                    (int) $order['id'],
+                    self::STATUS_PROCESSING,
+                ]);
+
+                $normalized = (string) ($status['status'] ?? 'pending');
+                if ($normalized === 'completed') {
+                    self::finalizeDeliveredOrder($pdo, (int) $order['id'], [
+                        'ok' => true,
+                        'reference' => $reference,
+                        'response' => $status,
+                    ]);
+                    $stats['completed']++;
+                    continue;
+                }
+
+                if ($normalized === 'failed') {
+                    self::failAndRefundProviderOrder(
+                        $pdo,
+                        (int) $order['id'],
+                        'SMM provider order failed: ' . (string) ($status['raw_status'] ?? 'failed'),
+                        $status
+                    );
+                    $stats['failed']++;
+                    continue;
+                }
+
+                if ($normalized === 'partial') {
+                    $stats['partial']++;
+                    continue;
+                }
+
+                $stats['pending']++;
+            }
+        }
+
+        return $stats;
     }
 
     public static function reconcileTivaNovinProcessing(PDO $pdo, int $limit = 25): array
@@ -3834,6 +4068,11 @@ final class BluebotDigitalServices
     {
         $decoded = json_decode((string) ($product['metadata'] ?? ''), true);
         return is_array($decoded) ? $decoded : [];
+    }
+
+    private static function providerApprovalSettingKey(string $providerKey): string
+    {
+        return 'provider_approval_' . strtolower(trim($providerKey));
     }
 
     private static function setSetting(PDO $pdo, string $key, string $value, bool $secret = false): void
