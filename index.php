@@ -8062,20 +8062,17 @@ if ($text == "/start" || $datain == "start" || $text == "start") {
         sendmessage($from_id, $textbotlang['users']['buttonDisabled'], null, 'HTML');
         return;
     }
+
     $affiliates = select("affiliates", "*", null, null, "select");
     $affiliates = is_array($affiliates) ? $affiliates : [];
 
-    $textaffiliates = (string) ($affiliates['description'] ?? '')
-        . "\n\n🔗 https://t.me/" . (string) $usernamebot . "?start=" . (string) $from_id;
-
-    if (strlen((string) ($affiliates['id_media'] ?? '')) >= 5) {
-        telegram('sendphoto', [
-            'chat_id' => $from_id,
-            'photo' => $affiliates['id_media'],
-            'caption' => $textaffiliates,
-            'parse_mode' => "HTML",
-        ]);
+    // Prefer the random per-user invitation code. Old numeric links remain valid.
+    $invitationCode = trim((string) ($user['codeInvitation'] ?? ''));
+    if ($invitationCode === '') {
+        $invitationCode = bin2hex(random_bytes(6));
+        update("user", "codeInvitation", $invitationCode, "id", $from_id);
     }
+    $referralLink = "https://t.me/" . (string) $usernamebot . "?start=" . rawurlencode($invitationCode);
 
     $affiliatescommission = $affiliates;
     $stmt = $pdo->prepare(
@@ -8089,35 +8086,76 @@ if ($text == "/start" || $datain == "start" || $text == "start") {
         ':referral' => (string) $from_id,
         ':test_service' => (string) ($textbotlang['common']['labels']['testServiceName'] ?? 'سرویس تست'),
     ]);
-
     $inforefral = $stmt->fetch(PDO::FETCH_ASSOC);
-    $inforefral = is_array($inforefral)
-        ? $inforefral
-        : ['orders' => 0, 'total_price' => 0];
+    $inforefral = is_array($inforefral) ? $inforefral : ['orders' => 0, 'total_price' => 0];
 
     $affiliatePercentage = is_numeric($setting['affiliatespercentage'] ?? null)
-        ? (float) $setting['affiliatespercentage']
+        ? max(0.0, min(100.0, (float) $setting['affiliatespercentage']))
         : 0.0;
-    $inforefral['total_price'] = ((float) ($inforefral['total_price'] ?? 0) * $affiliatePercentage) / 100;
-    $keyboard_share = json_encode([
-        'inline_keyboard' => [
-            [
-                ['text' => $textbotlang['keyboard']['receiveMembershipGift'], 'callback_data' => "get_gift_start"],
-                ['text' => $textbotlang['keyboard']['shareLink'], 'url' => "https://t.me/share/url?url=https://t.me/$usernamebot?start=$from_id"],
-            ],
-        ]
-    ]);
+    $earnedCommission = ((float) ($inforefral['total_price'] ?? 0) * $affiliatePercentage) / 100;
+    $giftTotal = max(0, (int) ($affiliates['price_Discount'] ?? 0));
+
+    // Banner captions support live referral placeholders.
+    $bannerCaption = trim((string) ($affiliates['description'] ?? ''));
+    if ($bannerCaption !== '' && $bannerCaption !== 'none') {
+        $bannerCaption = strtr($bannerCaption, [
+            '{referral_link}' => $referralLink,
+            '{referrals}' => number_format((int) ($user['affiliatescount'] ?? 0)),
+            '{orders}' => number_format((int) ($inforefral['orders'] ?? 0)),
+            '{income}' => number_format($earnedCommission, 0),
+            '{commission_percent}' => rtrim(rtrim(number_format($affiliatePercentage, 2, '.', ''), '0'), '.'),
+            '{gift_total}' => number_format($giftTotal),
+        ]);
+        if (mb_strlen($bannerCaption, 'UTF-8') > 950) {
+            $bannerCaption = mb_substr($bannerCaption, 0, 947, 'UTF-8') . '...';
+        }
+        $bannerCaption .= "\n\n🔗 " . $referralLink;
+    }
+
+    if (strlen((string) ($affiliates['id_media'] ?? '')) >= 5) {
+        telegram('sendphoto', [
+            'chat_id' => $from_id,
+            'photo' => $affiliates['id_media'],
+            'caption' => $bannerCaption !== '' ? $bannerCaption : ("🔗 " . $referralLink),
+            'parse_mode' => "HTML",
+        ]);
+    }
+
+    $rows = [];
+    $giftEnabled = ($affiliates['Discount'] ?? '') === "onDiscountaffiliates";
+    $reagent = $giftEnabled ? select("reagent_report", "*", "user_id", $from_id, "select") : false;
+    $giftClaimable = $giftEnabled
+        && is_array($reagent)
+        && (int) ($reagent['get_gift'] ?? 0) === 0
+        && rowExists("user", "id", $user['affiliates'] ?? 0);
+
+    if ($giftClaimable) {
+        $rows[] = [['text' => $textbotlang['keyboard']['receiveMembershipGift'], 'callback_data' => "get_gift_start"]];
+    }
+    $rows[] = [
+        ['text' => '📋 کپی لینک دعوت', 'copy_text' => ['text' => $referralLink]],
+        ['text' => $textbotlang['keyboard']['shareLink'], 'url' => "https://t.me/share/url?url=" . rawurlencode($referralLink)],
+    ];
+    $keyboard_share = json_encode(['inline_keyboard' => $rows], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+
     $text_start = "";
     $text_porsant = "";
-    $Percent_porsant = $setting['affiliatespercentage'];
-    $sum_order = number_format($inforefral['total_price'], 0);
-    if ($affiliatescommission['Discount'] == "onDiscountaffiliates") {
-        $text_start = sprintf($textbotlang['users']['affiliates']['membershipGiftInfo'], $affiliatescommission['price_Discount']);
+    $Percent_porsant = rtrim(rtrim(number_format($affiliatePercentage, 2, '.', ''), '0'), '.');
+    $sum_order = number_format($earnedCommission, 0);
+    if ($giftEnabled) {
+        $text_start = sprintf($textbotlang['users']['affiliates']['membershipGiftInfo'], $giftTotal);
     }
-    if ($affiliatescommission['status_commission'] == "oncommission") {
+    if (($affiliatescommission['status_commission'] ?? '') == "oncommission") {
         $text_porsant = sprintf($textbotlang['users']['affiliates']['purchaseCommissionInfo'], $Percent_porsant);
     }
-    $textaffiliates = sprintf($textbotlang['users']['affiliates']['welcomeGiftInfo'], $text_start, $text_porsant, $user['affiliatescount'], $inforefral['orders'], $sum_order);
+    $textaffiliates = sprintf(
+        $textbotlang['users']['affiliates']['welcomeGiftInfo'],
+        $text_start,
+        $text_porsant,
+        (int) ($user['affiliatescount'] ?? 0),
+        (int) ($inforefral['orders'] ?? 0),
+        $sum_order
+    );
 
     sendmessage($from_id, $textaffiliates, $keyboard_share, 'HTML');
 } elseif ($datain == "get_gift_start") {
