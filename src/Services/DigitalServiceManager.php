@@ -2875,10 +2875,88 @@ final class BluebotDigitalServices
             . "اطلاعات مقصد را دقیق وارد کنید؛ سفارش پس از ثبت قابل تغییر نیست.";
     }
 
+    public static function customerProductDescription(array $product): string
+    {
+        $metadata = self::productMetadata($product);
+        if (!empty($metadata['auto_imported'])) {
+            return trim((string) ($metadata['customer_description'] ?? ''));
+        }
+
+        return trim((string) ($product['description'] ?? ''));
+    }
+
+    public static function providerProgress(array $order): array
+    {
+        $payload = json_decode((string) ($order['provider_response'] ?? ''), true);
+        if (!is_array($payload)) {
+            return [
+                'status' => '',
+                'raw_status' => '',
+                'remains' => null,
+                'start_count' => null,
+                'charge' => null,
+            ];
+        }
+
+        $candidates = [$payload];
+        foreach (['response', 'data', 'body'] as $key) {
+            if (is_array($payload[$key] ?? null)) {
+                $candidates[] = $payload[$key];
+            }
+        }
+        if (is_array($payload['response']['data'] ?? null)) {
+            $candidates[] = $payload['response']['data'];
+        }
+        if (is_array($payload['response']['body'] ?? null)) {
+            $candidates[] = $payload['response']['body'];
+        }
+
+        $status = '';
+        $rawStatus = '';
+        $remains = null;
+        $startCount = null;
+        $charge = null;
+
+        foreach ($candidates as $candidate) {
+            if ($status === '' && isset($candidate['status']) && is_scalar($candidate['status'])) {
+                $status = strtolower(trim((string) $candidate['status']));
+            }
+            if ($rawStatus === '' && isset($candidate['raw_status']) && is_scalar($candidate['raw_status'])) {
+                $rawStatus = trim((string) $candidate['raw_status']);
+            }
+            if ($remains === null && isset($candidate['remains']) && is_numeric($candidate['remains'])) {
+                $remains = max(0, (int) $candidate['remains']);
+            }
+            if ($startCount === null && isset($candidate['start_count']) && is_numeric($candidate['start_count'])) {
+                $startCount = max(0, (int) $candidate['start_count']);
+            }
+            if ($charge === null && isset($candidate['charge']) && is_numeric($candidate['charge'])) {
+                $charge = (float) $candidate['charge'];
+            }
+        }
+
+        if ($status === '' && $rawStatus !== '') {
+            $status = SmmPanelClient::normaliseStatus($rawStatus);
+        }
+
+        return [
+            'status' => $status,
+            'raw_status' => $rawStatus,
+            'remains' => $remains,
+            'start_count' => $startCount,
+            'charge' => $charge,
+        ];
+    }
+
     public static function orderStatusLabel(array $order): array
     {
         $status = (string) ($order['status'] ?? '');
         $refunded = (int) ($order['refunded'] ?? 0) === 1;
+        $progress = self::providerProgress($order);
+
+        if ($status === self::STATUS_PROCESSING && (string) ($progress['status'] ?? '') === 'partial') {
+            return ['🟠', 'تحویل جزئی / در حال بررسی'];
+        }
 
         return match ($status) {
             self::STATUS_PENDING => ['⏳', 'ثبت‌شده / در انتظار پردازش'],
@@ -2957,6 +3035,15 @@ final class BluebotDigitalServices
         $pages = (int) ($result['pages'] ?? 1);
         $rows = [];
 
+        foreach ((array) ($result['orders'] ?? []) as $order) {
+            [$emoji] = self::orderStatusLabel($order);
+            $code = trim((string) ($order['order_code'] ?? ''));
+            $rows[] = [[
+                'text' => $emoji . ' ' . ($code !== '' ? $code : ('سفارش #' . (int) ($order['id'] ?? 0))),
+                'callback_data' => 'ds_order:' . (int) ($order['id'] ?? 0),
+            ]];
+        }
+
         if ($pages > 1) {
             $nav = [];
             if ($current > 1) {
@@ -2980,6 +3067,162 @@ final class BluebotDigitalServices
         ]];
 
         return json_encode(['inline_keyboard' => $rows], JSON_UNESCAPED_UNICODE);
+    }
+
+    public static function findUserOrder(PDO $pdo, string $userId, int $orderId): ?array
+    {
+        $userId = trim($userId);
+        if ($userId === '' || $orderId <= 0 || !self::isAvailable($pdo)) {
+            return null;
+        }
+
+        $stmt = $pdo->prepare(
+            "SELECT * FROM digital_service_orders
+             WHERE id = ? AND user_id = ?
+             LIMIT 1"
+        );
+        $stmt->execute([$orderId, $userId]);
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+
+        return is_array($row) ? $row : null;
+    }
+
+    public static function userOrderText(array $order): string
+    {
+        [$emoji, $label] = self::orderStatusLabel($order);
+        $progress = self::providerProgress($order);
+
+        $text = "🧾 <b>جزئیات سفارش</b>\n\n"
+            . "📦 <b>" . self::escape((string) ($order['service_name'] ?? 'سرویس')) . "</b>\n"
+            . "🆔 کد: <code>" . self::escape((string) ($order['order_code'] ?? '')) . "</code>\n"
+            . "🔢 تعداد: <b>" . number_format(max(1, (int) ($order['quantity'] ?? 1))) . "</b>\n"
+            . "🎯 مقصد: <code>" . self::escape((string) ($order['target'] ?? '—')) . "</code>\n"
+            . "💳 مبلغ: <b>" . number_format((float) ($order['amount'] ?? 0)) . " تومان</b>\n"
+            . $emoji . " وضعیت: <b>" . self::escape($label) . "</b>";
+
+        if ((string) ($progress['status'] ?? '') === 'partial'
+            && is_int($progress['remains'] ?? null)) {
+            $text .= "\n📉 باقیمانده گزارش‌شده: <b>"
+                . number_format((int) $progress['remains'])
+                . "</b>";
+        }
+
+        if ((int) ($order['refunded'] ?? 0) === 1) {
+            $text .= "\n💰 <b>مبلغ این سفارش به کیف پول برگشته است.</b>";
+        } elseif ((string) ($order['status'] ?? '') === self::STATUS_PENDING) {
+            $text .= "\n\nتا قبل از شروع پردازش می‌توانید سفارش را لغو کنید.";
+        } elseif ((string) ($order['status'] ?? '') === self::STATUS_PROCESSING) {
+            $text .= "\n\nنتیجه نهایی پس از بروزرسانی وضعیت برای شما ثبت می‌شود.";
+        }
+
+        return $text;
+    }
+
+    public static function userOrderKeyboard(array $order): string
+    {
+        $rows = [];
+        if ((string) ($order['status'] ?? '') === self::STATUS_PENDING
+            && (int) ($order['refunded'] ?? 0) !== 1) {
+            $rows[] = [[
+                'text' => '❌ لغو سفارش',
+                'callback_data' => 'ds_cancel:' . (int) ($order['id'] ?? 0),
+                'style' => 'danger',
+            ]];
+        }
+
+        $rows[] = [[
+            'text' => '🔄 بروزرسانی وضعیت',
+            'callback_data' => 'ds_order:' . (int) ($order['id'] ?? 0),
+        ]];
+        $rows[] = [[
+            'text' => '↩️ سفارش‌های من',
+            'callback_data' => 'ds_orders:1',
+        ]];
+
+        return json_encode(['inline_keyboard' => $rows], JSON_UNESCAPED_UNICODE);
+    }
+
+    public static function userCancelConfirmKeyboard(array $order): string
+    {
+        return json_encode([
+            'inline_keyboard' => [
+                [[
+                    'text' => '✅ بله، لغو و برگشت وجه',
+                    'callback_data' => 'ds_cancel_confirm:' . (int) ($order['id'] ?? 0),
+                    'style' => 'danger',
+                ]],
+                [[
+                    'text' => '↩️ انصراف',
+                    'callback_data' => 'ds_order:' . (int) ($order['id'] ?? 0),
+                ]],
+            ],
+        ], JSON_UNESCAPED_UNICODE);
+    }
+
+    public static function cancelPendingOrderByUser(PDO $pdo, int $orderId, string $userId): array
+    {
+        $userId = trim($userId);
+        if ($orderId <= 0 || $userId === '') {
+            throw new InvalidArgumentException('Invalid order cancellation request.');
+        }
+
+        $pdo->beginTransaction();
+        try {
+            $stmt = $pdo->prepare(
+                "SELECT * FROM digital_service_orders
+                 WHERE id = ? AND user_id = ?
+                 FOR UPDATE"
+            );
+            $stmt->execute([$orderId, $userId]);
+            $order = $stmt->fetch(PDO::FETCH_ASSOC);
+            if (!is_array($order)) {
+                throw new RuntimeException('Order not found.');
+            }
+
+            $status = (string) ($order['status'] ?? '');
+            if ($status === self::STATUS_REJECTED && (int) ($order['refunded'] ?? 0) === 1) {
+                $pdo->commit();
+                return ['ok' => true, 'already_done' => true, 'order' => $order];
+            }
+            if ($status !== self::STATUS_PENDING || (int) ($order['refunded'] ?? 0) === 1) {
+                throw new DomainException('ORDER_CANCEL_UNAVAILABLE');
+            }
+
+            $refund = $pdo->prepare("UPDATE user SET Balance = Balance + ? WHERE id = ?");
+            $refund->execute([(int) ($order['amount'] ?? 0), $userId]);
+            if ($refund->rowCount() !== 1) {
+                throw new RuntimeException('Refund failed.');
+            }
+
+            $update = $pdo->prepare(
+                "UPDATE digital_service_orders
+                 SET status = ?, refunded = 1, admin_id = ?, updated_at = NOW()
+                 WHERE id = ? AND user_id = ? AND status = ?"
+            );
+            $update->execute([
+                self::STATUS_REJECTED,
+                'user:' . $userId,
+                $orderId,
+                $userId,
+                self::STATUS_PENDING,
+            ]);
+            if ($update->rowCount() !== 1) {
+                throw new RuntimeException('Order cancellation claim failed.');
+            }
+
+            $pdo->commit();
+            clearSelectCache('user');
+
+            return [
+                'ok' => true,
+                'order' => self::findUserOrder($pdo, $userId, $orderId) ?? $order,
+            ];
+        } catch (Throwable $e) {
+            if ($pdo->inTransaction()) {
+                $pdo->rollBack();
+            }
+            throw $e;
+        }
     }
 
     public static function productKeyboard(array $product, string $backText): string
@@ -3332,6 +3575,21 @@ final class BluebotDigitalServices
         $reference = trim((string) ($order['provider_reference'] ?? ''));
         if ($reference !== '') {
             $text .= "\n🔖 Provider Ref: <code>" . self::escape($reference) . "</code>";
+        }
+
+        $progress = self::providerProgress($order);
+        if ((string) ($progress['status'] ?? '') === 'partial') {
+            $text .= "\n🟠 وضعیت Provider: <b>تحویل جزئی</b>";
+        } elseif ((string) ($progress['raw_status'] ?? '') !== '') {
+            $text .= "\n📡 وضعیت Provider: <code>"
+                . self::escape((string) $progress['raw_status'])
+                . "</code>";
+        }
+        if (is_int($progress['remains'] ?? null)) {
+            $text .= "\n📉 Remaining: <b>" . number_format((int) $progress['remains']) . "</b>";
+        }
+        if (is_int($progress['start_count'] ?? null)) {
+            $text .= "\n📈 Start count: <b>" . number_format((int) $progress['start_count']) . "</b>";
         }
 
         if ($providerError !== '') {
