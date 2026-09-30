@@ -120,13 +120,9 @@ final class BluebotDigitalServices
                 : self::findOrder($pdo, (int) ($order['id'] ?? 0));
 
             if (is_array($failedOrder)) {
-                $customerMessage = $provider === 'tgtools'
-                    ? "✅ <b>سفارش شما با موفقیت ثبت شد</b>\n\n"
-                        . "🧾 کد سفارش: <code>" . self::escape((string) ($failedOrder['order_code'] ?? '')) . "</code>\n"
-                        . "نتیجه پس از پردازش اطلاع داده می‌شود."
-                    : "⚠️ <b>ارسال خودکار موقتاً انجام نشد</b>\n\n"
-                        . "🧾 کد: <code>" . self::escape((string) ($failedOrder['order_code'] ?? '')) . "</code>\n"
-                        . "سفارش برای بررسی مدیر نگه داشته شد و مبلغ از بین نرفته است.";
+                $customerMessage = "✅ <b>سفارش شما با موفقیت ثبت شد</b>\n\n"
+                    . "🧾 کد سفارش: <code>" . self::escape((string) ($failedOrder['order_code'] ?? '')) . "</code>\n"
+                    . "🔄 سفارش در حال بررسی و پردازش است؛ نتیجه برای شما ارسال می‌شود.";
 
                 sendmessage(
                     (string) ($failedOrder['user_id'] ?? ''),
@@ -2348,6 +2344,10 @@ final class BluebotDigitalServices
         }
 
         $rows[] = [[
+            'text' => '📋 سفارش‌های من',
+            'callback_data' => 'ds_orders:1',
+        ]];
+        $rows[] = [[
             'text' => $backText,
             'callback_data' => 'backuser',
         ]];
@@ -2742,6 +2742,246 @@ final class BluebotDigitalServices
         ];
     }
 
+    public static function quantityRules(array $product): array
+    {
+        $metadata = self::productMetadata($product);
+        $fixed = max(1, (int) ($product['service_value'] ?? 1));
+        $min = is_numeric($metadata['minimum_quantity'] ?? null)
+            ? max(1, (int) floor((float) $metadata['minimum_quantity']))
+            : $fixed;
+        $max = is_numeric($metadata['maximum_quantity'] ?? null)
+            ? max($min, (int) floor((float) $metadata['maximum_quantity']))
+            : $min;
+        $rate = is_numeric($metadata['wholesale_rate_per_1000'] ?? null)
+            ? max(0.0, (float) $metadata['wholesale_rate_per_1000'])
+            : 0.0;
+        $apiStyle = strtolower(trim((string) ($metadata['api_style'] ?? '')));
+
+        return [
+            'variable' => $apiStyle === 'smm' && $rate > 0 && $max > $min,
+            'fixed' => $fixed,
+            'min' => $min,
+            'max' => $max,
+            'rate_per_1000' => $rate,
+        ];
+    }
+
+    public static function isVariableQuantityProduct(array $product): bool
+    {
+        return !empty(self::quantityRules($product)['variable']);
+    }
+
+    public static function normaliseQuantityInput(string $value): int
+    {
+        $value = strtr(trim($value), [
+            '۰' => '0', '۱' => '1', '۲' => '2', '۳' => '3', '۴' => '4',
+            '۵' => '5', '۶' => '6', '۷' => '7', '۸' => '8', '۹' => '9',
+            '٠' => '0', '١' => '1', '٢' => '2', '٣' => '3', '٤' => '4',
+            '٥' => '5', '٦' => '6', '٧' => '7', '٨' => '8', '٩' => '9',
+            ',' => '', '٬' => '', ' ' => '',
+        ]);
+
+        return preg_match('/^\d{1,9}$/', $value) ? (int) $value : 0;
+    }
+
+    public static function validateQuantity(array $product, ?int $quantity): array
+    {
+        $rules = self::quantityRules($product);
+        if (empty($rules['variable'])) {
+            return [true, max(1, (int) ($rules['fixed'] ?? 1))];
+        }
+
+        $quantity = max(0, (int) $quantity);
+        $min = max(1, (int) ($rules['min'] ?? 1));
+        $max = max($min, (int) ($rules['max'] ?? $min));
+
+        if ($quantity < $min || $quantity > $max) {
+            return [
+                false,
+                'تعداد باید بین ' . number_format($min) . ' تا ' . number_format($max) . ' باشد.',
+            ];
+        }
+
+        return [true, $quantity];
+    }
+
+    public static function priceForQuantity(array $product, ?int $quantity = null): int
+    {
+        $rules = self::quantityRules($product);
+        if (empty($rules['variable'])) {
+            return max(0, (int) ($product['price'] ?? 0));
+        }
+
+        [$valid, $normalized] = self::validateQuantity($product, $quantity);
+        if (!$valid || !is_int($normalized)) {
+            return 0;
+        }
+
+        $metadata = self::productMetadata($product);
+        $ratePerThousand = (float) ($rules['rate_per_1000'] ?? 0);
+        $wholesaleCost = $ratePerThousand * ($normalized / 1000);
+
+        return BluebotProviderCatalogService::calculateSellingPrice(
+            $wholesaleCost,
+            (string) ($metadata['wholesale_currency'] ?? 'toman'),
+            (float) ($metadata['exchange_rate_toman'] ?? 1),
+            (float) ($metadata['profit_percent'] ?? 0)
+        );
+    }
+
+    public static function targetPrompt(array $product): string
+    {
+        $type = (string) ($product['type'] ?? '');
+        if (in_array($type, ['telegram_stars', 'telegram_premium'], true)) {
+            return "👤 <b>یوزرنیم تلگرام دریافت‌کننده را بفرستید</b>\n"
+                . "مثال: <code>@username</code>\n\n"
+                . "قبل از ارسال، یوزرنیم را دقیق بررسی کنید.";
+        }
+
+        $category = self::categoryForProduct($product);
+        $scope = self::serviceScopeForProduct($product);
+        $group = self::serviceGroupForProduct($product);
+        $scopeKey = (string) ($scope['key'] ?? 'general');
+        $groupKey = (string) ($group['key'] ?? 'other');
+
+        if ($category === 'telegram') {
+            if (in_array($scopeKey, ['channel_post', 'group_post', 'post'], true)
+                || in_array($groupKey, ['views', 'reactions', 'comments', 'comment_likes', 'forwards', 'shares'], true)) {
+                return "🔗 <b>لینک دقیق پست تلگرام را بفرستید</b>\n"
+                    . "مثال: <code>https://t.me/channel/123</code>";
+            }
+
+            if ($scopeKey === 'group') {
+                return "🔗 <b>لینک یا یوزرنیم گروه تلگرام را بفرستید</b>\n"
+                    . "مثال: <code>https://t.me/groupname</code>";
+            }
+
+            if ($scopeKey === 'channel') {
+                return "🔗 <b>لینک یا یوزرنیم کانال تلگرام را بفرستید</b>\n"
+                    . "مثال: <code>https://t.me/channelname</code>";
+            }
+        }
+
+        if ($category === 'instagram') {
+            if (in_array($groupKey, ['likes', 'comments', 'comment_likes', 'views', 'shares', 'saves'], true)) {
+                return "🔗 <b>لینک دقیق پست یا ریلز اینستاگرام را بفرستید</b>";
+            }
+            if ($groupKey === 'followers') {
+                return "👤 <b>یوزرنیم یا لینک پروفایل اینستاگرام را بفرستید</b>";
+            }
+        }
+
+        return "🔗 <b>لینک، یوزرنیم یا شناسه مقصد این سرویس را بفرستید</b>\n"
+            . "اطلاعات مقصد را دقیق وارد کنید؛ سفارش پس از ثبت قابل تغییر نیست.";
+    }
+
+    public static function orderStatusLabel(array $order): array
+    {
+        $status = (string) ($order['status'] ?? '');
+        $refunded = (int) ($order['refunded'] ?? 0) === 1;
+
+        return match ($status) {
+            self::STATUS_PENDING => ['⏳', 'ثبت‌شده / در انتظار پردازش'],
+            self::STATUS_PROCESSING => ['🔄', 'در حال انجام'],
+            self::STATUS_DELIVERED => ['✅', 'تکمیل‌شده'],
+            self::STATUS_REJECTED => ['↩️', 'لغو و مستردشده'],
+            self::STATUS_FAILED => $refunded
+                ? ['↩️', 'ناموفق / مبلغ برگشت خورده']
+                : ['🛠', 'در حال بررسی'],
+            default => ['•', 'نامشخص'],
+        };
+    }
+
+    public static function userOrdersPage(PDO $pdo, string $userId, int $page = 1, int $perPage = 8): array
+    {
+        $userId = trim($userId);
+        $perPage = max(4, min(12, $perPage));
+        if ($userId === '') {
+            return ['orders' => [], 'page' => 1, 'pages' => 1, 'total' => 0];
+        }
+
+        $countStmt = $pdo->prepare("SELECT COUNT(*) FROM digital_service_orders WHERE user_id = ?");
+        $countStmt->execute([$userId]);
+        $total = (int) $countStmt->fetchColumn();
+        $pages = max(1, (int) ceil($total / $perPage));
+        $page = max(1, min($pages, $page));
+        $offset = ($page - 1) * $perPage;
+
+        $stmt = $pdo->prepare(
+            "SELECT * FROM digital_service_orders
+             WHERE user_id = ?
+             ORDER BY id DESC
+             LIMIT " . $perPage . " OFFSET " . $offset
+        );
+        $stmt->execute([$userId]);
+
+        return [
+            'orders' => $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [],
+            'page' => $page,
+            'pages' => $pages,
+            'total' => $total,
+        ];
+    }
+
+    public static function userOrdersText(PDO $pdo, string $userId, int $page = 1): string
+    {
+        $result = self::userOrdersPage($pdo, $userId, $page, 8);
+        $orders = (array) ($result['orders'] ?? []);
+
+        $text = "📋 <b>سفارش‌های خدمات من</b>\n\n";
+        if ($orders === []) {
+            return $text . "هنوز سفارشی ثبت نکرده‌اید.";
+        }
+
+        foreach ($orders as $order) {
+            [$emoji, $label] = self::orderStatusLabel($order);
+            $text .= $emoji . " <b>" . self::escape((string) ($order['service_name'] ?? 'سرویس')) . "</b>\n"
+                . "🧾 <code>" . self::escape((string) ($order['order_code'] ?? '')) . "</code>"
+                . " · " . self::escape($label) . "\n"
+                . "🔢 " . number_format(max(1, (int) ($order['quantity'] ?? 1)))
+                . " · 💳 " . number_format((float) ($order['amount'] ?? 0)) . " تومان\n\n";
+        }
+
+        if ((int) ($result['pages'] ?? 1) > 1) {
+            $text .= "صفحه " . number_format((int) ($result['page'] ?? 1))
+                . " از " . number_format((int) ($result['pages'] ?? 1));
+        }
+
+        return trim($text);
+    }
+
+    public static function userOrdersKeyboard(PDO $pdo, string $userId, int $page = 1): string
+    {
+        $result = self::userOrdersPage($pdo, $userId, $page, 8);
+        $current = (int) ($result['page'] ?? 1);
+        $pages = (int) ($result['pages'] ?? 1);
+        $rows = [];
+
+        if ($pages > 1) {
+            $nav = [];
+            if ($current > 1) {
+                $nav[] = ['text' => '⬅️ قبلی', 'callback_data' => 'ds_orders:' . ($current - 1)];
+            }
+            if ($current < $pages) {
+                $nav[] = ['text' => 'بعدی ➡️', 'callback_data' => 'ds_orders:' . ($current + 1)];
+            }
+            if ($nav !== []) {
+                $rows[] = $nav;
+            }
+        }
+
+        $rows[] = [[
+            'text' => '🔄 بروزرسانی',
+            'callback_data' => 'ds_orders:' . $current,
+        ]];
+        $rows[] = [[
+            'text' => '↩️ فروش خدمات',
+            'callback_data' => 'ds_home',
+        ]];
+
+        return json_encode(['inline_keyboard' => $rows], JSON_UNESCAPED_UNICODE);
+    }
+
     public static function productKeyboard(array $product, string $backText): string
     {
         $category = self::categoryForProduct($product);
@@ -2897,13 +3137,17 @@ final class BluebotDigitalServices
         return [true, $target];
     }
 
-    public static function createWalletOrder(PDO $pdo, array $user, array $product, string $target): array
-    {
+    public static function createWalletOrder(
+        PDO $pdo,
+        array $user,
+        array $product,
+        string $target,
+        ?int $quantity = null
+    ): array {
         $userId = trim((string) ($user['id'] ?? ''));
         $productId = (int) ($product['id'] ?? 0);
-        $price = (int) ($product['price'] ?? 0);
 
-        if ($userId === '' || $productId <= 0 || $price <= 0) {
+        if ($userId === '' || $productId <= 0) {
             throw new RuntimeException('Invalid digital service order payload.');
         }
 
@@ -2912,6 +3156,12 @@ final class BluebotDigitalServices
             throw new InvalidArgumentException($targetOrError);
         }
         $target = (string) $targetOrError;
+
+        [$quantityValid, $quantityOrError] = self::validateQuantity($product, $quantity);
+        if (!$quantityValid || !is_int($quantityOrError)) {
+            throw new InvalidArgumentException((string) $quantityOrError);
+        }
+        $quantity = $quantityOrError;
 
         $pdo->beginTransaction();
         try {
@@ -2922,18 +3172,23 @@ final class BluebotDigitalServices
                 throw new RuntimeException('User not found.');
             }
 
-            // The user row is the order-intent lock. This makes the confirm
-            // button idempotent even when Telegram delivers duplicate callbacks.
             $flowData = json_decode((string) ($freshUser['Processing_value'] ?? ''), true);
             $flowData = is_array($flowData) ? $flowData : [];
             $flowProductId = (int) ($flowData['digital_service_id'] ?? 0);
             $flowTarget = trim((string) ($flowData['digital_service_target'] ?? ''));
+            $flowQuantity = isset($flowData['digital_service_quantity'])
+                ? (int) $flowData['digital_service_quantity']
+                : null;
             [$flowTargetValid, $normalizedFlowTarget] = self::validateTarget($product, $flowTarget);
+            [$flowQuantityValid, $normalizedFlowQuantity] = self::validateQuantity($product, $flowQuantity);
 
             if ((string) ($freshUser['step'] ?? '') !== 'digital_service_confirm'
                 || $flowProductId !== $productId
                 || !$flowTargetValid
-                || (string) $normalizedFlowTarget !== $target) {
+                || (string) $normalizedFlowTarget !== $target
+                || !$flowQuantityValid
+                || !is_int($normalizedFlowQuantity)
+                || $normalizedFlowQuantity !== $quantity) {
                 throw new DomainException('ORDER_STATE_INVALID');
             }
 
@@ -2952,7 +3207,13 @@ final class BluebotDigitalServices
             }
             $target = (string) $freshTargetOrError;
 
-            $freshPrice = (int) ($freshProduct['price'] ?? 0);
+            [$freshQuantityValid, $freshQuantityOrError] = self::validateQuantity($freshProduct, $quantity);
+            if (!$freshQuantityValid || !is_int($freshQuantityOrError)) {
+                throw new InvalidArgumentException((string) $freshQuantityOrError);
+            }
+            $quantity = $freshQuantityOrError;
+
+            $freshPrice = self::priceForQuantity($freshProduct, $quantity);
             if ($freshPrice <= 0) {
                 throw new RuntimeException('Service price is invalid.');
             }
@@ -2965,8 +3226,6 @@ final class BluebotDigitalServices
                 throw new DomainException('INSUFFICIENT_BALANCE');
             }
 
-            // Claim the intent before money moves. A second concurrent click
-            // waits for this row lock and then sees that the intent is consumed.
             $claimIntent = $pdo->prepare(
                 "UPDATE user
                  SET step = 'digital_service_processing', Processing_value = '0'
@@ -2994,7 +3253,7 @@ final class BluebotDigitalServices
                 (string) $freshProduct['name'],
                 $target,
                 $freshPrice,
-                max(1, (int) ($freshProduct['service_value'] ?? 1)),
+                $quantity,
                 (string) ($freshProduct['provider'] ?? 'manual'),
                 self::STATUS_PENDING,
             ]);
@@ -3047,46 +3306,41 @@ final class BluebotDigitalServices
 
     public static function adminOrderText(array $order): string
     {
-        $manualFallback = strtolower((string) ($order['provider'] ?? '')) === 'tgtools'
-            && (string) ($order['status'] ?? '') === self::STATUS_FAILED
-            && (int) ($order['refunded'] ?? 0) === 0;
-
+        [$statusEmoji, $statusLabel] = self::orderStatusLabel($order);
         $providerError = '';
-        if ($manualFallback) {
-            $payload = json_decode((string) ($order['provider_response'] ?? ''), true);
-            if (is_array($payload)) {
-                $providerError = trim((string) ($payload['error'] ?? ''));
-            }
+        $payload = json_decode((string) ($order['provider_response'] ?? ''), true);
+        if (is_array($payload)) {
+            $providerError = trim((string) ($payload['error'] ?? ''));
         }
 
-        $text = "🛍 <b>سفارش فروش خدمات</b>
+        $text = "🛍 <b>سفارش فروش خدمات</b>\n\n"
+            . "🧾 کد: <code>" . self::escape((string) ($order['order_code'] ?? '—')) . "</code>\n"
+            . "👤 کاربر: <code>" . self::escape((string) ($order['user_id'] ?? '—')) . "</code>\n"
+            . "📦 سرویس: <b>" . self::escape((string) ($order['service_name'] ?? '—')) . "</b>\n"
+            . "🔢 تعداد: <b>" . number_format(max(1, (int) ($order['quantity'] ?? 1))) . "</b>\n"
+            . "🎯 مقصد: <code>" . self::escape((string) ($order['target'] ?? '—')) . "</code>\n"
+            . "💳 مبلغ: <b>" . number_format((float) ($order['amount'] ?? 0)) . " تومان</b>\n"
+            . "🔌 Provider: <code>" . self::escape((string) ($order['provider'] ?? 'manual')) . "</code>\n"
+            . $statusEmoji . " وضعیت: <b>" . self::escape($statusLabel) . "</b>";
 
-"
-            . "🧾 کد: <code>" . self::escape((string) ($order['order_code'] ?? '—')) . "</code>
-"
-            . "👤 کاربر: <code>" . self::escape((string) ($order['user_id'] ?? '—')) . "</code>
-"
-            . "📦 سرویس: <b>" . self::escape((string) ($order['service_name'] ?? '—')) . "</b>
-"
-            . "🎯 مقصد: <code>" . self::escape((string) ($order['target'] ?? '—')) . "</code>
-"
-            . "💳 مبلغ: <b>" . number_format((float) ($order['amount'] ?? 0)) . " تومان</b>
-"
-            . "🔌 Provider: <code>" . self::escape((string) ($order['provider'] ?? 'manual')) . "</code>";
-
-        if ($manualFallback) {
-            $text .= "
-
-⚠️ <b>ارسال خودکار TGTools انجام نشد؛ نیاز به بررسی و ارسال دستی دارد.</b>";
-            if ($providerError !== '') {
-                $text .= "
-🧩 خطای Provider: <code>" . self::escape($providerError) . "</code>";
-            }
+        $reference = trim((string) ($order['provider_reference'] ?? ''));
+        if ($reference !== '') {
+            $text .= "\n🔖 Provider Ref: <code>" . self::escape($reference) . "</code>";
         }
 
-        return $text . "
+        if ($providerError !== '') {
+            $text .= "\n\n⚠️ خطای Provider: <code>" . self::escape(mb_substr($providerError, 0, 500, 'UTF-8')) . "</code>";
+        }
 
-ارسال فقط بعد از زدن «تأیید و ارسال» انجام می‌شود.";
+        $status = (string) ($order['status'] ?? '');
+        if (in_array($status, [self::STATUS_PENDING, self::STATUS_FAILED], true)
+            && (int) ($order['refunded'] ?? 0) === 0) {
+            $text .= "\n\nبرای ادامه، «تأیید و ارسال» یا «رد و برگشت وجه» را انتخاب کنید.";
+        } elseif ($status === self::STATUS_PROCESSING) {
+            $text .= "\n\n⏳ سفارش در Provider در حال پردازش است.";
+        }
+
+        return $text;
     }
 
     public static function approveAndDeliver(PDO $pdo, int $orderId, string $adminId): array
@@ -3395,7 +3649,8 @@ final class BluebotDigitalServices
             'response' => $response,
             'customer_message_pending' => "⏳ <b>سفارش شما ثبت شد و در حال انجام است</b>\n\n"
                 . "🧾 کد: <code>" . self::escape((string) ($order['order_code'] ?? '')) . "</code>\n"
-                . "📦 " . self::escape((string) ($order['service_name'] ?? $product['name'] ?? '')),
+                . "📦 " . self::escape((string) ($order['service_name'] ?? $product['name'] ?? '')) . "\n"
+                . "🔢 تعداد: <b>" . number_format(max(1, (int) ($order['quantity'] ?? 1))) . "</b>",
         ];
     }
 
@@ -3446,7 +3701,8 @@ final class BluebotDigitalServices
             'response' => $response,
             'customer_message_pending' => "⏳ <b>سفارش شما ثبت شد و در حال انجام است</b>\n\n"
                 . "🧾 کد: <code>" . self::escape((string) ($order['order_code'] ?? '')) . "</code>\n"
-                . "📦 " . self::escape((string) ($order['service_name'] ?? $product['name'] ?? '')),
+                . "📦 " . self::escape((string) ($order['service_name'] ?? $product['name'] ?? '')) . "\n"
+                . "🔢 تعداد: <b>" . number_format(max(1, (int) ($order['quantity'] ?? 1))) . "</b>",
         ];
     }
 
@@ -4191,10 +4447,11 @@ final class BluebotDigitalServices
         $finalOrder = self::findOrder($pdo, $orderId) ?? $order;
         $customerMessage = trim((string) ($delivery['customer_message'] ?? ''));
         if ($customerMessage === '') {
-            $customerMessage = "✅ <b>سفارش شما ارسال شد</b>\n\n"
-                . "🧾 کد: <code>" . self::escape((string) $finalOrder['order_code']) . "</code>\n"
+            $customerMessage = "✅ <b>سفارش شما با موفقیت تکمیل شد</b>\n\n"
+                . "🧾 کد سفارش: <code>" . self::escape((string) $finalOrder['order_code']) . "</code>\n"
                 . "📦 " . self::escape((string) $finalOrder['service_name']) . "\n"
-                . "🎯 <code>" . self::escape((string) $finalOrder['target']) . "</code>";
+                . "🔢 تعداد: <b>" . number_format(max(1, (int) ($finalOrder['quantity'] ?? 1))) . "</b>\n"
+                . "🎯 مقصد: <code>" . self::escape((string) $finalOrder['target']) . "</code>";
         }
         sendmessage(
             (string) $finalOrder['user_id'],
@@ -4295,9 +4552,10 @@ final class BluebotDigitalServices
         $finalOrder = self::findOrder($pdo, $orderId) ?? $order;
         sendmessage(
             (string) $finalOrder['user_id'],
-            "❌ <b>ارسال سفارش ناموفق بود</b>\n\n"
-                . "🧾 کد: <code>" . self::escape((string) $finalOrder['order_code']) . "</code>\n"
-                . "💰 مبلغ سفارش به کیف پول شما برگشت داده شد.",
+            "↩️ <b>سفارش انجام نشد و مبلغ مسترد شد</b>\n\n"
+                . "🧾 کد سفارش: <code>" . self::escape((string) $finalOrder['order_code']) . "</code>\n"
+                . "💰 مبلغ برگشتی: <b>" . number_format((float) ($finalOrder['amount'] ?? 0)) . " تومان</b>\n"
+                . "✅ مبلغ به کیف پول شما برگشت داده شد.",
             null,
             'HTML'
         );
@@ -4356,7 +4614,7 @@ final class BluebotDigitalServices
         $payload = [
             'service' => $serviceCode,
             'target' => (string) $order['target'],
-            'quantity' => max(1, (int) ($product['service_value'] ?? 1)),
+            'quantity' => max(1, (int) ($order['quantity'] ?? $product['service_value'] ?? 1)),
             'reference' => (string) $order['order_code'],
         ];
 
@@ -4449,7 +4707,7 @@ final class BluebotDigitalServices
             'action' => 'add',
             'service' => $serviceCode,
             'link' => (string) $order['target'],
-            'quantity' => max(1, (int) ($product['service_value'] ?? $order['quantity'] ?? 1)),
+            'quantity' => max(1, (int) ($order['quantity'] ?? $product['service_value'] ?? 1)),
         ], '', '&', PHP_QUERY_RFC3986);
 
         $ch = curl_init($url);
