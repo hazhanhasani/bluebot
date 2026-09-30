@@ -491,7 +491,11 @@ final class BluebotProviderCatalogService
                 $subcategoryCheck = $pdo->prepare(
                     "SELECT COUNT(*) FROM digital_service_products
                      WHERE provider = ? AND active = 1
-                       AND (metadata IS NULL OR metadata NOT LIKE '%\"service_group_key\"%')"
+                       AND (
+                           metadata IS NULL
+                           OR metadata NOT LIKE '%\"service_group_key\"%'
+                           OR metadata NOT LIKE '%\"service_scope_key\"%'
+                       )"
                 );
                 $subcategoryCheck->execute([$providerKey]);
                 $subcategoryMigrationNeeded = (int) $subcategoryCheck->fetchColumn() > 0;
@@ -662,6 +666,12 @@ final class BluebotProviderCatalogService
             }
 
             $category = self::normaliseCategory($categoryRaw, $name);
+            $serviceScope = self::normaliseServiceScope(
+                (string) $category['key'],
+                $categoryRaw,
+                $name,
+                $providerDescription
+            );
             $serviceGroup = self::normaliseServiceGroup(
                 (string) $category['key'],
                 $categoryRaw,
@@ -691,6 +701,9 @@ final class BluebotProviderCatalogService
                 'category_key' => $category['key'],
                 'category_label' => $category['label'],
                 'provider_category_raw' => $categoryRaw,
+                'service_scope_key' => $serviceScope['key'],
+                'service_scope_label' => $serviceScope['label'],
+                'service_scope_sort' => $serviceScope['sort'],
                 'service_group_key' => $serviceGroup['key'],
                 'service_group_label' => $serviceGroup['label'],
                 'service_group_sort' => $serviceGroup['sort'],
@@ -861,6 +874,88 @@ final class BluebotProviderCatalogService
         $key = substr($ascii, 0, 40);
 
         return ['key' => $key, 'label' => '🗂 ' . mb_substr($label, 0, 40, 'UTF-8')];
+    }
+
+    public static function normaliseServiceScope(
+        string $categoryKey,
+        string $rawCategory,
+        string $productName = '',
+        string $description = ''
+    ): array {
+        $categoryKey = strtolower(trim($categoryKey));
+        if ($categoryKey !== 'telegram') {
+            return [
+                'key' => 'general',
+                'label' => '🧭 عمومی',
+                'sort' => 900,
+            ];
+        }
+
+        $sources = [
+            mb_strtolower(trim($productName), 'UTF-8'),
+            mb_strtolower(trim($rawCategory), 'UTF-8'),
+            mb_strtolower(trim($description), 'UTF-8'),
+        ];
+
+        $containsAny = static function (string $text, array $needles): bool {
+            foreach ($needles as $needle) {
+                if ($needle !== '' && mb_strpos($text, $needle, 0, 'UTF-8') !== false) {
+                    return true;
+                }
+            }
+            return false;
+        };
+
+        foreach ($sources as $text) {
+            if ($text === '') {
+                continue;
+            }
+
+            $channel = $containsAny($text, ['channel', 'channels', 'کانال']);
+            $group = $containsAny($text, ['group', 'groups', 'supergroup', 'گروه', 'سوپرگروه']);
+            $post = $containsAny($text, ['post', 'posts', 'message view', 'post view', 'پست']);
+            $story = $containsAny($text, ['story', 'stories', 'استوری']);
+            $bot = $containsAny($text, ['telegram bot', 'bot user', 'ربات', 'بات']);
+            $account = $containsAny($text, ['telegram account', 'account', 'profile', 'اکانت', 'پروفایل']);
+            $live = $containsAny($text, ['livestream', 'live stream', 'stream viewer', 'پخش زنده', 'لایو']);
+
+            if ($story) {
+                return ['key' => 'story', 'label' => '📖 استوری', 'sort' => 50];
+            }
+            if ($bot) {
+                return ['key' => 'bot', 'label' => '🤖 ربات', 'sort' => 60];
+            }
+            if ($live) {
+                return ['key' => 'live', 'label' => '🔴 لایو / پخش زنده', 'sort' => 70];
+            }
+            if ($post && $channel && !$group) {
+                return ['key' => 'channel_post', 'label' => '📝 پست کانال', 'sort' => 30];
+            }
+            if ($post && $group && !$channel) {
+                return ['key' => 'group_post', 'label' => '📝 پست گروه', 'sort' => 31];
+            }
+            if ($channel && $group) {
+                return ['key' => 'channel_group', 'label' => '📣 کانال و گروه', 'sort' => 25];
+            }
+            if ($channel) {
+                return ['key' => 'channel', 'label' => '📣 کانال', 'sort' => 10];
+            }
+            if ($group) {
+                return ['key' => 'group', 'label' => '👥 گروه', 'sort' => 20];
+            }
+            if ($post) {
+                return ['key' => 'post', 'label' => '📝 پست', 'sort' => 40];
+            }
+            if ($account) {
+                return ['key' => 'account', 'label' => '👤 اکانت / پروفایل', 'sort' => 80];
+            }
+        }
+
+        return [
+            'key' => 'general',
+            'label' => '🧭 عمومی تلگرام',
+            'sort' => 900,
+        ];
     }
 
     public static function normaliseServiceGroup(
