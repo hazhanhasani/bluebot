@@ -4190,7 +4190,8 @@ final class BluebotDigitalServices
             $client = new SmmPanelClient(
                 (string) ($provider['catalog_url'] ?? ''),
                 (string) ($provider['api_key'] ?? ''),
-                $providerKey
+                $providerKey,
+                self::smmTransportFromProvider($provider)
             );
             $response = $client->addOrder(
                 $serviceCode,
