@@ -997,6 +997,34 @@ if ($text == "/start" || $datain == "start" || $text == "start") {
         return;
     }
 
+    if (BluebotDigitalServices::categoryUsesServiceScopes($category)) {
+        $scopes = BluebotDigitalServices::serviceScopes($pdo, $category);
+        if ($scopes !== []) {
+            $categoryTitle = BluebotDigitalServices::categoryLabel($category, $pdo);
+            $categoryText = "<b>" . htmlspecialchars($categoryTitle, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . "</b>\n\n"
+                . "بخش موردنظر را انتخاب کنید 👇\n"
+                . "📂 " . number_format(count($scopes)) . " بخش فعال";
+            $categoryKeyboard = BluebotDigitalServices::serviceScopeKeyboard($pdo, $category);
+
+            step('home', $from_id);
+            update('user', 'Processing_value', '0', 'id', $from_id);
+
+            $editResult = Editmessagetext($from_id, $message_id, $categoryText, $categoryKeyboard);
+            if (!is_array($editResult) || empty($editResult['ok'])) {
+                $description = is_array($editResult) ? trim((string) ($editResult['description'] ?? '')) : '';
+                bluebotLog('warning', 'Digital service scope menu edit failed', [
+                    'user_id' => (string) $from_id,
+                    'category' => $category,
+                    'description' => $description,
+                ]);
+                if (!str_contains(strtolower($description), 'message is not modified')) {
+                    sendmessage($from_id, $categoryText, $categoryKeyboard, 'HTML');
+                }
+            }
+            return;
+        }
+    }
+
     if (BluebotDigitalServices::categoryUsesServiceGroups($category)) {
         $groups = BluebotDigitalServices::serviceGroups($pdo, $category);
         if ($groups !== []) {
@@ -1061,6 +1089,163 @@ if ($text == "/start" || $datain == "start" || $text == "start") {
         }
     }
     return;
+} elseif (preg_match('/^ds_scope:([a-z0-9_-]{1,24}):([a-z0-9_-]{1,24})$/', (string) $datain, $digitalServiceScopeMatch)) {
+    if (!check_active_btn($setting['keyboardmain'], 'text_digital_services')) {
+        sendmessage($from_id, $textbotlang['users']['buttonDisabled'], null, 'HTML');
+        return;
+    }
+
+    if (!empty($callback_query_id)) {
+        telegram('answerCallbackQuery', [
+            'callback_query_id' => $callback_query_id,
+            'cache_time' => 0,
+        ]);
+    }
+
+    $category = (string) $digitalServiceScopeMatch[1];
+    $serviceScope = (string) $digitalServiceScopeMatch[2];
+
+    $selectedScope = null;
+    foreach (BluebotDigitalServices::serviceScopes($pdo, $category) as $scope) {
+        if ((string) ($scope['key'] ?? '') === $serviceScope) {
+            $selectedScope = $scope;
+            break;
+        }
+    }
+
+    if (!is_array($selectedScope)) {
+        telegram('answerCallbackQuery', [
+            'callback_query_id' => $callback_query_id,
+            'text' => 'این بخش دیگر فعال نیست.',
+            'show_alert' => true,
+            'cache_time' => 0,
+        ]);
+        return;
+    }
+
+    $groups = BluebotDigitalServices::serviceGroups($pdo, $category, $serviceScope);
+    $categoryTitle = BluebotDigitalServices::categoryLabel($category, $pdo);
+    $scopeTitle = (string) ($selectedScope['label'] ?? '🧭 بخش');
+    $scopeText = "<b>" . htmlspecialchars($categoryTitle, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . "</b>\n"
+        . "<b>" . htmlspecialchars($scopeTitle, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . "</b>\n\n"
+        . "نوع سرویس را انتخاب کنید 👇\n"
+        . "🗂 " . number_format(count($groups)) . " نوع سرویس";
+
+    $scopeKeyboard = BluebotDigitalServices::serviceGroupKeyboard($pdo, $category, $serviceScope);
+
+    step('home', $from_id);
+    update('user', 'Processing_value', '0', 'id', $from_id);
+
+    $editResult = Editmessagetext($from_id, $message_id, $scopeText, $scopeKeyboard);
+    if (!is_array($editResult) || empty($editResult['ok'])) {
+        $description = is_array($editResult) ? trim((string) ($editResult['description'] ?? '')) : '';
+        bluebotLog('warning', 'Digital service scope group menu edit failed', [
+            'user_id' => (string) $from_id,
+            'category' => $category,
+            'service_scope' => $serviceScope,
+            'description' => $description,
+        ]);
+        if (!str_contains(strtolower($description), 'message is not modified')) {
+            sendmessage($from_id, $scopeText, $scopeKeyboard, 'HTML');
+        }
+    }
+    return;
+} elseif (preg_match('/^ds_sg:([a-z0-9_-]{1,24}):([a-z0-9_-]{1,24}):([a-z0-9_-]{1,32}):(\d{1,4})$/', (string) $datain, $digitalScopedGroupMatch)) {
+    if (!check_active_btn($setting['keyboardmain'], 'text_digital_services')) {
+        sendmessage($from_id, $textbotlang['users']['buttonDisabled'], null, 'HTML');
+        return;
+    }
+
+    if (!empty($callback_query_id)) {
+        telegram('answerCallbackQuery', [
+            'callback_query_id' => $callback_query_id,
+            'cache_time' => 0,
+        ]);
+    }
+
+    $category = (string) $digitalScopedGroupMatch[1];
+    $serviceScope = (string) $digitalScopedGroupMatch[2];
+    $serviceGroup = (string) $digitalScopedGroupMatch[3];
+    $requestedPage = max(1, (int) $digitalScopedGroupMatch[4]);
+
+    $selectedScope = null;
+    foreach (BluebotDigitalServices::serviceScopes($pdo, $category) as $scope) {
+        if ((string) ($scope['key'] ?? '') === $serviceScope) {
+            $selectedScope = $scope;
+            break;
+        }
+    }
+
+    $selectedGroup = null;
+    foreach (BluebotDigitalServices::serviceGroups($pdo, $category, $serviceScope) as $group) {
+        if ((string) ($group['key'] ?? '') === $serviceGroup) {
+            $selectedGroup = $group;
+            break;
+        }
+    }
+
+    if (!is_array($selectedScope) || !is_array($selectedGroup)) {
+        telegram('answerCallbackQuery', [
+            'callback_query_id' => $callback_query_id,
+            'text' => 'این بخش یا نوع سرویس دیگر فعال نیست.',
+            'show_alert' => true,
+            'cache_time' => 0,
+        ]);
+        return;
+    }
+
+    $pageInfo = BluebotDigitalServices::catalogPageInfo(
+        $pdo,
+        $category,
+        $requestedPage,
+        8,
+        $serviceGroup,
+        $serviceScope
+    );
+    $currentPage = (int) ($pageInfo['page'] ?? 1);
+    $catalogKeyboard = BluebotDigitalServices::catalogKeyboard(
+        $pdo,
+        $textbotlang['users']['backbtn'],
+        $category,
+        $currentPage,
+        8,
+        $serviceGroup,
+        $serviceScope
+    );
+
+    $categoryTitle = BluebotDigitalServices::categoryLabel($category, $pdo);
+    $scopeTitle = (string) ($selectedScope['label'] ?? '🧭 بخش');
+    $groupTitle = (string) ($selectedGroup['label'] ?? '🗂 سرویس‌ها');
+    $catalogText = "<b>" . htmlspecialchars($categoryTitle, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . "</b>\n"
+        . "<b>" . htmlspecialchars($scopeTitle, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . "</b>\n"
+        . "<b>" . htmlspecialchars($groupTitle, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . "</b>\n\n"
+        . htmlspecialchars($textbotlang['digitalServices']['select'] ?? 'سرویس موردنظر را انتخاب کنید 👇', ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+
+    if ((int) ($pageInfo['pages'] ?? 1) > 1) {
+        $catalogText .= "\n\n📦 " . number_format((int) ($pageInfo['total'] ?? 0))
+            . " سرویس · صفحه " . number_format($currentPage)
+            . " از " . number_format((int) ($pageInfo['pages'] ?? 1));
+    }
+
+    step('home', $from_id);
+    update('user', 'Processing_value', '0', 'id', $from_id);
+
+    $editResult = Editmessagetext($from_id, $message_id, $catalogText, $catalogKeyboard);
+    if (!is_array($editResult) || empty($editResult['ok'])) {
+        $description = is_array($editResult) ? trim((string) ($editResult['description'] ?? '')) : '';
+        bluebotLog('warning', 'Digital scoped service group catalog edit failed', [
+            'user_id' => (string) $from_id,
+            'category' => $category,
+            'service_scope' => $serviceScope,
+            'service_group' => $serviceGroup,
+            'page' => $currentPage,
+            'description' => $description,
+        ]);
+        if (!str_contains(strtolower($description), 'message is not modified')) {
+            sendmessage($from_id, $catalogText, $catalogKeyboard, 'HTML');
+        }
+    }
+    return;
 } elseif (preg_match('/^ds_sg:([a-z0-9_-]{1,24}):([a-z0-9_-]{1,32}):(\d{1,4})$/', (string) $datain, $digitalServiceGroupMatch)) {
     if (!check_active_btn($setting['keyboardmain'], 'text_digital_services')) {
         sendmessage($from_id, $textbotlang['users']['buttonDisabled'], null, 'HTML');
@@ -1087,14 +1272,12 @@ if ($text == "/start" || $datain == "start" || $text == "start") {
     }
 
     if (!is_array($selectedGroup)) {
-        if (!empty($callback_query_id)) {
-            telegram('answerCallbackQuery', [
-                'callback_query_id' => $callback_query_id,
-                'text' => 'این زیر‌دسته دیگر فعال نیست.',
-                'show_alert' => true,
-                'cache_time' => 0,
-            ]);
-        }
+        telegram('answerCallbackQuery', [
+            'callback_query_id' => $callback_query_id,
+            'text' => 'این زیر‌دسته دیگر فعال نیست.',
+            'show_alert' => true,
+            'cache_time' => 0,
+        ]);
         return;
     }
 
