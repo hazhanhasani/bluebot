@@ -461,7 +461,7 @@ $checks = [
     [str_contains($ozvinooClient, "/getNumber/"), 'OZVinoo V1 number purchase fallback missing'],
     [str_contains($ozvinooClient, "/getCode/"), 'OZVinoo V1 number code fallback missing'],
     [str_contains($manager, "'api_family' => 'web-v1'"), 'OZVinoo V1 fallback catalog mapping missing'],
-    [str_contains($manager, "getNumberV1"), 'OZVinoo V1 delivery fallback missing'],
+    [str_contains($ozvinooNumberProvider, "getNumberV1"), 'OZVinoo V1 delivery fallback missing'],
     [str_contains($manager, "\$pricesResponse = \$client->prices(\$serviceId, 'GET');"), 'Callinoo must synchronize prices for every application'],
     [str_contains($manager, "\$pricesPostResponse = \$client->prices(\$serviceId, 'POST');"), 'Callinoo price discovery must fall back from GET to POST'],
     [str_contains($manager, "\$applicationsGetResponse = \$client->applications('GET');"), 'Callinoo application discovery must start with GET'],
