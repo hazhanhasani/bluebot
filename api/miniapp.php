@@ -1,4 +1,9 @@
 <?php
+ini_set('display_errors', '0');
+ini_set('log_errors', '1');
+if (ob_get_level() === 0) {
+    ob_start();
+}
 require_once __DIR__ . '/../config.php';
 require_once __DIR__ . '/../function.php';
 require_once __DIR__ . '/utils.php';
@@ -54,12 +59,7 @@ if ($method == "GET") {
     $data = json_decode(file_get_contents("php://input"), true);
 }
 if (!is_array($data)) {
-    echo json_encode([
-        'status' => false,
-        'msg' => "Data invalid",
-        'obj' => []
-    ]);
-    return;
+    sendJsonResponse(false, 'Data invalid', [], 400);
 }
 
 $data = sanitize_recursive($data);
@@ -98,22 +98,12 @@ if (!is_array($usercheck)) {
 }
 
 if (!is_array($usercheck)) {
-    http_response_code(403);
-    echo json_encode([
-        'status' => false,
-        'msg' => "Authentication required",
-    ]);
-    return;
+    sendJsonResponse(false, 'Authentication required', [], 403);
 }
 $data['user_id'] = $usercheck['id'];
 
 if ($usercheck['User_Status'] == "block") {
-    http_response_code(402);
-    echo json_encode([
-        'status' => false,
-        'msg' => "user blocked",
-    ]);
-    return;
+    sendJsonResponse(false, 'user blocked', [], 402);
 }
 
 $errorreport = topicId('errorreport');
@@ -1277,40 +1267,57 @@ function mini_purchase(array $data, string $method): void
 function mini_digital_catalog(array $data, string $method): void
 {
     global $pdo;
-    if ($method !== 'GET') sendJsonResponse(false, 'Method invalid; must be GET', [], 405);
-
-    $products = DigitalServiceManager::listActive($pdo);
-    $items = [];
-    $categories = [];
-    foreach ($products as $product) {
-        $category = DigitalServiceManager::categoryForProduct($product);
-        $scope = DigitalServiceManager::serviceScopeForProduct($product);
-        $group = DigitalServiceManager::serviceGroupForProduct($product);
-        $rules = DigitalServiceManager::quantityRules($product);
-        $items[] = [
-            'id' => (int) $product['id'],
-            'code' => (string) ($product['code'] ?? ''),
-            'name' => (string) ($product['name'] ?? ''),
-            'description' => (string) ($product['description'] ?? ''),
-            'type' => (string) ($product['type'] ?? ''),
-            'provider' => (string) ($product['provider'] ?? 'manual'),
-            'price' => (int) ($product['price'] ?? 0),
-            'category' => $category,
-            'scope' => $scope,
-            'group' => $group,
-            'quantity' => $rules,
-            'target_prompt' => strip_tags(DigitalServiceManager::targetPrompt($product)),
-        ];
-        $categories[$category] = ($categories[$category] ?? 0) + 1;
+    if ($method !== 'GET') {
+        sendJsonResponse(false, 'Method invalid; must be GET', [], 405);
     }
-    sendJsonResponse(true, 'Successful', [
-        'products' => $items,
-        'categories' => array_map(
-            static fn($key, $count) => ['key' => $key, 'count' => $count],
-            array_keys($categories),
-            array_values($categories)
-        ),
-    ]);
+
+    try {
+        $products = DigitalServiceManager::listActive($pdo);
+        $items = [];
+        $categories = [];
+
+        foreach ($products as $product) {
+            if (!is_array($product) || empty($product['id'])) {
+                continue;
+            }
+
+            $category = DigitalServiceManager::categoryForProduct($product);
+            $scope = DigitalServiceManager::serviceScopeForProduct($product);
+            $group = DigitalServiceManager::serviceGroupForProduct($product);
+            $rules = DigitalServiceManager::quantityRules($product);
+
+            $items[] = [
+                'id' => (int) $product['id'],
+                'code' => (string) ($product['code'] ?? ''),
+                'name' => (string) ($product['name'] ?? ''),
+                'description' => (string) ($product['description'] ?? ''),
+                'type' => (string) ($product['type'] ?? ''),
+                'provider' => (string) ($product['provider'] ?? 'manual'),
+                'price' => max(0, (int) ($product['price'] ?? 0)),
+                'category' => $category,
+                'scope' => $scope,
+                'group' => $group,
+                'quantity' => $rules,
+                'target_prompt' => strip_tags(DigitalServiceManager::targetPrompt($product)),
+            ];
+            $categories[$category] = ($categories[$category] ?? 0) + 1;
+        }
+
+        sendJsonResponse(true, 'Successful', [
+            'products' => $items,
+            'categories' => array_map(
+                static fn($key, $count) => ['key' => $key, 'count' => $count],
+                array_keys($categories),
+                array_values($categories)
+            ),
+        ]);
+    } catch (Throwable $e) {
+        bluebotLog('error', 'Mini App digital catalog failed', [
+            'reason' => $e->getMessage(),
+            'user_id' => (string) ($data['user_id'] ?? ''),
+        ]);
+        sendJsonResponse(false, 'Digital services catalog unavailable', [], 500);
+    }
 }
 
 function mini_digital_orders(array $data, string $method): void
