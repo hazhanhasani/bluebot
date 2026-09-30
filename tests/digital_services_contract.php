@@ -185,6 +185,13 @@ $checks = [
     [str_contains($manager, "giftPremiumSubscription"), 'Telegram Premium provider missing'],
     [str_contains($manager, "provider === 'tgtools'"), 'TGTools provider dispatch missing'],
     [str_contains($manager, "generatedProviderProductCode"), 'automatic provider product code generation missing'],
+    [str_contains($manager, "DUPLICATE_ACTIVE_ORDER:"), 'duplicate active-order guard missing'],
+    [str_contains($manager, "digital_service_favorites"), 'digital-service favorites storage missing'],
+    [str_contains($manager, "bestSellingProducts"), 'digital-service bestsellers query missing'],
+    [str_contains($manager, "'callback_data' => 'ds_favorites:1'"), 'favorites shortcut missing'],
+    [str_contains($manager, "'callback_data' => 'ds_bestsellers:1'"), 'bestsellers shortcut missing'],
+    [str_contains($manager, "OZVinooVirtualNumberProvider"), 'normalized virtual-number provider adapter is not used'],
+
     [str_contains($manager, "quantityRules"), 'SMM quantity rules helper missing'],
     [str_contains($manager, "normaliseQuantityInput"), 'localized quantity parser missing'],
     [str_contains($manager, "validateQuantity"), 'quantity min/max validation missing'],
@@ -491,6 +498,11 @@ $checks = [
     [str_contains($index, "DUPLICATE_ACTIVE_ORDER:"), 'customer duplicate-order UX missing'],
 
     [str_contains($index, "/^ds_orders:"), 'customer digital-order history route missing'],
+    [str_contains($index, "/^ds_favorites:"), 'customer favorites route missing'],
+    [str_contains($index, "/^ds_bestsellers:"), 'customer bestsellers route missing'],
+    [str_contains($index, "/^ds_fav:"), 'customer favorite toggle route missing'],
+    [str_contains($index, "DUPLICATE_ACTIVE_ORDER:"), 'checkout duplicate-order UX missing'],
+
     [str_contains($index, "/^ds_order:"), 'customer digital-order detail route missing'],
     [str_contains($index, "/^ds_cancel:"), 'customer digital-order cancel confirmation route missing'],
     [str_contains($index, "/^ds_cancel_confirm:"), 'customer digital-order cancellation route missing'],
