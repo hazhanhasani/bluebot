@@ -128,6 +128,13 @@ function bluebotUpdateChannel(?array $settings = null): string
     return bluebotUpdateNormalizeChannel($settings['update_channel'] ?? 'release');
 }
 
+function bluebotUpdateAutoInstallEnabled(?array $settings = null): bool
+{
+    $settings ??= bluebotUpdateSettings();
+    $value = strtolower(trim((string) ($settings['update_auto_install'] ?? '1')));
+    return in_array($value, ['1', 'on', 'yes', 'true', 'enabled'], true);
+}
+
 function bluebotUpdateSetChannel(string $channel): string
 {
     $channel = bluebotUpdateNormalizeChannel($channel);
@@ -596,6 +603,16 @@ function bluebotUpdateQueuePath(): string
     return bluebotUpdateQueueDirectory() . '/update-request.json';
 }
 
+function bluebotUpdateRunningPath(): string
+{
+    return bluebotUpdateQueueDirectory() . '/update-running.json';
+}
+
+function bluebotUpdateQueueBusy(): bool
+{
+    return is_file(bluebotUpdateQueuePath()) || is_file(bluebotUpdateRunningPath());
+}
+
 function bluebotUpdateStatusPath(): string
 {
     return bluebotUpdateQueueDirectory() . '/update-status.json';
@@ -612,7 +629,7 @@ function bluebotUpdateQueueStatus(): array
     return is_array($decoded) ? $decoded : [];
 }
 
-function bluebotQueueUpdate($adminId): array
+function bluebotQueueUpdate($adminId, ?array $resolvedTarget = null): array
 {
     if (!is_numeric($adminId)) {
         return ['ok' => false, 'message' => 'invalid admin id'];
@@ -623,9 +640,16 @@ function bluebotQueueUpdate($adminId): array
         return ['ok' => false, 'message' => 'administrator access required'];
     }
 
+    if (bluebotUpdateQueueBusy()) {
+        return ['ok' => false, 'message' => 'update already queued or running'];
+    }
+
     $settings = bluebotUpdateSettings();
     $channel = bluebotUpdateChannel($settings);
-    $target = bluebotUpdateLatest($channel, true);
+    $target = $resolvedTarget;
+    if ($target === null) {
+        $target = bluebotUpdateLatest($channel, true);
+    }
     if ($target === null) {
         // A short network outage must not invalidate a previously verified
         // target. A cached target is safe because release refs and beta SHAs
@@ -728,6 +752,7 @@ function bluebotUpdateCenterText(?array $settings = null, ?array $target = null)
 
     $text = "🔄 <b>مرکز بروزرسانی بلو پنل</b>\n\n";
     $text .= "📦 کانال انتخابی: <b>" . bluebotUpdateChannelLabel($channel) . "</b>\n";
+    $text .= "⚙️ نصب خودکار: <b>" . (bluebotUpdateAutoInstallEnabled($settings) ? 'فعال' : 'غیرفعال') . "</b>\n";
     $text .= "🔹 نسخه فعلی: <code>" . htmlspecialchars($current, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . "</code>\n";
 
     if ($target === null) {
