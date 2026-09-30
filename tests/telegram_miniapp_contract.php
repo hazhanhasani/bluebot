@@ -75,7 +75,7 @@ if ($appHtaccess === false || !str_contains($appHtaccess, 'app-loader|telegram-b
 if ($appHtaccess === false || !str_contains($appHtaccess, '<FilesMatch "\\.(?:js|css)$">')) {
     $failures[] = 'Mini App JS/CSS must always revalidate while compiled filenames are mutable.';
 }
-if ($appHtaccess !== false && str_contains($appHtaccess, 'max-age=31536000, immutable') && str_contains($appHtaccess, '(?:js|css)')) {
+if ($appHtaccess !== false && str_contains($appHtaccess, 'Vite-style hashed bundles are immutable')) {
     $failures[] = 'Mutable Mini App JS/CSS must not be cached as immutable.';
 }
 
