@@ -65,6 +65,7 @@ return [
         limitnumber varchar(200) NULL,
         webhook_secret varchar(200) NOT NULL DEFAULT '',
         update_channel varchar(20) NOT NULL DEFAULT 'release',
+        update_auto_install varchar(20) NOT NULL DEFAULT '1',
         update_last_notified varchar(128) NOT NULL DEFAULT '',
         update_installed_channel varchar(20) NOT NULL DEFAULT 'release',
         update_installed_ref varchar(128) NOT NULL DEFAULT ''
@@ -115,6 +116,7 @@ return [
             'status_keyboard_config' => '0',
             'cron_status' => $cronStatus,
             'update_channel' => 'release',
+            'update_auto_install' => '1',
             'update_last_notified' => '',
             'update_installed_channel' => 'release',
             'update_installed_ref' => '',
@@ -170,6 +172,7 @@ return [
         ['text_edit', '{}', 'JSON'],
         ['webhook_secret', null, "VARCHAR(200) NOT NULL DEFAULT ''"],
         ['update_channel', 'release', "VARCHAR(20) NOT NULL DEFAULT 'release'"],
+        ['update_auto_install', '1', "VARCHAR(20) NOT NULL DEFAULT '1'"],
         ['update_last_notified', '', "VARCHAR(128) NOT NULL DEFAULT ''"],
         ['update_installed_channel', 'release', "VARCHAR(20) NOT NULL DEFAULT 'release'"],
         ['update_installed_ref', '', "VARCHAR(128) NOT NULL DEFAULT ''"],
