@@ -124,6 +124,11 @@ $mustContain = [
     [$diagnostics, "provider_approval_", 'Runtime /debug must expose provider delivery modes without exposing credentials.'],
     [$diagnostics, "Active products:", 'Runtime /debug must report active digital-service products.'],
     [$diagnostics, "Needs review:", 'Runtime /debug must report unresolved digital-service failures.'],
+    [$diagnostics, "orders_partial_review", 'Runtime /debug must report partial digital orders needing review.'],
+    [$diagnostics, "orders_stale_processing", 'Runtime /debug must report stale processing digital orders.'],
+    [$diagnostics, "Partial review:", 'Runtime /debug partial-order line missing.'],
+    [$diagnostics, "Stale processing (>30m):", 'Runtime /debug stale-processing line missing.'],
+
 
 ];
 
