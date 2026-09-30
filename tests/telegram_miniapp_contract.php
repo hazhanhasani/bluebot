@@ -72,8 +72,11 @@ if ($appHtaccess === false || !str_contains($appHtaccess, 'Cloudflare-CDN-Cache-
 if ($appHtaccess === false || !str_contains($appHtaccess, 'app-loader|telegram-bootstrap|telegram-web-app')) {
     $failures[] = 'Mini App runtime bootstrap scripts need an explicit non-immutable cache policy.';
 }
-if ($appHtaccess === false || !str_contains($appHtaccess, 'Non-hashed scripts/styles must revalidate')) {
-    $failures[] = 'Mini App non-hashed JS/CSS must be revalidated to prevent mixed cached bundle generations.';
+if ($appHtaccess === false || !str_contains($appHtaccess, '<FilesMatch "\\.(?:js|css)$">')) {
+    $failures[] = 'Mini App JS/CSS must always revalidate while compiled filenames are mutable.';
+}
+if ($appHtaccess !== false && str_contains($appHtaccess, 'max-age=31536000, immutable') && str_contains($appHtaccess, '(?:js|css)')) {
+    $failures[] = 'Mutable Mini App JS/CSS must not be cached as immutable.';
 }
 
 $apiHtaccess = @file_get_contents($root . '/api/.htaccess');
