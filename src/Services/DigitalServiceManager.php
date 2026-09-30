@@ -1038,6 +1038,113 @@ final class BluebotDigitalServices
         ];
     }
 
+    public static function savePanelBazProvider(
+        PDO $pdo,
+        string $apiKey,
+        float $profitPercent,
+        float $usdToToman,
+        int $syncIntervalMinutes = 15
+    ): array {
+        BluebotProviderCatalogService::ensureStorage($pdo);
+
+        $apiKey = trim($apiKey);
+        $profitPercent = max(0.0, min(1000.0, $profitPercent));
+        $usdToToman = max(0.0, $usdToToman);
+        $syncIntervalMinutes = max(1, min(1440, $syncIntervalMinutes));
+
+        $existing = BluebotProviderCatalogService::findProvider($pdo, 'panelbaz');
+        if ($apiKey === '' && is_array($existing)) {
+            $apiKey = trim((string) ($existing['api_key'] ?? ''));
+        }
+
+        if ($apiKey === '' || strlen($apiKey) > 2048 || preg_match('/[\r\n]/', $apiKey)) {
+            throw new InvalidArgumentException('کلید API پنل باز معتبر نیست.');
+        }
+        if ($usdToToman <= 0) {
+            throw new InvalidArgumentException('نرخ تبدیل دلار به تومان برای پنل باز باید بیشتر از صفر باشد.');
+        }
+
+        $stmt = $pdo->prepare(
+            "INSERT INTO digital_service_providers
+             (provider_key, name, catalog_url, api_key, auth_header, auth_prefix,
+              products_path, id_field, name_field, category_field, price_field,
+              currency, exchange_rate_toman, profit_percent, active, sync_interval_minutes)
+             VALUES ('panelbaz', 'PanelBaz', 'https://panelbaz.ir/panelbaz/api/v1', ?, '', '',
+                     'smm:.', 'service', 'name', 'category', 'rate',
+                     'usd', ?, ?, 1, ?)
+             ON DUPLICATE KEY UPDATE
+                name = VALUES(name),
+                catalog_url = VALUES(catalog_url),
+                api_key = VALUES(api_key),
+                auth_header = VALUES(auth_header),
+                auth_prefix = VALUES(auth_prefix),
+                products_path = VALUES(products_path),
+                id_field = VALUES(id_field),
+                name_field = VALUES(name_field),
+                category_field = VALUES(category_field),
+                price_field = VALUES(price_field),
+                currency = VALUES(currency),
+                exchange_rate_toman = VALUES(exchange_rate_toman),
+                profit_percent = VALUES(profit_percent),
+                sync_interval_minutes = VALUES(sync_interval_minutes),
+                active = 1"
+        );
+        $stmt->execute([$apiKey, $usdToToman, $profitPercent, $syncIntervalMinutes]);
+
+        return BluebotProviderCatalogService::findProvider($pdo, 'panelbaz') ?? [];
+    }
+
+    public static function panelBazWalletStatus(PDO $pdo): array
+    {
+        $provider = BluebotProviderCatalogService::findProvider($pdo, 'panelbaz');
+        if (!is_array($provider) || trim((string) ($provider['api_key'] ?? '')) === '') {
+            return [
+                'ok' => false,
+                'configured' => false,
+                'balance' => null,
+                'currency' => 'USD',
+                'message' => 'API Key پنل باز تنظیم نشده است.',
+            ];
+        }
+
+        try {
+            $client = new SmmPanelClient(
+                (string) ($provider['catalog_url'] ?? 'https://panelbaz.ir/panelbaz/api/v1'),
+                (string) ($provider['api_key'] ?? ''),
+                'panelbaz'
+            );
+            $response = $client->balance();
+        } catch (Throwable $e) {
+            return [
+                'ok' => false,
+                'configured' => true,
+                'balance' => null,
+                'currency' => 'USD',
+                'message' => $e->getMessage(),
+            ];
+        }
+
+        if (empty($response['ok'])) {
+            return [
+                'ok' => false,
+                'configured' => true,
+                'balance' => null,
+                'currency' => 'USD',
+                'message' => trim((string) ($response['message'] ?? '')) ?: 'دریافت موجودی پنل باز ناموفق بود.',
+                'response' => $response,
+            ];
+        }
+
+        return [
+            'ok' => true,
+            'configured' => true,
+            'balance' => (float) ($response['balance'] ?? 0),
+            'currency' => strtoupper(trim((string) ($response['currency'] ?? 'USD'))) ?: 'USD',
+            'message' => '',
+            'response' => $response,
+        ];
+    }
+
     public static function maybeBootstrapOZVinooCatalog(PDO $pdo): array
     {
         if (!self::isAvailable($pdo)) {
