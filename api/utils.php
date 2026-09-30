@@ -9,6 +9,10 @@ require_once __DIR__ . '/../config.php';
 require_once __DIR__ . '/../function.php';
 require_once __DIR__ . '/../src/Support/ApiToken.php';
 
+if (!headers_sent()) {
+    header('X-BlueBot-API-Version: 1');
+}
+
 if (!function_exists('getallheaders')) {
     function getallheaders(): array
     {
