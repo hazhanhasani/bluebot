@@ -15,6 +15,26 @@ Digital-service administration is intentionally split across the existing BlueBo
 
 This avoids duplicate product/order management screens and keeps each resource in the panel section where administrators already expect it.
 
+### Nobitex API host and optional API Key
+
+BlueBot uses `https://apiv2.nobitex.ir` for Nobitex API traffic. Public
+GRAMIRT orderbook and system-options requests do not require authentication.
+
+Nobitex API Keys are optional and can be configured from the TGTools provider
+card. The current Nobitex API-Key scheme requires **both** values returned when
+the key is created:
+
+- `key` → sent as `Nobitex-Key`
+- `privateKey` → Ed25519 private key used locally to sign requests
+
+BlueBot never sends the private key itself. It signs
+`timestamp + METHOD + full_path + raw_body` locally and sends the resulting
+`Nobitex-Signature` plus `Nobitex-Timestamp`. The “test API key” control
+checks `GET /users/profile`, so a key with `READ` permission is sufficient.
+
+A missing/invalid API Key does not stop public GRAM pricing; public pricing and
+withdrawal-option sync remain independent.
+
 ### Live TON/GRAM pricing from Nobitex
 > **Currency unit note:** Nobitex orderbook prices are consumed as Rial-denominated
 > values by BlueBot. Before TGTools pricing, `lastTradePrice` is divided by

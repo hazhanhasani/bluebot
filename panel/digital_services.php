@@ -43,10 +43,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     if ($action === 'save_tgtools') {
         $apiKey = trim((string) ($_POST['tgtools_api_key'] ?? ''));
+        $nobitexPublicKey = trim((string) ($_POST['nobitex_api_public_key'] ?? ''));
+        $nobitexPrivateKey = trim((string) ($_POST['nobitex_api_private_key'] ?? ''));
         if ($apiKey !== '' && (strlen($apiKey) > 512 || preg_match('/[\r\n]/', $apiKey))) {
             flash('error', 'API Key واردشده معتبر نیست.');
             header('Location: digital_services.php#tgtools');
             exit;
+        }
+        foreach ([
+            'Nobitex Public Key' => $nobitexPublicKey,
+            'Nobitex Private Key' => $nobitexPrivateKey,
+        ] as $label => $credential) {
+            if ($credential !== '' && (strlen($credential) > 4096 || preg_match('/[\r\n]/', $credential))) {
+                flash('error', $label . ' معتبر نیست.');
+                header('Location: digital_services.php#tgtools');
+                exit;
+            }
         }
 
         $starsProfit = (float) ($_POST['tgtools_stars_profit_percent'] ?? 0);
@@ -62,6 +74,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
         ds_panel_set_setting($pdo, 'tgtools_base_url', 'https://api.tg-tools.shop');
         ds_panel_set_setting($pdo, 'tgtools_payment_method', 'ton');
+        ds_panel_set_setting($pdo, 'nobitex_base_url', 'https://apiv2.nobitex.ir');
         ds_panel_set_setting($pdo, 'tgtools_stars_profit_percent', (string) $starsProfit);
         ds_panel_set_setting($pdo, 'tgtools_premium_profit_percent', (string) $premiumProfit);
         ds_panel_set_setting($pdo, 'tgtools_nobitex_trade_fee_percent', (string) max(0, min(20, $tradeFeePercent)));
@@ -69,6 +82,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         ds_panel_set_setting($pdo, 'tgtools_gram_funding_batch', (string) max(0.000001, $fundingBatchGram));
         if ($apiKey !== '') {
             ds_panel_set_setting($pdo, 'tgtools_api_key', $apiKey, true);
+        }
+        if ($nobitexPublicKey !== '') {
+            ds_panel_set_setting($pdo, 'nobitex_api_public_key', $nobitexPublicKey, true);
+        }
+        if ($nobitexPrivateKey !== '') {
+            ds_panel_set_setting($pdo, 'nobitex_api_private_key', $nobitexPrivateKey, true);
         }
 
         $rateRefresh = BluebotDigitalServices::refreshTgToolsTonRateFromNobitex($pdo, true, 60);
@@ -87,6 +106,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             flash('success', $catalogMessage . ' قیمت‌های زنده TGTools نیز دریافت شد.' . $rateMessage);
         } else {
             flash('warning', $catalogMessage . ' دریافت قیمت زنده موقتاً ممکن نبود و کاتالوگ جایگزین استفاده شد.');
+        }
+        header('Location: digital_services.php#tgtools');
+        exit;
+    }
+
+    if ($action === 'test_nobitex_api_key') {
+        $test = BluebotDigitalServices::testNobitexApiKey($pdo);
+        if (!empty($test['ok'])) {
+            flash('success', 'اتصال API Key نوبیتکس با موفقیت تأیید شد (READ /users/profile).');
+        } else {
+            flash(
+                'warning',
+                'تست API Key نوبیتکس ناموفق بود: ' . (string) ($test['message'] ?? 'خطای نامشخص')
+            );
         }
         header('Location: digital_services.php#tgtools');
         exit;
@@ -328,6 +361,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 
 $tgApiKey = ds_panel_setting($pdo, 'tgtools_api_key');
+$nobitexPublicKey = ds_panel_setting($pdo, 'nobitex_api_public_key');
+$nobitexPrivateKey = ds_panel_setting($pdo, 'nobitex_api_private_key');
 $tgStarsProfit = (float) ds_panel_setting($pdo, 'tgtools_stars_profit_percent', '0');
 $tgPremiumProfit = (float) ds_panel_setting($pdo, 'tgtools_premium_profit_percent', '0');
 BluebotDigitalServices::refreshTgToolsTonRateFromNobitex($pdo, false, 60);
@@ -441,6 +476,28 @@ include __DIR__ . '/inc/layout_head.php';
                 <?php endif; ?>
             </div>
             <div class="notice notice-info">
+                <strong>Nobitex API</strong><br>
+                <small>
+                    نرخ GRAM و <code>/v2/options</code> عمومی هستند و بدون کلید کار می‌کنند.
+                    API Key اختیاری است و برای اتصال احراز‌شده/آماده‌سازی قابلیت‌های حساب استفاده می‌شود.
+                    Base URL رسمی: <code>https://apiv2.nobitex.ir</code>
+                </small>
+            </div>
+            <div class="two-col" style="gap:10px">
+                <div class="field">
+                    <label>Nobitex Public Key</label>
+                    <input class="input" type="password" name="nobitex_api_public_key" autocomplete="new-password"
+                        placeholder="<?= $nobitexPublicKey !== '' ? '•••••••• (ذخیره شده؛ برای تغییر وارد کنید)' : 'Nobitex-Key' ?>">
+                    <small class="field-hint">کلید عمومی فیلد <code>key</code>. برای تست اتصال، مجوز <code>READ</code> کافی است.</small>
+                </div>
+                <div class="field">
+                    <label>Nobitex Private Key</label>
+                    <input class="input" type="password" name="nobitex_api_private_key" autocomplete="new-password"
+                        placeholder="<?= $nobitexPrivateKey !== '' ? '•••••••• (ذخیره شده؛ برای تغییر وارد کنید)' : 'privateKey (Base64 URL-safe)' ?>">
+                    <small class="field-hint">کلید خصوصی Ed25519 که هنگام ساخت API Key فقط یک‌بار نمایش داده می‌شود.</small>
+                </div>
+            </div>
+            <div class="notice notice-info">
                 <strong>نرخ تمام‌شده GRAM برای TGTools:</strong>
                 <code><?= $tgLandedTonRateToman > 0 ? htmlspecialchars(number_format($tgLandedTonRateToman)) . ' تومان' : '—' ?></code>
                 <br><small>شامل کارمزد معامله نوبیتکس + کارمزد برداشت GRAM از نوبیتکس + کارمزد انتقال Tonkeeper تا کیف پول TGTools.</small>
@@ -494,6 +551,11 @@ include __DIR__ . '/inc/layout_head.php';
                 <input type="hidden" name="_csrf" value="<?= htmlspecialchars(csrf_token()) ?>">
                 <input type="hidden" name="action" value="refresh_tgtools_ton_rate">
                 <button class="btn btn-ghost" type="submit">↻ دریافت نرخ لحظه‌ای نوبیتکس</button>
+            </form>
+            <form method="post">
+                <input type="hidden" name="_csrf" value="<?= htmlspecialchars(csrf_token()) ?>">
+                <input type="hidden" name="action" value="test_nobitex_api_key">
+                <button class="btn btn-ghost" type="submit">🔐 تست API Key نوبیتکس</button>
             </form>
             <form method="post">
                 <input type="hidden" name="_csrf" value="<?= htmlspecialchars(csrf_token()) ?>">

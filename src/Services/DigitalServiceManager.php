@@ -239,6 +239,20 @@ final class BluebotDigitalServices
         };
     }
 
+    private static function nobitexClient(PDO $pdo): NobitexMarketClient
+    {
+        return new NobitexMarketClient(
+            self::setting($pdo, 'nobitex_base_url', 'https://apiv2.nobitex.ir'),
+            self::setting($pdo, 'nobitex_api_public_key', ''),
+            self::setting($pdo, 'nobitex_api_private_key', '')
+        );
+    }
+
+    public static function testNobitexApiKey(PDO $pdo): array
+    {
+        return self::nobitexClient($pdo)->testApiKey();
+    }
+
     public static function tgToolsTonRateStatus(PDO $pdo): array
     {
         $marketRate = max(0.0, (float) self::setting($pdo, 'tgtools_ton_toman_rate', '0'));
@@ -256,6 +270,9 @@ final class BluebotDigitalServices
 
         return [
             'rate_toman' => $marketRate,
+            'base_url' => self::setting($pdo, 'nobitex_base_url', 'https://apiv2.nobitex.ir'),
+            'api_key_configured' => self::setting($pdo, 'nobitex_api_public_key', '') !== ''
+                && self::setting($pdo, 'nobitex_api_private_key', '') !== '',
             'landed_rate_toman' => $landedRate,
             'trade_fee_percent' => $tradeFeePercent,
             'nobitex_withdraw_fee_gram' => $nobitexWithdrawFeeGram,
@@ -313,7 +330,7 @@ final class BluebotDigitalServices
             ];
         }
 
-        $response = (new NobitexMarketClient())->gramWithdrawalInfo();
+        $response = self::nobitexClient($pdo)->gramWithdrawalInfo();
         if (empty($response['ok'])) {
             $message = trim((string) ($response['message'] ?? '')) ?: 'Nobitex withdrawal-fee request failed.';
             self::setSetting($pdo, 'tgtools_nobitex_withdraw_fee_last_error', $message, false);
@@ -376,7 +393,7 @@ final class BluebotDigitalServices
             ];
         }
 
-        $response = (new NobitexMarketClient())->tonTomanRate();
+        $response = self::nobitexClient($pdo)->tonTomanRate();
         if (empty($response['ok'])) {
             $message = trim((string) ($response['message'] ?? '')) ?: 'Nobitex rate request failed.';
             self::setSetting($pdo, 'tgtools_ton_rate_last_error', $message, false);

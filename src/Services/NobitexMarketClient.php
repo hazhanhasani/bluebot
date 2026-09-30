@@ -2,70 +2,47 @@
 
 final class NobitexMarketClient
 {
-    private const BASE_URL = 'https://api.nobitex.ir';
+    private const DEFAULT_BASE_URL = 'https://apiv2.nobitex.ir';
     private const TON_MARKET = 'GRAMIRT';
     private const RIALS_PER_TOMAN = 10.0;
 
+    private string $baseUrl;
+    private string $publicKey;
+    private string $privateKey;
+
+    public function __construct(
+        string $baseUrl = self::DEFAULT_BASE_URL,
+        string $publicKey = '',
+        string $privateKey = ''
+    ) {
+        $baseUrl = rtrim(trim($baseUrl), '/');
+        $this->baseUrl = $baseUrl !== '' ? $baseUrl : self::DEFAULT_BASE_URL;
+        $this->publicKey = trim($publicKey);
+        $this->privateKey = trim($privateKey);
+    }
+
     public function tonTomanRate(): array
     {
-        $url = self::BASE_URL . '/v3/orderbook/' . self::TON_MARKET;
-
-        if (!function_exists('curl_init')) {
+        $response = $this->requestJson('GET', '/v3/orderbook/' . self::TON_MARKET, false);
+        if (empty($response['ok'])) {
             return [
                 'ok' => false,
                 'market' => self::TON_MARKET,
                 'rate_toman' => null,
                 'last_update' => null,
-                'message' => 'cURL extension is unavailable.',
+                'http' => (int) ($response['http'] ?? 0),
+                'message' => (string) ($response['message'] ?? 'Nobitex orderbook request failed.'),
             ];
         }
 
-        $ch = curl_init($url);
-        if ($ch === false) {
+        $data = is_array($response['data'] ?? null) ? $response['data'] : [];
+        if (strtolower((string) ($data['status'] ?? '')) !== 'ok') {
             return [
                 'ok' => false,
                 'market' => self::TON_MARKET,
                 'rate_toman' => null,
                 'last_update' => null,
-                'message' => 'Unable to initialize Nobitex request.',
-            ];
-        }
-
-        curl_setopt_array($ch, [
-            CURLOPT_RETURNTRANSFER => true,
-            CURLOPT_FOLLOWLOCATION => false,
-            CURLOPT_CONNECTTIMEOUT => 3,
-            CURLOPT_TIMEOUT => 6,
-            CURLOPT_HTTPHEADER => [
-                'Accept: application/json',
-                'User-Agent: BlueBot/1.0',
-            ],
-        ]);
-
-        $body = curl_exec($ch);
-        $http = (int) curl_getinfo($ch, CURLINFO_RESPONSE_CODE);
-        $error = curl_error($ch);
-        curl_close($ch);
-
-        if (!is_string($body) || $body === '' || $http < 200 || $http >= 300) {
-            return [
-                'ok' => false,
-                'market' => self::TON_MARKET,
-                'rate_toman' => null,
-                'last_update' => null,
-                'http' => $http,
-                'message' => $error !== '' ? $error : ('Nobitex returned HTTP ' . $http),
-            ];
-        }
-
-        $data = json_decode($body, true);
-        if (!is_array($data) || strtolower((string) ($data['status'] ?? '')) !== 'ok') {
-            return [
-                'ok' => false,
-                'market' => self::TON_MARKET,
-                'rate_toman' => null,
-                'last_update' => null,
-                'http' => $http,
+                'http' => (int) ($response['http'] ?? 0),
                 'message' => 'Nobitex returned an invalid orderbook response.',
             ];
         }
@@ -77,7 +54,7 @@ final class NobitexMarketClient
                 'market' => self::TON_MARKET,
                 'rate_toman' => null,
                 'last_update' => $data['lastUpdate'] ?? null,
-                'http' => $http,
+                'http' => (int) ($response['http'] ?? 0),
                 'message' => 'Nobitex orderbook does not contain a valid lastTradePrice.',
             ];
         }
@@ -93,75 +70,27 @@ final class NobitexMarketClient
             'last_update' => is_numeric($data['lastUpdate'] ?? null)
                 ? (int) $data['lastUpdate']
                 : null,
-            'http' => $http,
+            'http' => (int) ($response['http'] ?? 200),
+            'base_url' => $this->baseUrl,
             'message' => '',
         ];
     }
 
     public function gramWithdrawalInfo(): array
     {
-        $url = self::BASE_URL . '/v2/options';
-
-        if (!function_exists('curl_init')) {
+        $response = $this->requestJson('GET', '/v2/options', false);
+        if (empty($response['ok'])) {
             return [
                 'ok' => false,
                 'withdraw_fee_gram' => null,
                 'withdraw_min_gram' => null,
                 'network' => 'TON',
-                'message' => 'cURL extension is unavailable.',
+                'http' => (int) ($response['http'] ?? 0),
+                'message' => (string) ($response['message'] ?? 'Nobitex options request failed.'),
             ];
         }
 
-        $ch = curl_init($url);
-        if ($ch === false) {
-            return [
-                'ok' => false,
-                'withdraw_fee_gram' => null,
-                'withdraw_min_gram' => null,
-                'network' => 'TON',
-                'message' => 'Unable to initialize Nobitex options request.',
-            ];
-        }
-
-        curl_setopt_array($ch, [
-            CURLOPT_RETURNTRANSFER => true,
-            CURLOPT_FOLLOWLOCATION => false,
-            CURLOPT_CONNECTTIMEOUT => 3,
-            CURLOPT_TIMEOUT => 8,
-            CURLOPT_HTTPHEADER => [
-                'Accept: application/json',
-                'User-Agent: BlueBot/1.0',
-            ],
-        ]);
-
-        $body = curl_exec($ch);
-        $http = (int) curl_getinfo($ch, CURLINFO_RESPONSE_CODE);
-        $error = curl_error($ch);
-        curl_close($ch);
-
-        if (!is_string($body) || $body === '' || $http < 200 || $http >= 300) {
-            return [
-                'ok' => false,
-                'withdraw_fee_gram' => null,
-                'withdraw_min_gram' => null,
-                'network' => 'TON',
-                'http' => $http,
-                'message' => $error !== '' ? $error : ('Nobitex options returned HTTP ' . $http),
-            ];
-        }
-
-        $data = json_decode($body, true);
-        if (!is_array($data)) {
-            return [
-                'ok' => false,
-                'withdraw_fee_gram' => null,
-                'withdraw_min_gram' => null,
-                'network' => 'TON',
-                'http' => $http,
-                'message' => 'Nobitex options returned invalid JSON.',
-            ];
-        }
-
+        $data = is_array($response['data'] ?? null) ? $response['data'] : [];
         $gramNode = $this->findCurrencyNode($data, 'gram');
         if (!is_array($gramNode)) {
             return [
@@ -169,7 +98,7 @@ final class NobitexMarketClient
                 'withdraw_fee_gram' => null,
                 'withdraw_min_gram' => null,
                 'network' => 'TON',
-                'http' => $http,
+                'http' => (int) ($response['http'] ?? 0),
                 'message' => 'GRAM was not found in Nobitex options.',
             ];
         }
@@ -181,7 +110,7 @@ final class NobitexMarketClient
                 'withdraw_fee_gram' => null,
                 'withdraw_min_gram' => null,
                 'network' => 'TON',
-                'http' => $http,
+                'http' => (int) ($response['http'] ?? 0),
                 'message' => 'GRAM/TON withdrawal fee was not found in Nobitex options.',
             ];
         }
@@ -193,9 +122,161 @@ final class NobitexMarketClient
                 ? max(0.0, (float) $terms['withdrawMin'])
                 : null,
             'network' => (string) ($terms['network'] ?? 'TON'),
-            'http' => $http,
+            'http' => (int) ($response['http'] ?? 200),
+            'base_url' => $this->baseUrl,
             'message' => '',
         ];
+    }
+
+    public function testApiKey(): array
+    {
+        if ($this->publicKey === '' || $this->privateKey === '') {
+            return [
+                'ok' => false,
+                'http' => 0,
+                'message' => 'Nobitex Public Key and Private Key are both required.',
+            ];
+        }
+
+        $response = $this->requestJson('GET', '/users/profile', true);
+        if (empty($response['ok'])) {
+            return [
+                'ok' => false,
+                'http' => (int) ($response['http'] ?? 0),
+                'message' => (string) ($response['message'] ?? 'Nobitex API Key validation failed.'),
+            ];
+        }
+
+        return [
+            'ok' => true,
+            'http' => (int) ($response['http'] ?? 200),
+            'message' => '',
+        ];
+    }
+
+    private function requestJson(string $method, string $path, bool $authenticated): array
+    {
+        if (!function_exists('curl_init')) {
+            return ['ok' => false, 'http' => 0, 'message' => 'cURL extension is unavailable.'];
+        }
+
+        $method = strtoupper(trim($method));
+        $path = '/' . ltrim($path, '/');
+        $headers = [
+            'Accept: application/json',
+            'User-Agent: BlueBot/1.0',
+        ];
+
+        if ($authenticated) {
+            $authHeaders = $this->apiKeyHeaders($method, $path, '');
+            if (empty($authHeaders['ok'])) {
+                return [
+                    'ok' => false,
+                    'http' => 0,
+                    'message' => (string) ($authHeaders['message'] ?? 'Unable to sign Nobitex request.'),
+                ];
+            }
+            foreach (($authHeaders['headers'] ?? []) as $header) {
+                $headers[] = $header;
+            }
+        }
+
+        $ch = curl_init($this->baseUrl . $path);
+        if ($ch === false) {
+            return ['ok' => false, 'http' => 0, 'message' => 'Unable to initialize Nobitex request.'];
+        }
+
+        curl_setopt_array($ch, [
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_FOLLOWLOCATION => false,
+            CURLOPT_CONNECTTIMEOUT => 4,
+            CURLOPT_TIMEOUT => 10,
+            CURLOPT_CUSTOMREQUEST => $method,
+            CURLOPT_HTTPHEADER => $headers,
+        ]);
+
+        $body = curl_exec($ch);
+        $http = (int) curl_getinfo($ch, CURLINFO_RESPONSE_CODE);
+        $error = curl_error($ch);
+        curl_close($ch);
+
+        if (!is_string($body) || $body === '' || $http < 200 || $http >= 300) {
+            return [
+                'ok' => false,
+                'http' => $http,
+                'message' => $error !== '' ? $error : ('Nobitex returned HTTP ' . $http),
+            ];
+        }
+
+        $data = json_decode($body, true);
+        if (!is_array($data)) {
+            return [
+                'ok' => false,
+                'http' => $http,
+                'message' => 'Nobitex returned invalid JSON.',
+            ];
+        }
+
+        return [
+            'ok' => true,
+            'http' => $http,
+            'data' => $data,
+            'message' => '',
+        ];
+    }
+
+    private function apiKeyHeaders(string $method, string $fullPath, string $rawBody): array
+    {
+        if ($this->publicKey === '' || $this->privateKey === '') {
+            return ['ok' => false, 'headers' => [], 'message' => 'Nobitex API Key is not configured.'];
+        }
+        if (!function_exists('sodium_crypto_sign_detached')) {
+            return ['ok' => false, 'headers' => [], 'message' => 'PHP sodium extension is required for Nobitex API Key signatures.'];
+        }
+
+        $privateKeyBytes = $this->base64UrlDecode($this->privateKey);
+        if (!is_string($privateKeyBytes)) {
+            return ['ok' => false, 'headers' => [], 'message' => 'Nobitex Private Key encoding is invalid.'];
+        }
+
+        if (strlen($privateKeyBytes) === SODIUM_CRYPTO_SIGN_SEEDBYTES) {
+            $keypair = sodium_crypto_sign_seed_keypair($privateKeyBytes);
+            $secretKey = sodium_crypto_sign_secretkey($keypair);
+        } elseif (strlen($privateKeyBytes) === SODIUM_CRYPTO_SIGN_SECRETKEYBYTES) {
+            $secretKey = $privateKeyBytes;
+        } else {
+            return ['ok' => false, 'headers' => [], 'message' => 'Nobitex Private Key length is invalid.'];
+        }
+
+        $timestamp = (string) time();
+        $payload = $timestamp . strtoupper($method) . $fullPath . $rawBody;
+        $signature = sodium_crypto_sign_detached($payload, $secretKey);
+        sodium_memzero($secretKey);
+
+        return [
+            'ok' => true,
+            'headers' => [
+                'Nobitex-Key: ' . $this->publicKey,
+                'Nobitex-Signature: ' . $this->base64UrlEncode($signature),
+                'Nobitex-Timestamp: ' . $timestamp,
+            ],
+            'message' => '',
+        ];
+    }
+
+    private function base64UrlDecode(string $value): string|false
+    {
+        $value = trim($value);
+        $padding = strlen($value) % 4;
+        if ($padding > 0) {
+            $value .= str_repeat('=', 4 - $padding);
+        }
+        return base64_decode(strtr($value, '-_', '+/'), true);
+    }
+
+    private function base64UrlEncode(string $value): string
+    {
+        return rtrim(strtr(base64_encode($value), '+/', '-_'), '=');
     }
 
     private function findCurrencyNode(array $node, string $currency): ?array
@@ -260,5 +341,4 @@ final class NobitexMarketClient
 
         return null;
     }
-
 }
