@@ -35,6 +35,7 @@ return [
     'digital_service_favorites',
     'digital_service_settings',
     'reagent_report',
+    'referral_commissions',
     'sms_settings',
     'sms_templates',
     'sms_deliveries',

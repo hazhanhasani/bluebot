@@ -1315,6 +1315,115 @@ function addBalance($userId, $amount)
     $stmt = $pdo->prepare("UPDATE user SET Balance = Balance + ? WHERE id = ?");
     $stmt->execute([$amount, $userId]);
 }
+/**
+ * Credit a referral commission exactly once for a completed purchase.
+ *
+ * $sourceType/$sourceId form a stable idempotency key, so retries, webhook
+ * replays and provider reconciliation cannot pay the same commission twice.
+ */
+function creditReferralCommission(string $buyerId, int $sourceAmount, string $sourceType, string $sourceId): array
+{
+    global $pdo;
+
+    $buyerId = trim($buyerId);
+    $sourceType = preg_replace('/[^a-z0-9_-]/i', '', strtolower(trim($sourceType))) ?: 'unknown';
+    $sourceId = trim($sourceId);
+    if ($buyerId === '' || $sourceId === '' || $sourceAmount <= 0) {
+        return ['credited' => false, 'reason' => 'invalid_source'];
+    }
+
+    $affiliate = select("affiliates", "*", null, null, "select");
+    if (!is_array($affiliate) || ($affiliate['status_commission'] ?? '') !== 'oncommission') {
+        return ['credited' => false, 'reason' => 'disabled'];
+    }
+
+    $buyer = select("user", "*", "id", $buyerId, "select");
+    $referrerId = trim((string) ($buyer['affiliates'] ?? ''));
+    if ($referrerId === '' || $referrerId === '0' || $referrerId === $buyerId || !rowExists("user", "id", $referrerId)) {
+        return ['credited' => false, 'reason' => 'no_referrer'];
+    }
+
+    $settingRow = select("setting", "*", null, null, "select");
+    $percent = is_numeric($settingRow['affiliatespercentage'] ?? null)
+        ? max(0.0, min(100.0, (float) $settingRow['affiliatespercentage']))
+        : 0.0;
+    if ($percent <= 0) {
+        return ['credited' => false, 'reason' => 'zero_percent'];
+    }
+
+    // First-purchase-only is enforced by the commission ledger itself.
+    // This avoids depending on invoice timing/status and works across every product family.
+    if (($affiliate['porsant_one_buy'] ?? '') === 'on_buy_porsant') {
+        $first = $pdo->prepare(
+            "SELECT COUNT(*) FROM referral_commissions WHERE referred_user_id = ?"
+        );
+        $first->execute([$buyerId]);
+        if ((int) $first->fetchColumn() > 0) {
+            return ['credited' => false, 'reason' => 'first_purchase_only'];
+        }
+    }
+
+    $amount = (int) floor(($sourceAmount * $percent) / 100);
+    if ($amount <= 0) {
+        return ['credited' => false, 'reason' => 'rounded_zero'];
+    }
+
+    $eventKey = hash('sha256', $sourceType . ':' . $sourceId);
+    $started = !$pdo->inTransaction();
+    if ($started) {
+        $pdo->beginTransaction();
+    }
+
+    try {
+        $insert = $pdo->prepare(
+            "INSERT IGNORE INTO referral_commissions
+             (event_key, referrer_id, referred_user_id, source_type, source_id, amount, percent, source_amount)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
+        );
+        $insert->execute([
+            $eventKey,
+            $referrerId,
+            $buyerId,
+            $sourceType,
+            $sourceId,
+            $amount,
+            $percent,
+            $sourceAmount,
+        ]);
+        if ($insert->rowCount() !== 1) {
+            if ($started) {
+                $pdo->commit();
+            }
+            return ['credited' => false, 'reason' => 'already_credited'];
+        }
+
+        $credit = $pdo->prepare("UPDATE user SET Balance = Balance + ? WHERE id = ?");
+        $credit->execute([$amount, $referrerId]);
+        if ($credit->rowCount() !== 1) {
+            throw new RuntimeException('Referral commission credit failed.');
+        }
+
+        if ($started) {
+            $pdo->commit();
+        }
+        clearSelectCache('user');
+        return [
+            'credited' => true,
+            'amount' => $amount,
+            'percent' => $percent,
+            'referrer_id' => $referrerId,
+            'buyer_id' => $buyerId,
+            'source_type' => $sourceType,
+            'source_id' => $sourceId,
+        ];
+    } catch (Throwable $e) {
+        if ($started && $pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
+        throw $e;
+    }
+}
+
 function DirectPayment($order_id, $image = null)
 {
     $image = $image ?: bluebotQrBackgroundPath();
@@ -1519,63 +1628,31 @@ function DirectPayment($order_id, $image = null)
                 ]);
             }
         }
-        $affiliatescommission = select("affiliates", "*", null, null, "select");
-        $marzbanporsant_one_buy = select("affiliates", "*", null, null, "select");
-        $stmt = $pdo->prepare("SELECT * FROM invoice WHERE name_product != :name_product  AND id_user = :id_user AND Status != 'Unpaid'");
-        $stmt->bindParam(':id_user', $Balance_id['id']);
-        $stmt->bindParam(':name_product', $textbotlang['common']['labels']['testServiceName']);
-        $stmt->execute();
-        $countinvoice = $stmt->rowCount();
-        if ($affiliatescommission['status_commission'] == "oncommission" && ($Balance_id['affiliates'] != null && intval($Balance_id['affiliates']) != 0)) {
-            if ($marzbanporsant_one_buy['porsant_one_buy'] == "on_buy_porsant") {
-                if ($countinvoice <= 1) {
-                    $result = ($Payment_report['price'] * $setting['affiliatespercentage']) / 100;
-                    $user_Balance = select("user", "*", "id", $Balance_id['affiliates'], "select");
-                    if (intval($setting['scorestatus']) == 1 and !in_array($Balance_id['affiliates'], $admin_ids)) {
-                        sendmessage($Balance_id['affiliates'], $textbotlang['users']['affiliates']['pointsEarned2Alt'], null, 'html');
-                        $scorenew = $user_Balance['score'] + 2;
-                        update("user", "score", $scorenew, "id", $Balance_id['affiliates']);
-                    }
-                    $Balance_prim = $user_Balance['Balance'] + $result;
-                    $dateacc = date('Y/m/d H:i:s');
-                    update("user", "Balance", $Balance_prim, "id", $Balance_id['affiliates']);
-                    $result = number_format($result);
-                    $textadd = sprintf($textbotlang['users']['affiliates']['commissionPaidFn'], $result);
-                    $textreportport = sprintf($textbotlang['Admin']['reportgroup']['commissionPaidFn'], $result, $Balance_id['affiliates'], $Balance_id['id'], $dateacc);
-                    if (strlen($setting['Channel_Report']) > 0) {
-                        telegram('sendmessage', [
-                            'chat_id' => $setting['Channel_Report'],
-                            'message_thread_id' => $porsantreport,
-                            'text' => $textreportport,
-                            'parse_mode' => "HTML"
-                        ]);
-                    }
-                    sendmessage($Balance_id['affiliates'], $textadd, null, 'HTML');
-                }
-            } else {
-
-                $result = ($Payment_report['price'] * $setting['affiliatespercentage']) / 100;
-                $user_Balance = select("user", "*", "id", $Balance_id['affiliates'], "select");
-                if (intval($setting['scorestatus']) == 1 and !in_array($Balance_id['affiliates'], $admin_ids)) {
-                    sendmessage($Balance_id['affiliates'], $textbotlang['users']['affiliates']['pointsEarned2Alt'], null, 'html');
-                    $scorenew = $user_Balance['score'] + 2;
-                    update("user", "score", $scorenew, "id", $Balance_id['affiliates']);
-                }
-                $Balance_prim = $user_Balance['Balance'] + $result;
+        $commission = creditReferralCommission(
+            (string) $Balance_id['id'],
+            max(0, (int) ($Payment_report['price'] ?? $get_invoice['price_product'] ?? 0)),
+            'subscription',
+            (string) ($get_invoice['id_invoice'] ?? $order_id)
+        );
+        if (!empty($commission['credited'])) {
+            $resultFormatted = number_format((int) $commission['amount']);
+            $textadd = sprintf($textbotlang['users']['affiliates']['commissionPaidFn2'], $resultFormatted);
+            sendmessage((string) $commission['referrer_id'], $textadd, null, 'HTML');
+            if (strlen($setting['Channel_Report']) > 0) {
                 $dateacc = date('Y/m/d H:i:s');
-                update("user", "Balance", $Balance_prim, "id", $Balance_id['affiliates']);
-                $result = number_format($result);
-                $textadd = sprintf($textbotlang['users']['affiliates']['commissionPaidFn2'], $result);
-                $textreportport = sprintf($textbotlang['Admin']['reportgroup']['commissionPaidFn2'], $result, $Balance_id['affiliates'], $Balance_id['id'], $dateacc);
-                if (strlen($setting['Channel_Report']) > 0) {
-                    telegram('sendmessage', [
-                        'chat_id' => $setting['Channel_Report'],
-                        'message_thread_id' => $porsantreport,
-                        'text' => $textreportport,
-                        'parse_mode' => "HTML"
-                    ]);
-                }
-                sendmessage($Balance_id['affiliates'], $textadd, null, 'HTML');
+                $textreportport = sprintf(
+                    $textbotlang['Admin']['reportgroup']['commissionPaidFn2'],
+                    $resultFormatted,
+                    $commission['referrer_id'],
+                    $Balance_id['id'],
+                    $dateacc
+                );
+                telegram('sendmessage', [
+                    'chat_id' => $setting['Channel_Report'],
+                    'message_thread_id' => $porsantreport,
+                    'text' => $textreportport,
+                    'parse_mode' => "HTML"
+                ]);
             }
         }
         if (in_array(usernameMethodKey($marzban_list_get['MethodUsername']), ['customTextSequential', 'usernameSequential', 'numericIdSequential', 'agentCustomTextSequential'], true)) {

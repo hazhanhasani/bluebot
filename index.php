@@ -8092,7 +8092,17 @@ if ($text == "/start" || $datain == "start" || $text == "start") {
     $affiliatePercentage = is_numeric($setting['affiliatespercentage'] ?? null)
         ? max(0.0, min(100.0, (float) $setting['affiliatespercentage']))
         : 0.0;
-    $earnedCommission = ((float) ($inforefral['total_price'] ?? 0) * $affiliatePercentage) / 100;
+    $ledgerCommission = 0;
+    try {
+        $ledgerStmt = $pdo->prepare("SELECT COALESCE(SUM(amount), 0) FROM referral_commissions WHERE referrer_id = ?");
+        $ledgerStmt->execute([(string) $from_id]);
+        $ledgerCommission = (int) $ledgerStmt->fetchColumn();
+    } catch (Throwable $e) {
+        // Keep compatibility while the schema bootstrap has not run yet.
+        $ledgerCommission = 0;
+    }
+    $legacyCommission = ((float) ($inforefral['total_price'] ?? 0) * $affiliatePercentage) / 100;
+    $earnedCommission = max($ledgerCommission, (int) floor($legacyCommission));
     $giftTotal = max(0, (int) ($affiliates['price_Discount'] ?? 0));
 
     // Banner captions support live referral placeholders.
