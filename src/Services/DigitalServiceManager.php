@@ -1844,6 +1844,33 @@ final class BluebotDigitalServices
         return 'other';
     }
 
+    public static function serviceScopeForProduct(array $product): array
+    {
+        $metadata = self::productMetadata($product);
+        $key = strtolower(trim((string) ($metadata['service_scope_key'] ?? '')));
+        $label = trim((string) ($metadata['service_scope_label'] ?? ''));
+        $sort = (int) ($metadata['service_scope_sort'] ?? 900);
+
+        if ($key !== '' && preg_match('/^[a-z0-9_-]{1,24}$/', $key)) {
+            return [
+                'key' => $key,
+                'label' => $label !== '' ? $label : '🧭 ' . str_replace(['-', '_'], ' ', $key),
+                'sort' => $sort,
+            ];
+        }
+
+        $category = self::categoryForProduct($product);
+        $rawCategory = trim((string) ($metadata['provider_category_raw'] ?? ''));
+        $description = trim((string) ($metadata['provider_description'] ?? $product['description'] ?? ''));
+
+        return BluebotProviderCatalogService::normaliseServiceScope(
+            $category,
+            $rawCategory,
+            (string) ($product['name'] ?? ''),
+            $description
+        );
+    }
+
     public static function serviceGroupForProduct(array $product): array
     {
         $metadata = self::productMetadata($product);
@@ -1871,6 +1898,11 @@ final class BluebotDigitalServices
         );
     }
 
+    public static function categoryUsesServiceScopes(string $category): bool
+    {
+        return strtolower(trim($category)) === 'telegram';
+    }
+
     public static function categoryUsesServiceGroups(string $category): bool
     {
         $category = strtolower(trim($category));
@@ -1881,7 +1913,70 @@ final class BluebotDigitalServices
         return !in_array($category, ['premium', 'stars', 'virtual_number'], true);
     }
 
-    public static function serviceGroups(PDO $pdo, string $category): array
+    public static function serviceScopes(PDO $pdo, string $category): array
+    {
+        if (!self::categoryUsesServiceScopes($category)) {
+            return [];
+        }
+
+        $scopes = [];
+        foreach (self::listActive($pdo) as $product) {
+            if (self::categoryForProduct($product) !== $category) {
+                continue;
+            }
+
+            $scope = self::serviceScopeForProduct($product);
+            $key = (string) ($scope['key'] ?? 'general');
+            if (!isset($scopes[$key])) {
+                $scopes[$key] = [
+                    'key' => $key,
+                    'label' => (string) ($scope['label'] ?? '🧭 عمومی'),
+                    'sort' => (int) ($scope['sort'] ?? 900),
+                    'count' => 0,
+                ];
+            }
+            $scopes[$key]['count']++;
+        }
+
+        uasort($scopes, static function (array $a, array $b): int {
+            $sort = ((int) ($a['sort'] ?? 900)) <=> ((int) ($b['sort'] ?? 900));
+            if ($sort !== 0) {
+                return $sort;
+            }
+            return strnatcasecmp((string) ($a['label'] ?? ''), (string) ($b['label'] ?? ''));
+        });
+
+        return array_values($scopes);
+    }
+
+    public static function serviceScopeKeyboard(PDO $pdo, string $category): string
+    {
+        $rows = [];
+        foreach (self::serviceScopes($pdo, $category) as $scope) {
+            $scopeKey = (string) ($scope['key'] ?? 'general');
+            $rows[] = [[
+                'text' => (string) ($scope['label'] ?? '🧭 عمومی')
+                    . ' · ' . number_format((int) ($scope['count'] ?? 0)),
+                'callback_data' => 'ds_scope:' . $category . ':' . $scopeKey,
+            ]];
+        }
+
+        if ($rows === []) {
+            $rows[] = [[
+                'text' => 'فعلاً بخشی موجود نیست',
+                'callback_data' => 'ds_home',
+            ]];
+        }
+
+        $rows[] = [[
+            'text' => '↩️ دسته‌بندی‌ها',
+            'callback_data' => 'ds_home',
+        ]];
+
+        return json_encode(['inline_keyboard' => $rows], JSON_UNESCAPED_UNICODE);
+    }
+
+    public static function serviceGroups(PDO $pdo, string $category, ?string $serviceScope = null): array
     {
         if (!self::categoryUsesServiceGroups($category)) {
             return [];
@@ -1890,6 +1985,10 @@ final class BluebotDigitalServices
         $groups = [];
         foreach (self::listActive($pdo) as $product) {
             if (self::categoryForProduct($product) !== $category) {
+                continue;
+            }
+            if ($serviceScope !== null
+                && (string) (self::serviceScopeForProduct($product)['key'] ?? 'general') !== $serviceScope) {
                 continue;
             }
 
@@ -1917,28 +2016,39 @@ final class BluebotDigitalServices
         return array_values($groups);
     }
 
-    public static function serviceGroupKeyboard(PDO $pdo, string $category): string
-    {
+    public static function serviceGroupKeyboard(
+        PDO $pdo,
+        string $category,
+        ?string $serviceScope = null
+    ): string {
         $rows = [];
-        foreach (self::serviceGroups($pdo, $category) as $group) {
+        foreach (self::serviceGroups($pdo, $category, $serviceScope) as $group) {
             $groupKey = (string) ($group['key'] ?? 'other');
+            $callback = $serviceScope !== null
+                ? 'ds_sg:' . $category . ':' . $serviceScope . ':' . $groupKey . ':1'
+                : 'ds_sg:' . $category . ':' . $groupKey . ':1';
+
             $rows[] = [[
                 'text' => (string) ($group['label'] ?? '🧩 سایر')
                     . ' · ' . number_format((int) ($group['count'] ?? 0)),
-                'callback_data' => 'ds_sg:' . $category . ':' . $groupKey . ':1',
+                'callback_data' => $callback,
             ]];
         }
 
         if ($rows === []) {
             $rows[] = [[
                 'text' => 'فعلاً زیر‌دسته‌ای موجود نیست',
-                'callback_data' => 'ds_home',
+                'callback_data' => $serviceScope !== null
+                    ? 'ds_category:' . $category
+                    : 'ds_home',
             ]];
         }
 
         $rows[] = [[
-            'text' => '↩️ دسته‌بندی‌ها',
-            'callback_data' => 'ds_home',
+            'text' => $serviceScope !== null ? '↩️ بخش‌های تلگرام' : '↩️ دسته‌بندی‌ها',
+            'callback_data' => $serviceScope !== null
+                ? 'ds_category:' . $category
+                : 'ds_home',
         ]];
 
         return json_encode(['inline_keyboard' => $rows], JSON_UNESCAPED_UNICODE);
@@ -2494,7 +2604,8 @@ final class BluebotDigitalServices
         ?string $category = null,
         int $page = 1,
         int $perPage = 8,
-        ?string $serviceGroup = null
+        ?string $serviceGroup = null,
+        ?string $serviceScope = null
     ): string {
         $rows = [];
         if ($category !== null && !self::categoryEnabled($pdo, $category)) {
@@ -2508,6 +2619,10 @@ final class BluebotDigitalServices
         $products = [];
         foreach (self::listActive($pdo) as $product) {
             if ($category !== null && self::categoryForProduct($product) !== $category) {
+                continue;
+            }
+            if ($serviceScope !== null
+                && (string) (self::serviceScopeForProduct($product)['key'] ?? 'general') !== $serviceScope) {
                 continue;
             }
             if ($serviceGroup !== null
@@ -2540,9 +2655,13 @@ final class BluebotDigitalServices
 
         if ($category !== null && $pages > 1) {
             $nav = [];
-            $callbackBase = $serviceGroup !== null
-                ? 'ds_sg:' . $category . ':' . $serviceGroup . ':'
-                : 'ds_category:' . $category . ':';
+            if ($serviceGroup !== null && $serviceScope !== null) {
+                $callbackBase = 'ds_sg:' . $category . ':' . $serviceScope . ':' . $serviceGroup . ':';
+            } elseif ($serviceGroup !== null) {
+                $callbackBase = 'ds_sg:' . $category . ':' . $serviceGroup . ':';
+            } else {
+                $callbackBase = 'ds_category:' . $category . ':';
+            }
 
             if ($page > 1) {
                 $nav[] = [
@@ -2561,7 +2680,14 @@ final class BluebotDigitalServices
             }
         }
 
-        if ($serviceGroup !== null && $category !== null) {
+        if ($serviceGroup !== null && $serviceScope !== null && $category !== null) {
+            $rows[] = [[
+                'text' => $pages > 1
+                    ? '↩️ نوع سرویس‌ها · صفحه ' . $page . ' از ' . $pages
+                    : '↩️ نوع سرویس‌ها',
+                'callback_data' => 'ds_scope:' . $category . ':' . $serviceScope,
+            ]];
+        } elseif ($serviceGroup !== null && $category !== null) {
             $rows[] = [[
                 'text' => $pages > 1
                     ? '↩️ زیر‌دسته‌ها · صفحه ' . $page . ' از ' . $pages
@@ -2585,12 +2711,17 @@ final class BluebotDigitalServices
         string $category,
         int $page = 1,
         int $perPage = 8,
-        ?string $serviceGroup = null
+        ?string $serviceGroup = null,
+        ?string $serviceScope = null
     ): array {
         $perPage = max(4, min(12, $perPage));
         $total = 0;
         foreach (self::listActive($pdo) as $product) {
             if (self::categoryForProduct($product) !== $category) {
+                continue;
+            }
+            if ($serviceScope !== null
+                && (string) (self::serviceScopeForProduct($product)['key'] ?? 'general') !== $serviceScope) {
                 continue;
             }
             if ($serviceGroup !== null
@@ -2623,7 +2754,14 @@ final class BluebotDigitalServices
         } elseif (self::categoryUsesServiceGroups($category)) {
             $group = self::serviceGroupForProduct($product);
             $groupKey = (string) ($group['key'] ?? 'other');
-            $backCallback = 'ds_sg:' . $category . ':' . $groupKey . ':1';
+
+            if (self::categoryUsesServiceScopes($category)) {
+                $scope = self::serviceScopeForProduct($product);
+                $scopeKey = (string) ($scope['key'] ?? 'general');
+                $backCallback = 'ds_sg:' . $category . ':' . $scopeKey . ':' . $groupKey . ':1';
+            } else {
+                $backCallback = 'ds_sg:' . $category . ':' . $groupKey . ':1';
+            }
         }
 
         return json_encode([
