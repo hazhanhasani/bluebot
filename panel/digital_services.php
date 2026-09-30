@@ -73,6 +73,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             header('Location: digital_services.php#tgtools');
             exit;
         }
+        if (!in_array($approvalMode, ['manual', 'automatic'], true)) {
+            flash('error', 'نوع تأیید TGTools معتبر نیست.');
+            header('Location: digital_services.php#tgtools');
+            exit;
+        }
         ds_panel_set_setting($pdo, 'tgtools_base_url', 'https://api.tg-tools.shop');
         ds_panel_set_setting($pdo, 'tgtools_payment_method', 'ton');
         ds_panel_set_setting($pdo, 'nobitex_base_url', 'https://apiv2.nobitex.ir');
