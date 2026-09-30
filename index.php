@@ -8146,6 +8146,10 @@ if ($text == "/start" || $datain == "start" || $text == "start") {
         ['text' => '📋 کپی لینک دعوت', 'copy_text' => ['text' => $referralLink]],
         ['text' => $textbotlang['keyboard']['shareLink'], 'url' => "https://t.me/share/url?url=" . rawurlencode($referralLink)],
     ];
+    $rows[] = [
+        ['text' => '👥 زیرمجموعه‌های من', 'callback_data' => 'affiliate_members_1'],
+        ['text' => '💰 تاریخچه پورسانت', 'callback_data' => 'affiliate_history_1'],
+    ];
     $keyboard_share = json_encode(['inline_keyboard' => $rows], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
 
     $text_start = "";
@@ -8168,6 +8172,104 @@ if ($text == "/start" || $datain == "start" || $text == "start") {
     );
 
     sendmessage($from_id, $textaffiliates, $keyboard_share, 'HTML');
+} elseif (preg_match('/^affiliate_(history|members)(?:_(\\d+))?$/', (string) $datain, $affiliatePageMatch)) {
+    if (!check_active_btn($setting['keyboardmain'], "text_affiliates")) {
+        sendmessage($from_id, $textbotlang['users']['buttonDisabled'], null, 'HTML');
+        return;
+    }
+
+    $view = (string) $affiliatePageMatch[1];
+    $page = max(1, (int) ($affiliatePageMatch[2] ?? 1));
+    $perPage = 8;
+    $offset = ($page - 1) * $perPage;
+    $rows = [];
+
+    if ($view === 'history') {
+        $countStmt = $pdo->prepare("SELECT COUNT(*) FROM referral_commissions WHERE referrer_id = ?");
+        $countStmt->execute([(string) $from_id]);
+        $total = (int) $countStmt->fetchColumn();
+        $pages = max(1, (int) ceil($total / $perPage));
+        $page = min($page, $pages);
+        $offset = ($page - 1) * $perPage;
+
+        $stmt = $pdo->prepare(
+            "SELECT * FROM referral_commissions
+             WHERE referrer_id = ?
+             ORDER BY id DESC
+             LIMIT " . $perPage . " OFFSET " . $offset
+        );
+        $stmt->execute([(string) $from_id]);
+        $items = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+
+        $out = "💰 <b>تاریخچه پورسانت‌ها</b>\n\n";
+        if ($items === []) {
+            $out .= "هنوز پورسانتی برای شما ثبت نشده است.";
+        } else {
+            foreach ($items as $item) {
+                $sourceLabel = ($item['source_type'] ?? '') === 'digital_service' ? 'خدمات دیجیتال' : 'اشتراک';
+                $out .= "💸 <b>" . number_format((int) ($item['amount'] ?? 0)) . " تومان</b>"
+                    . " · " . $sourceLabel . "\n"
+                    . "👤 کاربر: <code>" . htmlspecialchars((string) ($item['referred_user_id'] ?? ''), ENT_QUOTES, 'UTF-8') . "</code>\n"
+                    . "🧾 <code>" . htmlspecialchars((string) ($item['source_id'] ?? ''), ENT_QUOTES, 'UTF-8') . "</code>"
+                    . " · " . htmlspecialchars((string) ($item['created_at'] ?? ''), ENT_QUOTES, 'UTF-8') . "\n\n";
+            }
+        }
+    } else {
+        $countStmt = $pdo->prepare("SELECT COUNT(*) FROM user WHERE affiliates = ?");
+        $countStmt->execute([(string) $from_id]);
+        $total = (int) $countStmt->fetchColumn();
+        $pages = max(1, (int) ceil($total / $perPage));
+        $page = min($page, $pages);
+        $offset = ($page - 1) * $perPage;
+
+        $stmt = $pdo->prepare(
+            "SELECT u.id, u.username, u.register,
+                    COALESCE(SUM(rc.amount), 0) AS commission_total,
+                    COUNT(rc.id) AS commission_orders
+             FROM user u
+             LEFT JOIN referral_commissions rc
+               ON rc.referred_user_id = CAST(u.id AS CHAR)
+              AND rc.referrer_id = ?
+             WHERE u.affiliates = ?
+             GROUP BY u.id, u.username, u.register
+             ORDER BY u.register DESC
+             LIMIT " . $perPage . " OFFSET " . $offset
+        );
+        $stmt->execute([(string) $from_id, (string) $from_id]);
+        $items = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+
+        $out = "👥 <b>زیرمجموعه‌های من</b>\n\n";
+        if ($items === []) {
+            $out .= "هنوز کسی با لینک دعوت شما عضو نشده است.";
+        } else {
+            foreach ($items as $item) {
+                $name = trim((string) ($item['username'] ?? ''));
+                $name = $name !== '' ? ('@' . ltrim($name, '@')) : ('ID ' . (string) $item['id']);
+                $out .= "👤 <b>" . htmlspecialchars($name, ENT_QUOTES, 'UTF-8') . "</b>\n"
+                    . "🛒 خرید پورسانتی: <b>" . number_format((int) ($item['commission_orders'] ?? 0)) . "</b>"
+                    . " · 💰 <b>" . number_format((int) ($item['commission_total'] ?? 0)) . " تومان</b>\n\n";
+            }
+        }
+    }
+
+    if ($pages > 1) {
+        $nav = [];
+        if ($page > 1) {
+            $nav[] = ['text' => '⬅️ قبلی', 'callback_data' => 'affiliate_' . $view . '_' . ($page - 1)];
+        }
+        $nav[] = ['text' => $page . '/' . $pages, 'callback_data' => 'affiliate_' . $view . '_' . $page];
+        if ($page < $pages) {
+            $nav[] = ['text' => 'بعدی ➡️', 'callback_data' => 'affiliate_' . $view . '_' . ($page + 1)];
+        }
+        $rows[] = $nav;
+    }
+    $rows[] = [['text' => '↩️ داشبورد زیرمجموعه', 'callback_data' => 'affiliatesbtn']];
+    sendmessage(
+        $from_id,
+        trim($out),
+        json_encode(['inline_keyboard' => $rows], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
+        'HTML'
+    );
 } elseif ($datain == "get_gift_start") {
     $gift_status = select("affiliates", "*", null, null, "select");
     if ($gift_status['Discount'] == "offDiscountaffiliates") {
