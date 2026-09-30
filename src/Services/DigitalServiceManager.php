@@ -214,15 +214,24 @@ final class BluebotDigitalServices
 
     private static function providerFailureType(array $result): string
     {
-        $explicit = strtolower(trim((string) ($result['failure_type'] ?? '')));
+        $delivery = is_array($result['delivery'] ?? null) ? $result['delivery'] : [];
+        $explicit = strtolower(trim((string) ($result['failure_type'] ?? $delivery['failure_type'] ?? '')));
         if (in_array($explicit, ['availability', 'timeout'], true)) {
             return $explicit;
         }
 
-        $http = (int) ($result['http_status'] ?? $result['response']['http_status'] ?? 0);
-        $code = strtolower(trim((string) ($result['code'] ?? '')));
+        $response = is_array($result['response'] ?? null) ? $result['response'] : [];
+        $deliveryResponse = is_array($delivery['response'] ?? null) ? $delivery['response'] : [];
+        $http = (int) (
+            $result['http_status']
+            ?? $response['http_status']
+            ?? $delivery['http_status']
+            ?? $deliveryResponse['http_status']
+            ?? 0
+        );
+        $code = strtolower(trim((string) ($result['code'] ?? $delivery['code'] ?? '')));
         $message = strtolower(trim(
-            (string) ($result['error'] ?? $result['message'] ?? '')
+            (string) ($result['error'] ?? $result['message'] ?? $delivery['error'] ?? $delivery['message'] ?? '')
         ));
         $haystack = $code . ' ' . $message;
 
