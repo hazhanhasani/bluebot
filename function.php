@@ -1633,63 +1633,31 @@ function DirectPayment($order_id, $image = null)
                 ]);
             }
         }
-        $affiliatescommission = select("affiliates", "*", null, null, "select");
-        $marzbanporsant_one_buy = select("affiliates", "*", null, null, "select");
-        $stmt = $pdo->prepare("SELECT * FROM invoice WHERE name_product != :name_product  AND id_user = :id_user AND Status != 'Unpaid'");
-        $stmt->bindParam(':id_user', $Balance_id['id']);
-        $stmt->bindParam(':name_product', $textbotlang['common']['labels']['testServiceName']);
-        $stmt->execute();
-        $countinvoice = $stmt->rowCount();
-        if ($affiliatescommission['status_commission'] == "oncommission" && ($Balance_id['affiliates'] != null && intval($Balance_id['affiliates']) != 0)) {
-            if ($marzbanporsant_one_buy['porsant_one_buy'] == "on_buy_porsant") {
-                if ($countinvoice <= 1) {
-                    $result = ($Payment_report['price'] * $setting['affiliatespercentage']) / 100;
-                    $user_Balance = select("user", "*", "id", $Balance_id['affiliates'], "select");
-                    if (intval($setting['scorestatus']) == 1 and !in_array($Balance_id['affiliates'], $admin_ids)) {
-                        sendmessage($Balance_id['affiliates'], $textbotlang['users']['affiliates']['pointsEarned2Alt'], null, 'html');
-                        $scorenew = $user_Balance['score'] + 2;
-                        update("user", "score", $scorenew, "id", $Balance_id['affiliates']);
-                    }
-                    $Balance_prim = $user_Balance['Balance'] + $result;
-                    $dateacc = date('Y/m/d H:i:s');
-                    update("user", "Balance", $Balance_prim, "id", $Balance_id['affiliates']);
-                    $result = number_format($result);
-                    $textadd = sprintf($textbotlang['users']['affiliates']['commissionPaidFn'], $result);
-                    $textreportport = sprintf($textbotlang['Admin']['reportgroup']['commissionPaidFn'], $result, $Balance_id['affiliates'], $Balance_id['id'], $dateacc);
-                    if (strlen($setting['Channel_Report']) > 0) {
-                        telegram('sendmessage', [
-                            'chat_id' => $setting['Channel_Report'],
-                            'message_thread_id' => $porsantreport,
-                            'text' => $textreportport,
-                            'parse_mode' => "HTML"
-                        ]);
-                    }
-                    sendmessage($Balance_id['affiliates'], $textadd, null, 'HTML');
-                }
-            } else {
-
-                $result = ($Payment_report['price'] * $setting['affiliatespercentage']) / 100;
-                $user_Balance = select("user", "*", "id", $Balance_id['affiliates'], "select");
-                if (intval($setting['scorestatus']) == 1 and !in_array($Balance_id['affiliates'], $admin_ids)) {
-                    sendmessage($Balance_id['affiliates'], $textbotlang['users']['affiliates']['pointsEarned2Alt'], null, 'html');
-                    $scorenew = $user_Balance['score'] + 2;
-                    update("user", "score", $scorenew, "id", $Balance_id['affiliates']);
-                }
-                $Balance_prim = $user_Balance['Balance'] + $result;
+        $commission = creditReferralCommission(
+            (string) $Balance_id['id'],
+            max(0, (int) ($Payment_report['price'] ?? $get_invoice['price_product'] ?? 0)),
+            'subscription',
+            (string) ($get_invoice['id_invoice'] ?? $order_id)
+        );
+        if (!empty($commission['credited'])) {
+            $resultFormatted = number_format((int) $commission['amount']);
+            $textadd = sprintf($textbotlang['users']['affiliates']['commissionPaidFn2'], $resultFormatted);
+            sendmessage((string) $commission['referrer_id'], $textadd, null, 'HTML');
+            if (strlen($setting['Channel_Report']) > 0) {
                 $dateacc = date('Y/m/d H:i:s');
-                update("user", "Balance", $Balance_prim, "id", $Balance_id['affiliates']);
-                $result = number_format($result);
-                $textadd = sprintf($textbotlang['users']['affiliates']['commissionPaidFn2'], $result);
-                $textreportport = sprintf($textbotlang['Admin']['reportgroup']['commissionPaidFn2'], $result, $Balance_id['affiliates'], $Balance_id['id'], $dateacc);
-                if (strlen($setting['Channel_Report']) > 0) {
-                    telegram('sendmessage', [
-                        'chat_id' => $setting['Channel_Report'],
-                        'message_thread_id' => $porsantreport,
-                        'text' => $textreportport,
-                        'parse_mode' => "HTML"
-                    ]);
-                }
-                sendmessage($Balance_id['affiliates'], $textadd, null, 'HTML');
+                $textreportport = sprintf(
+                    $textbotlang['Admin']['reportgroup']['commissionPaidFn2'],
+                    $resultFormatted,
+                    $commission['referrer_id'],
+                    $Balance_id['id'],
+                    $dateacc
+                );
+                telegram('sendmessage', [
+                    'chat_id' => $setting['Channel_Report'],
+                    'message_thread_id' => $porsantreport,
+                    'text' => $textreportport,
+                    'parse_mode' => "HTML"
+                ]);
             }
         }
         if (in_array(usernameMethodKey($marzban_list_get['MethodUsername']), ['customTextSequential', 'usernameSequential', 'numericIdSequential', 'agentCustomTextSequential'], true)) {
