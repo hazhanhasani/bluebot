@@ -206,6 +206,50 @@ if (preg_match('/^ds_approve:(\d+)$/', (string) $datain, $digitalApproveMatch)
     return;
 }
 
+if (preg_match('/^ds_complete:(\d+)$/', (string) $datain, $digitalCompleteMatch)
+    && $adminrulecheck['rule'] === 'administrator') {
+    $orderId = (int) $digitalCompleteMatch[1];
+    try {
+        $result = BluebotDigitalServices::completePartialReview($pdo, $orderId, (string) $from_id);
+        $order = is_array($result['order'] ?? null)
+            ? $result['order']
+            : BluebotDigitalServices::findOrder($pdo, $orderId);
+
+        $completedText = "✅ <b>سفارش پس از بررسی دستی تکمیل شد</b>\n\n"
+            . BluebotDigitalServices::adminOrderText(is_array($order) ? $order : ['id' => $orderId]);
+
+        Editmessagetext(
+            $from_id,
+            $message_id,
+            $completedText,
+            json_encode(['inline_keyboard' => []], JSON_UNESCAPED_UNICODE),
+            'HTML'
+        );
+
+        if ($callback_query_id) {
+            telegram('answerCallbackQuery', [
+                'callback_query_id' => $callback_query_id,
+                'text' => !empty($result['already_done']) ? 'قبلاً تکمیل شده است.' : 'سفارش تکمیل شد.',
+                'show_alert' => false,
+            ]);
+        }
+    } catch (Throwable $e) {
+        bluebotLog('error', 'Digital service partial completion failed', [
+            'admin_id' => (string) $from_id,
+            'order_id' => $orderId,
+            'error' => $e->getMessage(),
+        ]);
+        if ($callback_query_id) {
+            telegram('answerCallbackQuery', [
+                'callback_query_id' => $callback_query_id,
+                'text' => 'خطا در تکمیل سفارش: ' . mb_substr($e->getMessage(), 0, 120, 'UTF-8'),
+                'show_alert' => true,
+            ]);
+        }
+    }
+    return;
+}
+
 if (preg_match('/^ds_reject:(\d+)$/', (string) $datain, $digitalRejectMatch)
     && $adminrulecheck['rule'] === 'administrator') {
     $orderId = (int) $digitalRejectMatch[1];
