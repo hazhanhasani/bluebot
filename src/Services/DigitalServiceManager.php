@@ -4992,6 +4992,7 @@ final class BluebotDigitalServices
                 return [
                     'ok' => false,
                     'retryable' => !empty($numberOrder['retryable']),
+                    'failure_type' => (string) ($numberOrder['failure_type'] ?? ''),
                     'error' => trim((string) ($numberOrder['message'] ?? '')) ?: 'درخواست شماره مجازی عضوینو ناموفق بود.',
                     'response' => $numberOrder['response'] ?? $numberOrder,
                 ];
