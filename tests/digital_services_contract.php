@@ -37,10 +37,21 @@ $checks = [
     [str_contains($manager, "setProviderApprovalMode"), 'per-provider approval mode writer missing'],
     [str_contains($manager, "provider_approval_"), 'provider approval mode storage key missing'],
     [str_contains($manager, "maybeAutoApproveOrder"), 'automatic order approval dispatcher missing'],
+    [str_contains($manager, "SHOW TABLES LIKE") && str_contains($manager, "digital_service_orders"), 'digital services availability must require the orders table'],
+    [str_contains($manager, "STATUS_PARTIAL_REVIEW"), 'partial-review order state missing'],
+    [str_contains($manager, "markPartialReview"), 'partial provider delivery review handler missing'],
+    [str_contains($manager, "completePartialReview"), 'manual completion for partial orders missing'],
+    [str_contains($manager, "PROVIDER_REFERENCE_MISSING"), 'async provider orders without tracking references must be stopped for review'],
+    [str_contains($manager, "provider_reference = ?"), 'delivery retry must reset stale provider references before a new provider call'],
+
     [str_contains($manager, "admin_id = ?"), 'automatic delivery must reuse atomic approval claim'],
     [str_contains($manager, "deliverRegisteredSmmProvider"), 'generic SMM provider delivery adapter missing'],
     [substr_count($manager, "\$order['quantity'] ?? \$product['service_value']") >= 3, 'SMM delivery must use the order quantity snapshot'],
     [str_contains($manager, "reconcileRegisteredSmmProcessing"), 'generic SMM provider reconciliation missing'],
+    [substr_count($manager, "markPartialReview(") >= 4, 'partial-delivery handling must cover generic SMM, TivaNovin and OZVinoo reconciliation'],
+    [str_contains($manager, "manual_review_only"), 'partial deliveries must be marked as review-only to avoid unsafe resend'],
+    [str_contains($manager, "adminPartialReviewKeyboard"), 'partial orders need a dedicated admin keyboard without resend'],
+
     [str_contains($index, "maybeAutoApproveOrder"), 'bot checkout must attempt automatic provider delivery'],
     [str_contains($index, '$automaticHandled'), 'bot checkout automatic-delivery guard missing'],
     [str_contains($digitalServicesCron, "reconcileRegisteredSmmProcessing"), 'generic SMM reconciliation cron missing'],
@@ -343,6 +354,11 @@ $checks = [
     [str_contains($servicePanel, "'tgtools'"), 'TGTools provider support missing from Services digital scope'],
     [str_contains($invoicePanel, "digital_approve"), 'digital order approval must live under Orders'],
     [str_contains($invoicePanel, "digital_reject"), 'digital order rejection must live under Orders'],
+    [str_contains($invoicePanel, "digital_complete"), 'partial digital order completion action must live under Orders'],
+    [str_contains($invoicePanel, "partial_review"), 'Orders panel partial-review state missing'],
+    [str_contains($invoicePanel, "DATE_SUB(NOW(), INTERVAL 30 MINUTE)"), 'Orders panel stale-processing diagnostic missing'],
+    [str_contains($invoicePanel, "پیگیری طولانی"), 'Orders panel must flag stale processing orders'],
+
     [str_contains($invoicePanel, "number_format(max(1, (int) (\$order['quantity'] ?? 1)))"), 'Orders panel must show order quantity'],
     [str_contains($invoicePanel, "نیازمند بررسی"), 'Orders panel must distinguish non-refunded failed orders requiring review'],
 
@@ -446,6 +462,8 @@ $checks = [
     [str_contains($index, "notifyAdmins"), 'admin notification missing'],
     [str_contains($admin, "ds_approve:"), 'bot approval callback missing'],
     [str_contains($admin, "ds_reject:"), 'bot reject callback missing'],
+    [str_contains($admin, "ds_complete:"), 'bot manual-completion callback for partial orders missing'],
+
     [str_contains($admin, "نیاز به بررسی و تلاش مجدد دارد"), 'admin retryable provider review UX missing'],
     [str_contains($admin, "مبلغ برگشت خورد"), 'admin refunded provider error UX missing'],
     [str_contains($keyboard, "text_digital_services"), 'main keyboard mapping missing'],
