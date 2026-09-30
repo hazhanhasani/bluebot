@@ -3385,6 +3385,52 @@ function sendMessageService($panel_info, $config, $sub_link, $username_service, 
     }
 }
 
+function logReferralRiskEvent(string $userId, ?string $inviterId, string $eventType, string $reason, ?string $payload = null): void
+{
+    global $pdo;
+    try {
+        $stmt = $pdo->prepare(
+            "INSERT INTO referral_risk_events (user_id, inviter_id, event_type, reason, payload)
+             VALUES (?, ?, ?, ?, ?)"
+        );
+        $stmt->execute([
+            $userId,
+            $inviterId,
+            substr($eventType, 0, 60),
+            substr($reason, 0, 120),
+            $payload === null ? null : substr($payload, 0, 255),
+        ]);
+    } catch (Throwable $e) {
+        bluebotLog('warning', 'Unable to record referral risk event', ['user_id' => $userId, 'reason' => $reason]);
+    }
+}
+
+function referralCreatesCycle(string $userId, string $inviterId, int $maxDepth = 20): bool
+{
+    $current = $inviterId;
+    $seen = [];
+    for ($depth = 0; $depth < $maxDepth; $depth++) {
+        if ($current === '' || $current === '0') return false;
+        if ($current === $userId || isset($seen[$current])) return true;
+        $seen[$current] = true;
+        $row = select("user", "*", "id", $current, "select");
+        if (!is_array($row)) return false;
+        $current = trim((string) ($row['affiliates'] ?? '0'));
+    }
+    return $current !== '' && $current !== '0';
+}
+
+function referralPhoneCollision(string $userId, string $inviterId): bool
+{
+    $user = select("user", "*", "id", $userId, "select");
+    $inviter = select("user", "*", "id", $inviterId, "select");
+    if (!is_array($user) || !is_array($inviter)) return false;
+    $a = preg_replace('/\D+/', '', (string) ($user['number'] ?? ''));
+    $b = preg_replace('/\D+/', '', (string) ($inviter['number'] ?? ''));
+    if (strlen($a) < 10 || strlen($b) < 10) return false;
+    return $a === $b;
+}
+
 function resolveInvitationOwnerId(string $payload): ?string
 {
     global $pdo;
