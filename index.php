@@ -8146,6 +8146,10 @@ if ($text == "/start" || $datain == "start" || $text == "start") {
         ['text' => '📋 کپی لینک دعوت', 'copy_text' => ['text' => $referralLink]],
         ['text' => $textbotlang['keyboard']['shareLink'], 'url' => "https://t.me/share/url?url=" . rawurlencode($referralLink)],
     ];
+    $rows[] = [
+        ['text' => '👥 زیرمجموعه‌های من', 'callback_data' => 'affiliate_members_1'],
+        ['text' => '💰 تاریخچه پورسانت', 'callback_data' => 'affiliate_history_1'],
+    ];
     $keyboard_share = json_encode(['inline_keyboard' => $rows], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
 
     $text_start = "";
