@@ -4547,7 +4547,7 @@ final class BluebotDigitalServices
 
     public static function reconcileOZVinooProcessing(PDO $pdo, int $limit = 25): array
     {
-        $stats = ['checked' => 0, 'completed' => 0, 'failed' => 0, 'pending' => 0, 'errors' => 0];
+        $stats = ['checked' => 0, 'completed' => 0, 'failed' => 0, 'pending' => 0, 'partial' => 0, 'errors' => 0];
 
         if (!self::isAvailable($pdo)) {
             return $stats;
@@ -4626,7 +4626,7 @@ final class BluebotDigitalServices
                             $response,
                             'OZVinoo reported partial delivery.'
                         );
-                        $stats['failed']++;
+                        $stats['partial']++;
                         continue;
                     }
 
