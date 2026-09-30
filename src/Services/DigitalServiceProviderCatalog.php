@@ -484,6 +484,24 @@ final class BluebotProviderCatalogService
                 continue;
             }
             $stats['checked']++;
+
+            $forcePanelBazReprice = strtolower((string) ($provider['provider_key'] ?? '')) === 'panelbaz'
+                && (
+                    strtolower((string) ($provider['currency'] ?? '')) !== 'toman'
+                    || abs((float) ($provider['exchange_rate_toman'] ?? 0) - 1.0) > 0.000001
+                );
+            if ($forcePanelBazReprice) {
+                $repair = $pdo->prepare(
+                    "UPDATE digital_service_providers
+                     SET currency = 'toman', exchange_rate_toman = 1, last_sync_at = NULL, updated_at = NOW()
+                     WHERE provider_key = 'panelbaz'"
+                );
+                $repair->execute();
+                $provider['currency'] = 'toman';
+                $provider['exchange_rate_toman'] = 1.0;
+                $provider['last_sync_at'] = null;
+            }
+
             $interval = max(1, (int) ($provider['sync_interval_minutes'] ?? 15));
             $last = trim((string) ($provider['last_sync_at'] ?? ''));
             if ($last !== '') {
