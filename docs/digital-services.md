@@ -16,6 +16,11 @@ Digital-service administration is intentionally split across the existing BlueBo
 This avoids duplicate product/order management screens and keeps each resource in the panel section where administrators already expect it.
 
 ### Nobitex API host and optional API Key
+> **Signature encoding:** Nobitex's documented `urlsafe_b64encode` output
+> includes Base64 padding. BlueBot preserves trailing `=` characters in
+> `Nobitex-Signature`; stripping them can cause an HTTP 400 during API-key
+> validation.
+
 
 BlueBot uses `https://apiv2.nobitex.ir` for Nobitex API traffic. Public
 GRAMIRT orderbook and system-options requests do not require authentication.
