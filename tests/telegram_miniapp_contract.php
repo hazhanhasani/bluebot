@@ -9,24 +9,24 @@ $appIndex = @file_get_contents($root . '/app/index.php');
 if ($appIndex !== false && str_contains($appIndex, 'https://telegram.org/js/telegram-web-app.js')) {
     $failures[] = 'Mini App startup must not block on the external Telegram SDK.';
 }
-if ($appIndex === false || !str_contains($appIndex, './js/telegram-bootstrap.js?v=0.2.5')) {
+if ($appIndex === false || !str_contains($appIndex, './js/telegram-bootstrap.js?v=0.2.6')) {
     $failures[] = 'Mini App compatibility bootstrap is not loaded with the current cache key.';
 }
-if ($appIndex === false || !str_contains($appIndex, './js/telegram-web-app.js?v=0.2.5')) {
+if ($appIndex === false || !str_contains($appIndex, './js/telegram-web-app.js?v=0.2.6')) {
     $failures[] = 'Local Telegram SDK is not loaded first.';
 }
 
-if ($appIndex === false || !str_contains($appIndex, 'script defer src="./js/telegram-web-app.js?v=0.2.5"')) {
+if ($appIndex === false || !str_contains($appIndex, 'script defer src="./js/telegram-web-app.js?v=0.2.6"')) {
     $failures[] = 'Mini App Telegram SDK must load with defer for non-blocking first paint.';
 }
 if ($appIndex === false || !str_contains($appIndex, 'bluebot-boot')) {
     $failures[] = 'Mini App must provide an immediate boot/loading surface.';
 }
 
-if ($appIndex === false || !str_contains($appIndex, './js/app-loader.js?v=0.2.5')) {
+if ($appIndex === false || !str_contains($appIndex, './js/app-loader.js?v=0.2.6')) {
     $failures[] = 'Mini App ordered application loader is missing.';
 }
-if ($appIndex === false || !str_contains($appIndex, './js/full-store.js?v=0.2.5')) {
+if ($appIndex === false || !str_contains($appIndex, './js/full-store.js?v=0.2.6')) {
     $failures[] = 'Mini App full digital-services storefront is not mounted.';
 }
 $fullStore = @file_get_contents($root . '/app/js/full-store.js');
@@ -127,6 +127,14 @@ if ($miniApi === false || !str_contains($miniApi, "/src/Support/JalaliDate.php")
 if ($miniApi === false || !str_contains($miniApi, "DigitalServiceManager.php") || !str_contains($miniApi, "'digital_catalog'") || !str_contains($miniApi, "'digital_purchase'")) {
     $failures[] = 'Mini App API is not synchronized with digital services.';
 }
+
+$digitalServiceSource = @file_get_contents($root . '/src/Services/DigitalServiceManager.php');
+if ($digitalServiceSource === false || !str_contains($digitalServiceSource, 'final class BluebotDigitalServices')) {
+    $failures[] = 'Digital services implementation class is missing.';
+}
+if ($miniApi === false || !str_contains($miniApi, 'BluebotDigitalServices::listActive') || str_contains($miniApi, 'DigitalServiceManager::')) {
+    $failures[] = 'Mini App must call the real BluebotDigitalServices implementation class.';
+}
 $apiUtils = @file_get_contents($root . '/api/utils.php');
 if ($apiUtils === false || !str_contains($apiUtils, 'JSON_INVALID_UTF8_SUBSTITUTE')) {
     $failures[] = 'API JSON responses must survive malformed provider UTF-8.';
@@ -150,7 +158,7 @@ if ($verify === false || !str_contains($verify, "hash_equals")) {
 }
 
 $version = trim((string) @file_get_contents($root . '/app/version'));
-if ($version !== '0.2.5') {
+if ($version !== '0.2.6') {
     $failures[] = 'Unexpected Mini App version: ' . $version;
 }
 
