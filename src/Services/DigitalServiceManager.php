@@ -3792,13 +3792,17 @@ final class BluebotDigitalServices
             );
             $claimIntent->execute([$userId]);
 
-            $debit = $pdo->prepare("UPDATE user SET Balance = Balance - ? WHERE id = ?");
-            $debit->execute([$freshPrice, $userId]);
-            if ($debit->rowCount() !== 1) {
-                throw new RuntimeException('Unable to debit wallet.');
-            }
-
             $orderCode = 'DS-' . strtoupper(bin2hex(random_bytes(6)));
+            bluebotWalletAdjust(
+                $pdo,
+                $userId,
+                -$freshPrice,
+                'digital_service_purchase',
+                $orderCode,
+                'digital-purchase:' . $orderCode,
+                ['service_id' => $productId, 'quantity' => $quantity],
+                true
+            );
             $insert = $pdo->prepare(
                 "INSERT INTO digital_service_orders
                 (order_code, user_id, service_id, service_code, service_name, target, amount, quantity, provider, status)
