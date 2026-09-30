@@ -272,6 +272,8 @@ $checks = [
     [str_contains($manager, "category_label"), 'dynamic provider category labels missing'],
     [str_contains($manager, "targetKeyboard"), 'dedicated inline target keyboard missing'],
     [str_contains($manager, "ORDER_STATE_INVALID"), 'order confirmation idempotency guard missing'],
+    [str_contains($manager, "PRICE_CHANGED"), 'checkout price-change guard missing'],
+    [str_contains($manager, "digital_service_amount"), 'confirmed checkout amount snapshot missing'],
     [str_contains($manager, "digital_service_processing"), 'atomic order-intent claim missing'],
     [str_contains($manager, "SELECT * FROM user WHERE id = ? FOR UPDATE"), 'user order-intent row lock missing'],
     [str_contains($manager, "provider_service_code = NULL"), 'TGTools products must not require provider service codes'],
@@ -411,6 +413,8 @@ $checks = [
     [str_contains($index, "/^ds_orders:"), 'customer digital-order history route missing'],
     [str_contains($index, "BluebotDigitalServices::createWalletOrder(\$pdo, \$user, \$product, \$target, \$quantity)"), 'checkout must persist selected quantity'],
     [str_contains($index, "موجودی بعد از خرید"), 'checkout confirmation must show post-purchase wallet balance'],
+    [str_contains($index, "savedata('save', 'digital_service_amount'"), 'checkout must store the customer-confirmed amount'],
+    [str_contains($index, "قیمت این سرویس بروزرسانی شده است"), 'checkout must stop when provider pricing changes before debit'],
     [str_contains($index, "سفارش‌های من"), 'checkout success must link to order history'],
 
     [str_contains($index, "BluebotDigitalServices::ensureMainKeyboardButton(\$pdo);"), 'digital-service keyboard bootstrap is not executed'],
