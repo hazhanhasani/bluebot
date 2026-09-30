@@ -2388,8 +2388,13 @@ final class BluebotDigitalServices
         return '📱';
     }
 
-    public static function catalogKeyboard(PDO $pdo, string $backText, ?string $category = null): string
-    {
+    public static function catalogKeyboard(
+        PDO $pdo,
+        string $backText,
+        ?string $category = null,
+        int $page = 1,
+        int $perPage = 8
+    ): string {
         $rows = [];
         if ($category !== null && !self::categoryEnabled($pdo, $category)) {
             $rows[] = [[
@@ -2398,28 +2403,84 @@ final class BluebotDigitalServices
             ]];
             return json_encode(['inline_keyboard' => $rows], JSON_UNESCAPED_UNICODE);
         }
+
+        $products = [];
         foreach (self::listActive($pdo) as $product) {
             if ($category !== null && self::categoryForProduct($product) !== $category) {
                 continue;
             }
+            $products[] = $product;
+        }
 
-            $label = sprintf(
-                '%s · %s تومان',
-                trim((string) $product['name']),
-                number_format((float) $product['price'])
-            );
+        $perPage = max(4, min(12, $perPage));
+        $total = count($products);
+        $pages = max(1, (int) ceil($total / $perPage));
+        $page = max(1, min($pages, $page));
+        $offset = ($page - 1) * $perPage;
+
+        foreach (array_slice($products, $offset, $perPage) as $product) {
+            $priceText = number_format((float) $product['price']) . ' تومان';
+            $name = preg_replace('/\s+/u', ' ', trim((string) $product['name'])) ?: 'سرویس';
+            $suffix = ' · ' . $priceText;
+            $maxNameLength = max(12, 60 - mb_strlen($suffix, 'UTF-8'));
+            if (mb_strlen($name, 'UTF-8') > $maxNameLength) {
+                $name = rtrim(mb_substr($name, 0, $maxNameLength - 1, 'UTF-8')) . '…';
+            }
+
             $rows[] = [[
-                'text' => $label,
+                'text' => $name . $suffix,
                 'callback_data' => 'ds_product:' . (int) $product['id'],
             ]];
         }
 
+        if ($category !== null && $pages > 1) {
+            $nav = [];
+            if ($page > 1) {
+                $nav[] = [
+                    'text' => '⬅️ قبلی',
+                    'callback_data' => 'ds_category:' . $category . ':' . ($page - 1),
+                ];
+            }
+            if ($page < $pages) {
+                $nav[] = [
+                    'text' => 'بعدی ➡️',
+                    'callback_data' => 'ds_category:' . $category . ':' . ($page + 1),
+                ];
+            }
+            if ($nav !== []) {
+                $rows[] = $nav;
+            }
+        }
+
         $rows[] = [[
-            'text' => $category !== null ? '↩️ دسته‌بندی‌ها' : $backText,
+            'text' => $category !== null
+                ? ($pages > 1 ? '↩️ دسته‌بندی‌ها · صفحه ' . $page . ' از ' . $pages : '↩️ دسته‌بندی‌ها')
+                : $backText,
             'callback_data' => $category !== null ? 'ds_home' : 'backuser',
         ]];
 
         return json_encode(['inline_keyboard' => $rows], JSON_UNESCAPED_UNICODE);
+    }
+
+    public static function catalogPageInfo(PDO $pdo, string $category, int $page = 1, int $perPage = 8): array
+    {
+        $perPage = max(4, min(12, $perPage));
+        $total = 0;
+        foreach (self::listActive($pdo) as $product) {
+            if (self::categoryForProduct($product) === $category) {
+                $total++;
+            }
+        }
+
+        $pages = max(1, (int) ceil($total / $perPage));
+        $page = max(1, min($pages, $page));
+
+        return [
+            'page' => $page,
+            'pages' => $pages,
+            'total' => $total,
+            'per_page' => $perPage,
+        ];
     }
 
     public static function productKeyboard(array $product, string $backText): string
