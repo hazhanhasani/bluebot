@@ -293,6 +293,8 @@ if ($scope === 'digital') {
             $metadata = json_decode((string) ($product['metadata'] ?? ''), true);
             $metadata = is_array($metadata) ? $metadata : [];
             $categoryKey = BluebotDigitalServices::categoryForProduct($product);
+            $quantityRules = BluebotDigitalServices::quantityRules($product);
+            $variableQuantity = !empty($quantityRules['variable']);
             $editPayload = [
               'id' => (int) $product['id'],
               'code' => (string) $product['code'],
@@ -314,8 +316,16 @@ if ($scope === 'digital') {
               <td><strong><?= htmlspecialchars((string) $product['name']) ?></strong><br><small class="cm"><?= htmlspecialchars((string) $product['code']) ?></small></td>
               <td><span class="tag tag-info"><?= htmlspecialchars(BluebotDigitalServices::categoryLabel($categoryKey, $pdo)) ?></span></td>
               <td><code><?= htmlspecialchars((string) $product['provider']) ?></code></td>
-              <td class="cn cs"><?= number_format((int) $product['price']) ?> تومان</td>
-              <td class="cn"><?= number_format((int) $product['service_value']) ?></td>
+              <td class="cn cs">
+                <?= $variableQuantity ? 'از ' : '' ?><?= number_format((int) $product['price']) ?> تومان
+              </td>
+              <td class="cn">
+                <?php if ($variableQuantity): ?>
+                  <?= number_format((int) ($quantityRules['min'] ?? 1)) ?>–<?= number_format((int) ($quantityRules['max'] ?? 1)) ?>
+                <?php else: ?>
+                  <?= number_format((int) $product['service_value']) ?>
+                <?php endif; ?>
+              </td>
               <td><span class="tag <?= (int) $product['active'] === 1 ? 'tag-ok' : 'tag-plain' ?>"><?= (int) $product['active'] === 1 ? 'فعال' : 'غیرفعال' ?></span></td>
               <td class="cn"><?= (int) $product['sort_order'] ?></td>
               <td>
@@ -411,7 +421,7 @@ if ($scope === 'digital') {
             <div class="field full"><label style="display:flex;gap:8px;align-items:center"><input type="checkbox" name="active" value="1" data-digital-field="active" checked> نمایش در ربات</label></div>
           </div>
           <div class="notice notice-info" data-auto-import-note style="display:none;margin-top:12px">
-            این سرویس از Provider همگام شده است؛ نام/قیمت ممکن است در Sync بعدی براساس API و درصد سود بروزرسانی شود. دسته‌بندی، وضعیت نمایش و ترتیب قابل مدیریت هستند.
+            این سرویس از Provider همگام شده است؛ نام، بازه مقدار و قیمت ممکن است در Sync بعدی براساس API و درصد سود بروزرسانی شوند. دسته‌بندی، وضعیت نمایش و ترتیب قابل مدیریت هستند.
           </div>
         </div>
         <div class="modal-foot">
