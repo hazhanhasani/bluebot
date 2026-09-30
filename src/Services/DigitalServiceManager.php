@@ -127,7 +127,7 @@ final class BluebotDigitalServices
                 sendmessage(
                     (string) ($failedOrder['user_id'] ?? ''),
                     $customerMessage,
-                    null,
+                    self::userOrdersKeyboard($pdo, (string) ($failedOrder['user_id'] ?? ''), 1),
                     'HTML'
                 );
                 self::notifyAdmins($pdo, $failedOrder);
