@@ -5327,11 +5327,15 @@ final class BluebotDigitalServices
             }
 
             if ((int) ($order['refunded'] ?? 0) !== 1) {
-                $refund = $pdo->prepare("UPDATE user SET Balance = Balance + ? WHERE id = ?");
-                $refund->execute([(int) $order['amount'], (string) $order['user_id']]);
-                if ($refund->rowCount() !== 1) {
-                    throw new RuntimeException('Provider failure refund could not be credited.');
-                }
+                bluebotWalletAdjust(
+                    $pdo,
+                    (string) $order['user_id'],
+                    (int) $order['amount'],
+                    'digital_service_refund',
+                    (string) ($order['order_code'] ?? $orderId),
+                    'digital-refund:' . (string) ($order['order_code'] ?? $orderId)
+                );
+                reverseReferralCommission('digital_service', (string) ($order['order_code'] ?? $orderId), 'provider_failure_refund');
             }
 
             $payload = json_encode(
