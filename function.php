@@ -1351,19 +1351,14 @@ function creditReferralCommission(string $buyerId, int $sourceAmount, string $so
         return ['credited' => false, 'reason' => 'zero_percent'];
     }
 
-    // First-purchase-only now covers both subscriptions and digital services.
+    // First-purchase-only is enforced by the commission ledger itself.
+    // This avoids depending on invoice timing/status and works across every product family.
     if (($affiliate['porsant_one_buy'] ?? '') === 'on_buy_porsant') {
-        $normal = $pdo->prepare(
-            "SELECT COUNT(*) FROM invoice
-             WHERE id_user = ? AND Status NOT IN ('Unpaid', 'failed', 'cancelled', 'rejected')"
+        $first = $pdo->prepare(
+            "SELECT COUNT(*) FROM referral_commissions WHERE referred_user_id = ?"
         );
-        $normal->execute([$buyerId]);
-        $digital = $pdo->prepare(
-            "SELECT COUNT(*) FROM digital_service_orders
-             WHERE user_id = ? AND status = 'delivered' AND refunded = 0"
-        );
-        $digital->execute([$buyerId]);
-        if (((int) $normal->fetchColumn() + (int) $digital->fetchColumn()) > 1) {
+        $first->execute([$buyerId]);
+        if ((int) $first->fetchColumn() > 0) {
             return ['credited' => false, 'reason' => 'first_purchase_only'];
         }
     }
