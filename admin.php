@@ -8230,17 +8230,37 @@ elseif ($text == $textbotlang['keyboard']['hidePanelForUser'] && $adminrulecheck
     Editmessagetext($from_id, $message_id, $question, $affiliateFlowKeyboard);
     step($affiliateStep, $from_id);
 } elseif (in_array($user['step'], ["setpercentage", "getdiscont", "setbanner"])) {
-    if ($user['step'] == "setbanner" ? !$photo : !ctype_digit($text)) {
-        editFlowMessage($textbotlang['Admin']['affiliates'][$user['step'] == "setbanner" ? 'invalidBanner' : 'invalidNumber'], $affiliateFlowKeyboard);
-        return;
-    }
-    if ($user['step'] == "setpercentage") {
-        update("setting", "affiliatespercentage", $text);
-    } elseif ($user['step'] == "getdiscont") {
-        update("affiliates", "price_Discount", $text);
-    } else {
+    if ($user['step'] === "setbanner") {
+        if (!$photo) {
+            editFlowMessage($textbotlang['Admin']['affiliates']['invalidBanner'], $affiliateFlowKeyboard);
+            return;
+        }
+        if (mb_strlen((string) $caption, 'UTF-8') > 950) {
+            editFlowMessage("⚠️ کپشن بنر حداکثر ۹۵۰ کاراکتر باشد.", $affiliateFlowKeyboard);
+            return;
+        }
         update("affiliates", "id_media", $photoid);
-        update("affiliates", "description", $caption);
+        update("affiliates", "description", trim((string) $caption));
+    } else {
+        if (!ctype_digit((string) $text)) {
+            editFlowMessage($textbotlang['Admin']['affiliates']['invalidNumber'], $affiliateFlowKeyboard);
+            return;
+        }
+        $numericValue = (int) $text;
+        if ($user['step'] === "setpercentage") {
+            if ($numericValue < 0 || $numericValue > 100) {
+                editFlowMessage("⚠️ درصد پورسانت باید عددی بین ۰ تا ۱۰۰ باشد.", $affiliateFlowKeyboard);
+                return;
+            }
+            update("setting", "affiliatespercentage", (string) $numericValue);
+        } else {
+            if ($numericValue < 0 || $numericValue > 100000000) {
+                editFlowMessage("⚠️ مبلغ هدیه باید بین ۰ تا ۱۰۰٬۰۰۰٬۰۰۰ تومان باشد.", $affiliateFlowKeyboard);
+                return;
+            }
+            // This value is the total welcome gift; the current reward flow splits it equally.
+            update("affiliates", "price_Discount", (string) $numericValue);
+        }
     }
     step("home", $from_id);
     [$affiliateText, $affiliateKeyboard] = affiliateSettingsMenu();
