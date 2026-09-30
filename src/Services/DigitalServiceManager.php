@@ -122,9 +122,9 @@ final class BluebotDigitalServices
             if (is_array($failedOrder)) {
                 sendmessage(
                     (string) ($failedOrder['user_id'] ?? ''),
-                    "⚠️ <b>ارسال خودکار موقتاً انجام نشد</b>\n\n"
-                        . "🧾 کد: <code>" . self::escape((string) ($failedOrder['order_code'] ?? '')) . "</code>\n"
-                        . "سفارش برای بررسی مدیر نگه داشته شد و مبلغ از بین نرفته است.",
+                    "✅ <b>سفارش شما با موفقیت ثبت شد</b>\n\n"
+                        . "🧾 کد سفارش: <code>" . self::escape((string) ($failedOrder['order_code'] ?? '')) . "</code>\n"
+                        . "نتیجه پس از پردازش اطلاع داده می‌شود.",
                     null,
                     'HTML'
                 );
@@ -2602,7 +2602,19 @@ final class BluebotDigitalServices
 
     public static function adminOrderText(array $order): string
     {
-        return "🛍 <b>سفارش فروش خدمات</b>
+        $manualFallback = strtolower((string) ($order['provider'] ?? '')) === 'tgtools'
+            && (string) ($order['status'] ?? '') === self::STATUS_FAILED
+            && (int) ($order['refunded'] ?? 0) === 0;
+
+        $providerError = '';
+        if ($manualFallback) {
+            $payload = json_decode((string) ($order['provider_response'] ?? ''), true);
+            if (is_array($payload)) {
+                $providerError = trim((string) ($payload['error'] ?? ''));
+            }
+        }
+
+        $text = "🛍 <b>سفارش فروش خدمات</b>
 
 "
             . "🧾 کد: <code>" . self::escape((string) ($order['order_code'] ?? '—')) . "</code>
@@ -2615,10 +2627,21 @@ final class BluebotDigitalServices
 "
             . "💳 مبلغ: <b>" . number_format((float) ($order['amount'] ?? 0)) . " تومان</b>
 "
-            . "🔌 Provider: <code>" . self::escape((string) ($order['provider'] ?? 'manual')) . "</code>
+            . "🔌 Provider: <code>" . self::escape((string) ($order['provider'] ?? 'manual')) . "</code>";
 
-"
-            . "ارسال فقط بعد از زدن «تأیید و ارسال» انجام می‌شود.";
+        if ($manualFallback) {
+            $text .= "
+
+⚠️ <b>ارسال خودکار TGTools انجام نشد؛ نیاز به بررسی و ارسال دستی دارد.</b>";
+            if ($providerError !== '') {
+                $text .= "
+🧩 خطای Provider: <code>" . self::escape($providerError) . "</code>";
+            }
+        }
+
+        return $text . "
+
+ارسال فقط بعد از زدن «تأیید و ارسال» انجام می‌شود.";
     }
 
     public static function approveAndDeliver(PDO $pdo, int $orderId, string $adminId): array
@@ -2688,8 +2711,16 @@ final class BluebotDigitalServices
         if (empty($delivery['ok'])) {
             $error = (string) ($delivery['error'] ?? 'Unknown provider error');
             $response = is_array($delivery['response'] ?? null) ? $delivery['response'] : $delivery;
+            $automaticTgToolsFallback = $adminId === 'auto'
+                && strtolower((string) ($order['provider'] ?? '')) === 'tgtools';
 
-            if (!empty($delivery['retryable'])) {
+            if (!empty($delivery['retryable']) || $automaticTgToolsFallback) {
+                if ($automaticTgToolsFallback) {
+                    $delivery['retryable'] = true;
+                    $delivery['manual_review'] = true;
+                    $delivery['automatic_fallback'] = true;
+                }
+
                 return self::markRetryableProviderFailure(
                     $pdo,
                     $orderId,
@@ -3490,12 +3521,33 @@ final class BluebotDigitalServices
             }
 
             if ($status === 'failed') {
-                self::failAndRefundProviderOrder(
-                    $pdo,
-                    (int) $order['id'],
-                    'TGTools delivery failed.',
-                    $statusResponse
-                );
+                if ((string) ($order['admin_id'] ?? '') === 'auto') {
+                    $fallback = self::markRetryableProviderFailure(
+                        $pdo,
+                        (int) $order['id'],
+                        'TGTools delivery failed.',
+                        $statusResponse,
+                        [
+                            'retryable' => true,
+                            'manual_review' => true,
+                            'automatic_fallback' => true,
+                            'code' => 'TGTOOLS_ASYNC_FAILED',
+                        ]
+                    );
+                    $manualOrder = is_array($fallback['order'] ?? null)
+                        ? $fallback['order']
+                        : self::findOrder($pdo, (int) $order['id']);
+                    if (is_array($manualOrder)) {
+                        self::notifyAdmins($pdo, $manualOrder);
+                    }
+                } else {
+                    self::failAndRefundProviderOrder(
+                        $pdo,
+                        (int) $order['id'],
+                        'TGTools delivery failed.',
+                        $statusResponse
+                    );
+                }
                 $stats['failed']++;
                 continue;
             }
