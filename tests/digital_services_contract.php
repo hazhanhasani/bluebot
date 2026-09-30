@@ -78,6 +78,7 @@ $checks = [
     [str_contains($digitalServicesCron, "reconcileTivaNovinProcessing"), 'TivaNovin reconciliation cron missing'],
     [str_contains($providerCatalog, "'panelbaz'"), 'PanelBaz reserved provider key missing'],
     [str_contains($providerCatalog, "SET currency = 'toman', exchange_rate_toman = 1"), 'PanelBaz legacy USD settings repair missing'],
+    [str_contains($providerCatalog, "last_sync_at = NULL"), 'PanelBaz legacy currency migration must force immediate repricing'],
     [str_contains($manager, "savePanelBazProvider"), 'PanelBaz provider bootstrap missing'],
     [str_contains($manager, "panelBazWalletStatus"), 'PanelBaz wallet diagnostics missing'],
     [str_contains($manager, "https://panelbaz.ir/panelbaz/api/v1"), 'PanelBaz fixed API endpoint missing'],
