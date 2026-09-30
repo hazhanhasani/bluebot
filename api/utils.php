@@ -163,6 +163,57 @@ function requireApiTokenOrAdminSession($headers)
     sendJsonResponse(false, "token invalid", [], 403);
 }
 
+function validateTelegramInitDataForMiniApp($rawData, string $botToken): array
+{
+    if (!is_string($rawData) || trim($rawData) === '') {
+        throw new InvalidArgumentException('Telegram init data is missing');
+    }
+
+    parse_str(html_entity_decode(trim($rawData), ENT_QUOTES | ENT_HTML5, 'UTF-8'), $initData);
+    if (!is_array($initData) || !isset($initData['hash'])) {
+        throw new InvalidArgumentException('Telegram signature is missing');
+    }
+
+    $receivedHash = (string) $initData['hash'];
+    unset($initData['hash']);
+
+    $normalise = static function ($value): string {
+        if (is_bool($value)) return $value ? 'true' : 'false';
+        if (is_array($value)) return (string) json_encode($value, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+        return $value === null ? '' : (string) $value;
+    };
+    $build = static function (array $fields) use ($normalise): string {
+        $lines = [];
+        foreach ($fields as $key => $value) {
+            $value = $normalise($value);
+            if ($value !== '') $lines[] = $key . '=' . $value;
+        }
+        sort($lines, SORT_STRING);
+        return implode("\n", $lines);
+    };
+
+    $secretKey = hash_hmac('sha256', $botToken, 'WebAppData', true);
+    $check = $build($initData);
+    $valid = $check !== '' && hash_equals(hash_hmac('sha256', $check, $secretKey), $receivedHash);
+
+    if (!$valid && array_key_exists('signature', $initData)) {
+        $legacy = $initData;
+        unset($legacy['signature']);
+        $check = $build($legacy);
+        $valid = $check !== '' && hash_equals(hash_hmac('sha256', $check, $secretKey), $receivedHash);
+    }
+    if (!$valid) throw new RuntimeException('Telegram verification failed');
+
+    $authDate = (int) ($initData['auth_date'] ?? 0);
+    if ($authDate <= 0 || time() - $authDate > 86400) throw new RuntimeException('Telegram session expired');
+
+    $user = $initData['user'] ?? null;
+    if (is_string($user)) $user = json_decode($user, true);
+    if (!is_array($user) || !isset($user['id'])) throw new RuntimeException('Telegram user is missing');
+
+    return $user;
+}
+
 function sanitizeRecursive($data)
 {
     if (is_array($data)) {

@@ -1,21 +1,27 @@
 (()=>{"use strict";
 const API="../api/miniapp.php",rootId="bluebot-full-store";
+
 const esc=s=>String(s??"").replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[m]));
 const token=()=>localStorage.getItem("token")||sessionStorage.getItem("token")||window.__BLUEBOT_SESSION_TOKEN__||"";
-async function waitForToken(timeout=12000){
- const existing=token();if(existing)return existing;
+const telegramInitData=()=>window.Telegram&&window.Telegram.WebApp&&typeof window.Telegram.WebApp.initData==="string"?window.Telegram.WebApp.initData:"";
+async function waitForAuth(timeout=5000){
+ if(token()||telegramInitData())return true;
  return await new Promise(resolve=>{
   let done=false;
-  const finish=value=>{if(done)return;done=true;clearTimeout(timer);window.removeEventListener("bluebot:session-ready",onReady);resolve(value||"")};
-  const onReady=e=>finish((e&&e.detail&&e.detail.token)||token());
-  const timer=setTimeout(()=>finish(token()),timeout);
+  const finish=()=>{if(done)return;done=true;clearTimeout(timer);window.removeEventListener("bluebot:session-ready",onReady);resolve(Boolean(token()||telegramInitData()))};
+  const onReady=()=>finish();
+  const timer=setTimeout(finish,timeout);
   window.addEventListener("bluebot:session-ready",onReady,{once:true});
  });
 }
 async function call(actions,method="GET",body={}){
- const sessionToken=await waitForToken();
- if(!sessionToken)throw new Error("برای ورود به فروشگاه، مینی‌اپ را از داخل ربات باز کنید.");
- const opt={method,headers:{Authorization:"Bearer "+sessionToken,"Content-Type":"application/json"}};
+ await waitForAuth();
+ const sessionToken=token(),initData=telegramInitData();
+ if(!sessionToken&&!initData)throw new Error("ورود تلگرام در دسترس نیست. مینی‌اپ را از داخل ربات باز کنید.");
+ const headers={"Content-Type":"application/json"};
+ if(sessionToken)headers.Authorization="Bearer "+sessionToken;
+ if(initData)headers["X-Telegram-Init-Data"]=initData;
+ const opt={method,headers};
  let url=API;
  if(method==="GET"){const q=new URLSearchParams({actions,...body});url+="?"+q.toString()}else opt.body=JSON.stringify({actions,...body});
  const r=await fetch(url,opt);const j=await r.json().catch(()=>({status:false,msg:"پاسخ نامعتبر"}));if(!r.ok||j.status===false)throw new Error(j.msg||"خطا");return j.obj??j;

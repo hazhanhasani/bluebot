@@ -181,7 +181,7 @@ $checks = [
     [str_contains($manager, "pending_approval"), 'orders must enter pending approval'],
     [str_contains($manager, "approveAndDeliver"), 'manual approval delivery action missing'],
     [str_contains($manager, "rejectAndRefund"), 'reject/refund action missing'],
-    [str_contains($manager, "UPDATE user SET Balance = Balance + ?"), 'refund must credit wallet'],
+    [str_contains($manager, "bluebotWalletAdjust") && str_contains($manager, "'digital_service_refund'"), 'refund must credit wallet through the central ledger'],
     [str_contains($manager, "giftPremiumSubscription"), 'Telegram Premium provider missing'],
     [str_contains($manager, "provider === 'tgtools'"), 'TGTools provider dispatch missing'],
     [str_contains($manager, "generatedProviderProductCode"), 'automatic provider product code generation missing'],
