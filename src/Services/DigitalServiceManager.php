@@ -4563,8 +4563,11 @@ final class BluebotDigitalServices
             self::STATUS_PROCESSING,
         ]);
 
+        $transitioned = $stmt->rowCount() === 1;
         $order = self::findOrder($pdo, $orderId);
-        if (is_array($order) && (string) ($order['status'] ?? '') === self::STATUS_PARTIAL_REVIEW) {
+        if ($transitioned
+            && is_array($order)
+            && (string) ($order['status'] ?? '') === self::STATUS_PARTIAL_REVIEW) {
             sendmessage(
                 (string) ($order['user_id'] ?? ''),
                 "🛠 <b>سفارش شما نیاز به بررسی دارد</b>\n\n"
