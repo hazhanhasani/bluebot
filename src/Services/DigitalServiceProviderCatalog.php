@@ -625,7 +625,7 @@ final class BluebotProviderCatalogService
                 'profit_percent' => (float) $provider['profit_percent'],
                 'price_mode' => 'margin',
                 'synced_at' => gmdate(DATE_ATOM),
-                'delivery_mode' => ($smmStyle || $providerKey === 'ozvinoo') ? 'integrated' : 'manual',
+                'delivery_mode' => in_array($providerKey, ['ozvinoo', 'tivanovin'], true) ? 'integrated' : 'manual',
                 'api_style' => $smmStyle ? 'smm' : 'rest',
                 'service_value' => $serviceValue,
             ];
