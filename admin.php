@@ -8220,6 +8220,12 @@ elseif ($text == $textbotlang['keyboard']['hidePanelForUser'] && $adminrulecheck
     update("affiliates", $column, $affiliateSetting[$column] == $on ? $off : $on);
     [$affiliateText, $affiliateKeyboard] = affiliateSettingsMenu();
     Editmessagetext($from_id, $message_id, $affiliateText, $affiliateKeyboard);
+} elseif ($datain === "affiliate-removebanner" && $adminrulecheck['rule'] == "administrator") {
+    update("affiliates", "id_media", "none");
+    update("affiliates", "description", "none");
+    step("home", $from_id);
+    [$affiliateText, $affiliateKeyboard] = affiliateSettingsMenu();
+    Editmessagetext($from_id, $message_id, "🗑 بنر زیرمجموعه‌گیری حذف شد.\n\n" . $affiliateText, $affiliateKeyboard);
 } elseif (preg_match('/^affiliate-(percent|giftamount|banner)$/', $datain, $dataget) && $adminrulecheck['rule'] == "administrator") {
     [$question, $affiliateStep] = [
         'percent' => [$textbotlang['Admin']['affiliates']['askPercent'], 'setpercentage'],
