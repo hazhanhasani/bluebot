@@ -170,6 +170,8 @@ $checks = [
     [str_contains($providerCatalog, "'action' => 'services'"), 'SMM services action missing'],
     [str_contains($providerCatalog, "'smm:'"), 'SMM catalog style marker missing'],
     [str_contains($providerCatalog, "'smm-get:'"), 'legacy GET SMM catalog marker missing'],
+    [str_contains($providerCatalog, "\$auto['products_path'] = \$smmPrefix . \$detectedPath"), 'SMM transport marker must survive automatic catalog mapping'],
+
     [str_contains($providerCatalog, "requestSmmServices(\$url, \$apiKey, \$authHeader, \$authPrefix, 'get')"), 'legacy GET SMM catalog request missing'],
     [str_contains($providerCatalog, "(?:(?:smm|smm-get):)?"), 'provider products_path validator must allow legacy SMM GET explicitly'],
 
