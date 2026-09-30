@@ -1370,7 +1370,7 @@ function reverseReferralCommission(string $sourceType,string $sourceId,string $r
  try{
   $q=$pdo->prepare("SELECT id FROM referral_commission_reversals WHERE event_key=? LIMIT 1");$q->execute([$reversalKey]);
   if($q->fetchColumn()){if($owns)$pdo->commit();return ['reversed'=>false,'reason'=>'already_reversed'];}
-  bluebotWalletAdjust($pdo,(string)$commission['referrer_id'],-(int)$commission['amount'],'referral_reversal',(string)$commission['id'],$reversalKey,['reason'=>$reason,'source_type'=>$sourceType,'source_id'=>$sourceId]);
+  bluebotWalletAdjust($pdo,(string)$commission['referrer_id'],-(int)$commission['amount'],'referral_reversal',(string)$commission['id'],$reversalKey,['reason'=>$reason,'source_type'=>$sourceType,'source_id'=>$sourceId],true);
   $i=$pdo->prepare("INSERT INTO referral_commission_reversals(commission_id,event_key,referrer_id,amount,reason) VALUES(?,?,?,?,?)");
   $i->execute([(int)$commission['id'],$reversalKey,(string)$commission['referrer_id'],(int)$commission['amount'],substr($reason,0,190)]);
   if($owns)$pdo->commit();
