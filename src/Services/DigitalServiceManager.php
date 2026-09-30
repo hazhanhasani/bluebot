@@ -2318,6 +2318,180 @@ final class BluebotDigitalServices
         return !is_array($managed) || (int) ($managed['active'] ?? 1) === 1;
     }
 
+    private static function ensureFavoritesStorage(PDO $pdo): void
+    {
+        $pdo->exec(
+            "CREATE TABLE IF NOT EXISTS digital_service_favorites (
+                id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+                user_id VARCHAR(200) NOT NULL,
+                service_id INT UNSIGNED NOT NULL,
+                created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE KEY uniq_digital_service_favorite (user_id, service_id),
+                KEY idx_digital_service_favorite_user (user_id, created_at),
+                KEY idx_digital_service_favorite_service (service_id)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci"
+        );
+    }
+
+    public static function isFavorite(PDO $pdo, string $userId, int $productId): bool
+    {
+        $userId = trim($userId);
+        if ($userId === '' || $productId <= 0) {
+            return false;
+        }
+
+        self::ensureFavoritesStorage($pdo);
+        $stmt = $pdo->prepare(
+            "SELECT 1 FROM digital_service_favorites
+             WHERE user_id = ? AND service_id = ?
+             LIMIT 1"
+        );
+        $stmt->execute([$userId, $productId]);
+        return (bool) $stmt->fetchColumn();
+    }
+
+    public static function toggleFavorite(PDO $pdo, string $userId, int $productId): bool
+    {
+        $userId = trim($userId);
+        if ($userId === '' || $productId <= 0 || !is_array(self::findProduct($pdo, $productId))) {
+            throw new InvalidArgumentException('Favorite service request is invalid.');
+        }
+
+        self::ensureFavoritesStorage($pdo);
+        $pdo->beginTransaction();
+        try {
+            $check = $pdo->prepare(
+                "SELECT id FROM digital_service_favorites
+                 WHERE user_id = ? AND service_id = ?
+                 FOR UPDATE"
+            );
+            $check->execute([$userId, $productId]);
+            $favoriteId = $check->fetchColumn();
+
+            if ($favoriteId !== false) {
+                $delete = $pdo->prepare("DELETE FROM digital_service_favorites WHERE id = ?");
+                $delete->execute([(int) $favoriteId]);
+                $pdo->commit();
+                return false;
+            }
+
+            $insert = $pdo->prepare(
+                "INSERT INTO digital_service_favorites (user_id, service_id)
+                 VALUES (?, ?)"
+            );
+            $insert->execute([$userId, $productId]);
+            $pdo->commit();
+            return true;
+        } catch (Throwable $e) {
+            if ($pdo->inTransaction()) {
+                $pdo->rollBack();
+            }
+            throw $e;
+        }
+    }
+
+    public static function favoriteProducts(PDO $pdo, string $userId): array
+    {
+        $userId = trim($userId);
+        if ($userId === '') {
+            return [];
+        }
+
+        self::ensureFavoritesStorage($pdo);
+        $stmt = $pdo->prepare(
+            "SELECT p.*
+             FROM digital_service_favorites f
+             INNER JOIN digital_service_products p ON p.id = f.service_id
+             WHERE f.user_id = ? AND p.active = 1
+             ORDER BY f.created_at DESC, f.id DESC"
+        );
+        $stmt->execute([$userId]);
+        return $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+    }
+
+    public static function bestSellingProducts(PDO $pdo, int $limit = 12, int $days = 30): array
+    {
+        if (!self::isAvailable($pdo)) {
+            return [];
+        }
+
+        $limit = max(1, min(30, $limit));
+        $days = max(1, min(365, $days));
+        $stmt = $pdo->prepare(
+            "SELECT p.*, SUM(o.quantity) AS sold_quantity, COUNT(o.id) AS sold_orders
+             FROM digital_service_orders o
+             INNER JOIN digital_service_products p ON p.id = o.service_id
+             WHERE p.active = 1
+               AND o.status IN (?, ?, ?)
+               AND o.created_at >= DATE_SUB(NOW(), INTERVAL " . $days . " DAY)
+             GROUP BY p.id
+             ORDER BY sold_quantity DESC, sold_orders DESC, p.sort_order ASC, p.id ASC
+             LIMIT " . $limit
+        );
+        $stmt->execute([
+            self::STATUS_DELIVERED,
+            self::STATUS_PROCESSING,
+            self::STATUS_PARTIAL_REVIEW,
+        ]);
+        return $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+    }
+
+    public static function productCollectionKeyboard(
+        array $products,
+        string $emptyText,
+        string $backCallback = 'ds_home',
+        int $page = 1,
+        int $perPage = 8,
+        string $pageCallbackPrefix = ''
+    ): string {
+        $perPage = max(4, min(12, $perPage));
+        $total = count($products);
+        $pages = max(1, (int) ceil($total / $perPage));
+        $page = max(1, min($pages, $page));
+        $rows = [];
+
+        foreach (array_slice($products, ($page - 1) * $perPage, $perPage) as $product) {
+            $priceText = number_format((float) ($product['price'] ?? 0)) . ' تومان';
+            $name = preg_replace('/\s+/u', ' ', trim((string) ($product['name'] ?? 'سرویس'))) ?: 'سرویس';
+            $suffix = ' · ' . $priceText;
+            $maxNameLength = max(12, 60 - mb_strlen($suffix, 'UTF-8'));
+            if (mb_strlen($name, 'UTF-8') > $maxNameLength) {
+                $name = rtrim(mb_substr($name, 0, $maxNameLength - 1, 'UTF-8')) . '…';
+            }
+            $rows[] = [[
+                'text' => $name . $suffix,
+                'callback_data' => 'ds_product:' . (int) ($product['id'] ?? 0),
+            ]];
+        }
+
+        if ($rows === []) {
+            $rows[] = [[
+                'text' => $emptyText,
+                'callback_data' => $backCallback,
+            ]];
+        }
+
+        if ($pages > 1 && $pageCallbackPrefix !== '') {
+            $nav = [];
+            if ($page > 1) {
+                $nav[] = ['text' => '⬅️ قبلی', 'callback_data' => $pageCallbackPrefix . ($page - 1)];
+            }
+            if ($page < $pages) {
+                $nav[] = ['text' => 'بعدی ➡️', 'callback_data' => $pageCallbackPrefix . ($page + 1)];
+            }
+            if ($nav !== []) {
+                $rows[] = $nav;
+            }
+        }
+
+        $rows[] = [[
+            'text' => '↩️ فروش خدمات',
+            'callback_data' => $backCallback,
+        ]];
+
+        return json_encode(['inline_keyboard' => $rows], JSON_UNESCAPED_UNICODE);
+    }
+
     public static function categoryKeyboard(PDO $pdo, string $backText): string
     {
         self::ensureManagedCategories($pdo);
@@ -2364,6 +2538,16 @@ final class BluebotDigitalServices
             ]];
         }
 
+        $rows[] = [
+            [
+                'text' => '❤️ علاقه‌مندی‌ها',
+                'callback_data' => 'ds_favorites:1',
+            ],
+            [
+                'text' => '🔥 پرفروش‌ها',
+                'callback_data' => 'ds_bestsellers:1',
+            ],
+        ];
         $rows[] = [[
             'text' => '📋 سفارش‌های من',
             'callback_data' => 'ds_orders:1',
@@ -3286,6 +3470,10 @@ final class BluebotDigitalServices
                     'text' => '🛒 ثبت سفارش',
                     'callback_data' => 'ds_buy:' . (int) $product['id'],
                     'style' => 'success',
+                ]],
+                [[
+                    'text' => '❤️ افزودن / حذف علاقه‌مندی',
+                    'callback_data' => 'ds_fav:' . (int) $product['id'],
                 ]],
                 [[
                     'text' => '↩️ بازگشت',
