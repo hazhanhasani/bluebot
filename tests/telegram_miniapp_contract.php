@@ -9,24 +9,24 @@ $appIndex = @file_get_contents($root . '/app/index.php');
 if ($appIndex !== false && str_contains($appIndex, 'https://telegram.org/js/telegram-web-app.js')) {
     $failures[] = 'Mini App startup must not block on the external Telegram SDK.';
 }
-if ($appIndex === false || !str_contains($appIndex, './js/telegram-bootstrap.js?v=0.2.0')) {
+if ($appIndex === false || !str_contains($appIndex, './js/telegram-bootstrap.js?v=0.2.1')) {
     $failures[] = 'Mini App compatibility bootstrap is not loaded with the current cache key.';
 }
-if ($appIndex === false || !str_contains($appIndex, './js/telegram-web-app.js?v=0.2.0')) {
+if ($appIndex === false || !str_contains($appIndex, './js/telegram-web-app.js?v=0.2.1')) {
     $failures[] = 'Local Telegram SDK is not loaded first.';
 }
 
-if ($appIndex === false || !str_contains($appIndex, 'script defer src="./js/telegram-web-app.js?v=0.2.0"')) {
+if ($appIndex === false || !str_contains($appIndex, 'script defer src="./js/telegram-web-app.js?v=0.2.1"')) {
     $failures[] = 'Mini App Telegram SDK must load with defer for non-blocking first paint.';
 }
 if ($appIndex === false || !str_contains($appIndex, 'bluebot-boot')) {
     $failures[] = 'Mini App must provide an immediate boot/loading surface.';
 }
 
-if ($appIndex === false || !str_contains($appIndex, './js/app-loader.js?v=0.2.0')) {
+if ($appIndex === false || !str_contains($appIndex, './js/app-loader.js?v=0.2.1')) {
     $failures[] = 'Mini App ordered application loader is missing.';
 }
-if ($appIndex === false || !str_contains($appIndex, './js/full-store.js?v=0.2.0')) {
+if ($appIndex === false || !str_contains($appIndex, './js/full-store.js?v=0.2.1')) {
     $failures[] = 'Mini App full digital-services storefront is not mounted.';
 }
 $fullStore = @file_get_contents($root . '/app/js/full-store.js');
@@ -134,7 +134,7 @@ if ($verify === false || !str_contains($verify, "hash_equals")) {
 }
 
 $version = trim((string) @file_get_contents($root . '/app/version'));
-if ($version !== '0.2.0') {
+if ($version !== '0.2.1') {
     $failures[] = 'Unexpected Mini App version: ' . $version;
 }
 
@@ -147,3 +147,9 @@ if ($failures !== []) {
 }
 
 echo "Telegram Mini App contract OK.\n";
+
+$store = @file_get_contents($root . '/app/js/full-store.js');
+$entry = @file_get_contents($root . '/app/assets/index-C-2a0Dur.js');
+if ($store === false || !str_contains($store, '__BLUEBOT_SESSION_TOKEN__') || $entry === false || !str_contains($entry, '__BLUEBOT_SESSION_TOKEN__')) {
+    $failures[] = 'Mini App digital store must share the authenticated React session token.';
+}
