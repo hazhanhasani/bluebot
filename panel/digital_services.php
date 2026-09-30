@@ -251,6 +251,102 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         exit;
     }
 
+    if ($action === 'save_panelbaz') {
+        $apiKey = trim((string) ($_POST['panelbaz_api_key'] ?? ''));
+        $profitPercent = (float) ($_POST['panelbaz_profit_percent'] ?? 0);
+        $usdToToman = (float) ($_POST['panelbaz_usd_to_toman'] ?? 0);
+        $syncInterval = max(1, min(1440, (int) ($_POST['panelbaz_sync_interval_minutes'] ?? 15)));
+        $approvalMode = strtolower(trim((string) ($_POST['panelbaz_approval_mode'] ?? 'manual')));
+
+        if ($apiKey !== '' && (strlen($apiKey) > 2048 || preg_match('/[\r\n]/', $apiKey))) {
+            flash('error', 'API Key پنل باز معتبر نیست.');
+            header('Location: digital_services.php#panelbaz');
+            exit;
+        }
+        if ($profitPercent < 0 || $profitPercent > 1000) {
+            flash('error', 'درصد سود پنل باز باید بین ۰ تا ۱۰۰۰ باشد.');
+            header('Location: digital_services.php#panelbaz');
+            exit;
+        }
+        if ($usdToToman <= 0) {
+            flash('error', 'نرخ هر دلار به تومان برای پنل باز باید بیشتر از صفر باشد.');
+            header('Location: digital_services.php#panelbaz');
+            exit;
+        }
+        if (!in_array($approvalMode, ['manual', 'automatic'], true)) {
+            flash('error', 'نوع تأیید پنل باز معتبر نیست.');
+            header('Location: digital_services.php#panelbaz');
+            exit;
+        }
+
+        try {
+            BluebotDigitalServices::savePanelBazProvider(
+                $pdo,
+                $apiKey,
+                $profitPercent,
+                $usdToToman,
+                $syncInterval
+            );
+            BluebotDigitalServices::setProviderApprovalMode($pdo, 'panelbaz', $approvalMode);
+            $sync = BluebotProviderCatalogService::syncProvider($pdo, 'panelbaz');
+            $wallet = BluebotDigitalServices::panelBazWalletStatus($pdo);
+
+            if (!empty($sync['ok'])) {
+                $balanceText = '';
+                if (!empty($wallet['ok']) && is_numeric($wallet['balance'] ?? null)) {
+                    $balance = (float) $wallet['balance'];
+                    $currency = strtoupper((string) ($wallet['currency'] ?? 'USD'));
+                    $balanceText = ' · موجودی: ' . rtrim(rtrim(number_format($balance, 4, '.', ''), '0'), '.') . ' ' . $currency;
+                    if ($currency === 'USD') {
+                        $balanceText .= ' (≈ ' . number_format($balance * $usdToToman) . ' تومان)';
+                    }
+                }
+
+                flash(
+                    'success',
+                    'پنل باز متصل و همگام شد: '
+                    . (int) ($sync['created'] ?? 0) . ' جدید، '
+                    . (int) ($sync['updated'] ?? 0) . ' بروزرسانی، '
+                    . (int) ($sync['disabled'] ?? 0) . ' غیرفعال'
+                    . $balanceText
+                );
+            } else {
+                flash(
+                    'warning',
+                    'تنظیمات پنل باز ذخیره شد اما دریافت سرویس‌ها ناموفق بود: '
+                    . (string) ($sync['message'] ?? 'خطای نامشخص')
+                );
+            }
+        } catch (Throwable $e) {
+            flash('error', 'اتصال پنل باز انجام نشد: ' . $e->getMessage());
+        }
+
+        header('Location: digital_services.php#panelbaz');
+        exit;
+    }
+
+    if ($action === 'sync_panelbaz_catalog') {
+        try {
+            $sync = BluebotProviderCatalogService::syncProvider($pdo, 'panelbaz');
+            if (!empty($sync['ok'])) {
+                flash(
+                    'success',
+                    'سرویس‌های پنل باز بروزرسانی شدند: '
+                    . (int) ($sync['created'] ?? 0) . ' جدید، '
+                    . (int) ($sync['updated'] ?? 0) . ' بروزرسانی، '
+                    . (int) ($sync['disabled'] ?? 0) . ' غیرفعال.'
+                );
+            } else {
+                flash('error', 'همگام‌سازی پنل باز ناموفق بود: ' . (string) ($sync['message'] ?? 'خطای نامشخص'));
+            }
+        } catch (Throwable $e) {
+            flash('error', 'همگام‌سازی پنل باز انجام نشد: ' . $e->getMessage());
+        }
+
+        header('Location: digital_services.php#panelbaz');
+        exit;
+    }
+
     if ($action === 'save_provider_catalog') {
         $requestedApprovalMode = strtolower(trim((string) ($_POST['provider_approval_mode'] ?? 'manual')));
         try {
@@ -494,7 +590,7 @@ $providerCatalogs = array_values(array_filter(
     BluebotProviderCatalogService::listProviders($pdo),
     static fn (array $provider): bool => !in_array(
         strtolower((string) ($provider['provider_key'] ?? '')),
-        ['ozvinoo', 'tivanovin'],
+        ['ozvinoo', 'tivanovin', 'panelbaz'],
         true
     )
 ));
@@ -508,6 +604,17 @@ $tivaProductCount = (int) $tivaProductCountStmt->fetchColumn();
 $tivaWalletStatus = $tivaApiKey !== ''
     ? BluebotDigitalServices::tivaNovinWalletStatus($pdo)
     : ['ok' => false, 'configured' => false, 'balance' => null, 'currency' => 'IRR', 'message' => 'API Key تنظیم نشده است.'];
+$panelBazProvider = BluebotProviderCatalogService::findProvider($pdo, 'panelbaz');
+$panelBazApiKey = is_array($panelBazProvider) ? trim((string) ($panelBazProvider['api_key'] ?? '')) : '';
+$panelBazProfitPercent = is_array($panelBazProvider) ? (float) ($panelBazProvider['profit_percent'] ?? 0) : 0.0;
+$panelBazUsdToToman = is_array($panelBazProvider) ? (float) ($panelBazProvider['exchange_rate_toman'] ?? 0) : 0.0;
+$panelBazSyncInterval = is_array($panelBazProvider) ? max(1, (int) ($panelBazProvider['sync_interval_minutes'] ?? 15)) : 15;
+$panelBazApprovalMode = BluebotDigitalServices::providerApprovalMode($pdo, 'panelbaz');
+$panelBazProductCountStmt = $pdo->query("SELECT COUNT(*) FROM digital_service_products WHERE provider = 'panelbaz' AND active = 1");
+$panelBazProductCount = (int) $panelBazProductCountStmt->fetchColumn();
+$panelBazWalletStatus = $panelBazApiKey !== ''
+    ? BluebotDigitalServices::panelBazWalletStatus($pdo)
+    : ['ok' => false, 'configured' => false, 'balance' => null, 'currency' => 'USD', 'message' => 'API Key تنظیم نشده است.'];
 $ozApiKey = ds_panel_setting($pdo, 'ozvinoo_api_key');
 $ozProfitPercent = (float) ds_panel_setting($pdo, 'ozvinoo_profit_percent', '0');
 $ozSyncInterval = (int) ds_panel_setting($pdo, 'ozvinoo_sync_interval_minutes', '15');
@@ -956,6 +1063,109 @@ include __DIR__ . '/inc/layout_head.php';
         </form>
     </div>
 
+    <div class="card fade-up d1" id="panelbaz">
+        <div class="card-head">
+            <div>
+                <div class="card-title">PanelBaz / پنل باز</div>
+                <div class="card-subtitle">اتصال SMM API برای دریافت سرویس‌ها، قیمت‌گذاری با دلار، سفارش خودکار/دستی، پیگیری وضعیت و موجودی.</div>
+            </div>
+        </div>
+
+        <form method="post" class="card-body" style="display:grid;gap:12px">
+            <input type="hidden" name="_csrf" value="<?= htmlspecialchars(csrf_token()) ?>">
+            <input type="hidden" name="action" value="save_panelbaz">
+
+            <div class="field">
+                <label>API Endpoint</label>
+                <input class="input" value="https://panelbaz.ir/panelbaz/api/v1" disabled dir="ltr">
+                <small class="field-hint">اتصال با POST و کلید API در بدنه درخواست انجام می‌شود.</small>
+            </div>
+
+            <div class="field">
+                <label>API Key</label>
+                <input class="input" type="password" name="panelbaz_api_key" autocomplete="new-password" dir="ltr"
+                    placeholder="<?= $panelBazApiKey !== '' ? '•••••••• (ذخیره شده؛ برای تغییر وارد کنید)' : 'کلید API پنل باز' ?>">
+                <small class="field-hint">کلید را از ویرایش پروفایل PanelBaz بسازید؛ فقط سمت سرور ذخیره می‌شود.</small>
+            </div>
+
+            <div class="two-col" style="gap:10px">
+                <div class="field">
+                    <label>درصد سود همه سرویس‌ها</label>
+                    <input class="input" type="number" name="panelbaz_profit_percent" min="0" max="1000" step="0.1"
+                        value="<?= htmlspecialchars((string) $panelBazProfitPercent) ?>" required>
+                    <small class="field-hint">قیمت API به‌صورت USD خوانده می‌شود و بعد از تبدیل به تومان، درصد سود اعمال می‌شود.</small>
+                </div>
+                <div class="field">
+                    <label>نرخ هر ۱ دلار به تومان</label>
+                    <input class="input" type="number" name="panelbaz_usd_to_toman" min="1" step="1"
+                        value="<?= htmlspecialchars($panelBazUsdToToman > 0 ? (string) $panelBazUsdToToman : '') ?>"
+                        placeholder="مثلاً 100000" required>
+                    <small class="field-hint">برای محاسبه قیمت فروش سرویس‌های PanelBaz استفاده می‌شود.</small>
+                </div>
+            </div>
+
+            <div class="two-col" style="gap:10px">
+                <div class="field">
+                    <label>بروزرسانی خودکار (دقیقه)</label>
+                    <input class="input" type="number" name="panelbaz_sync_interval_minutes" min="1" max="1440"
+                        value="<?= htmlspecialchars((string) $panelBazSyncInterval) ?>" required>
+                </div>
+                <div class="field">
+                    <label>نوع تأیید و ارسال سفارش</label>
+                    <select class="select" name="panelbaz_approval_mode">
+                        <option value="manual" <?= $panelBazApprovalMode === 'manual' ? 'selected' : '' ?>>🛡️ دستی — ادمین تأیید و ارسال کند</option>
+                        <option value="automatic" <?= $panelBazApprovalMode === 'automatic' ? 'selected' : '' ?>>⚡ خودکار — بلافاصله بعد از پرداخت ارسال شود</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="card" data-persistent-panelbaz-wallet style="padding:14px;background:var(--sf2)">
+                <strong>💰 موجودی API پنل باز</strong>
+                <div style="margin-top:8px">
+                    <?php if (!empty($panelBazWalletStatus['ok'])): ?>
+                        <?php
+                        $panelBazBalance = (float) ($panelBazWalletStatus['balance'] ?? 0);
+                        $panelBazCurrency = strtoupper((string) ($panelBazWalletStatus['currency'] ?? 'USD'));
+                        ?>
+                        <code><?= htmlspecialchars(rtrim(rtrim(number_format($panelBazBalance, 4, '.', ''), '0'), '.')) ?> <?= htmlspecialchars($panelBazCurrency) ?></code>
+                        <?php if ($panelBazCurrency === 'USD' && $panelBazUsdToToman > 0): ?>
+                            · حدود <code><?= number_format($panelBazBalance * $panelBazUsdToToman) ?> تومان</code>
+                        <?php endif; ?>
+                    <?php else: ?>
+                        <?= htmlspecialchars((string) ($panelBazWalletStatus['message'] ?? 'دریافت موجودی ناموفق بود.')) ?>
+                    <?php endif; ?>
+                </div>
+            </div>
+
+            <div class="card" style="padding:14px;background:var(--sf2)">
+                <strong>📦 سرویس‌های فعال PanelBaz در ربات:</strong> <?= number_format($panelBazProductCount) ?>
+                <br><small class="field-hint">
+                    <code>services</code> کاتالوگ · <code>add</code> سفارش · <code>status</code> پیگیری ·
+                    <code>balance</code> موجودی · هسته SMM همچنین <code>refill</code>، <code>refill_status</code> و <code>cancel</code> را پشتیبانی می‌کند.
+                    نوع تأیید فعلی: <strong><?= $panelBazApprovalMode === 'automatic' ? '⚡ خودکار' : '🛡️ دستی' ?></strong>.
+                </small>
+            </div>
+
+            <?php if (is_array($panelBazProvider)): ?>
+                <div class="card" style="padding:14px;background:var(--sf2)">
+                    آخرین Sync: <?= htmlspecialchars((string) ($panelBazProvider['last_sync_at'] ?? '—')) ?>
+                    · وضعیت: <?= htmlspecialchars((string) ($panelBazProvider['last_sync_status'] ?? '—')) ?>
+                    <?php if (!empty($panelBazProvider['last_sync_message'])): ?>
+                        <br><small class="field-hint"><?= htmlspecialchars((string) $panelBazProvider['last_sync_message']) ?></small>
+                    <?php endif; ?>
+                </div>
+            <?php endif; ?>
+
+            <button class="btn btn-primary" type="submit"><?= icon('check', 14) ?> ذخیره + اتصال + همگام‌سازی PanelBaz</button>
+        </form>
+
+        <form method="post" class="card-body" style="padding-top:0">
+            <input type="hidden" name="_csrf" value="<?= htmlspecialchars(csrf_token()) ?>">
+            <input type="hidden" name="action" value="sync_panelbaz_catalog">
+            <button class="btn btn-ghost" type="submit">↻ بروزرسانی سرویس‌های PanelBaz</button>
+        </form>
+    </div>
+
 </div>
 <div class="card fade-up d1" id="providers" style="margin-top:16px">
     <div class="card-head">
@@ -977,7 +1187,7 @@ include __DIR__ . '/inc/layout_head.php';
             <div class="field">
                 <label>کلید داخلی</label>
                 <input class="input" name="provider_key" maxlength="50" required dir="ltr" placeholder="socialprovider">
-                <small class="field-hint">حروف انگلیسی کوچک، عدد، خط تیره یا زیرخط. <code>tgtools</code> و <code>tivanovin</code> رزرو شده‌اند.</small>
+                <small class="field-hint">حروف انگلیسی کوچک، عدد، خط تیره یا زیرخط. <code>tgtools</code>، <code>tivanovin</code> و <code>panelbaz</code> رزرو شده‌اند.</small>
             </div>
         </div>
 
