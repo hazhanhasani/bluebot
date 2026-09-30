@@ -570,6 +570,14 @@ function affiliateSettingsMenu()
             ['text' => $textbotlang['keyboard']['setAffiliateBanner'], 'callback_data' => "affiliate-banner"],
             ['text' => '🗑 حذف بنر', 'callback_data' => "affiliate-removebanner"],
         ],
+        [
+            ['text' => '📊 آمار و گزارش', 'callback_data' => "affiliate-analytics"],
+            ['text' => '🏆 برترین معرف‌ها', 'callback_data' => "affiliate-top-1"],
+        ],
+        [
+            ['text' => '🔎 جستجوی کاربر', 'callback_data' => "affiliate-search"],
+            ['text' => '🧾 تراکنش‌ها', 'callback_data' => "affiliate-transactions-1"],
+        ],
         [['text' => $textbotlang['keyboard']['backToPreviousMenu'], 'callback_data' => "featurecat-sales"]],
     ];
     $text = sprintf($textbotlang['Admin']['affiliates']['settingsTitle'], $commissionText, $firstBuyText, $percentText, $startGiftText, $giftAmountText);
