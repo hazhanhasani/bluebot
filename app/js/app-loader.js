@@ -17,7 +17,7 @@
     started: true,
     loaded: false,
     failed: false,
-    version: '0.2.2',
+    version: '0.2.3',
     startedAt: Date.now()
   };
   window[bootKey] = bootState;
