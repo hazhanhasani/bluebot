@@ -1,0 +1,52 @@
+openapi: 3.1.0
+info:
+  title: BlueBot API
+  version: 1.0.0
+  description: Administrative and Mini App API surface for BlueBot.
+servers:
+  - url: /api
+components:
+  securitySchemes:
+    BlueBotToken:
+      type: apiKey
+      in: header
+      name: Token
+  schemas:
+    Envelope:
+      type: object
+      properties:
+        status: { type: boolean }
+        msg: { type: string }
+        obj: {}
+paths:
+  /service.php:
+    post:
+      security: [{ BlueBotToken: [] }]
+      summary: Digital/subscription service operations
+      responses:
+        '200': { description: API response }
+        '403': { description: Invalid token }
+        '429': { description: Rate limited }
+  /users.php:
+    post:
+      security: [{ BlueBotToken: [] }]
+      summary: User operations
+      responses:
+        '200': { description: API response }
+        '403': { description: Invalid token }
+        '429': { description: Rate limited }
+  /invoice.php:
+    post:
+      security: [{ BlueBotToken: [] }]
+      summary: Invoice operations
+      responses:
+        '200': { description: API response }
+        '403': { description: Invalid token }
+        '429': { description: Rate limited }
+  /verify.php:
+    post:
+      summary: Verify Telegram Mini App init data
+      responses:
+        '200': { description: Verified session }
+        '403': { description: Invalid Telegram signature }
+        '429': { description: Rate limited }
