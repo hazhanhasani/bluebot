@@ -66,23 +66,42 @@ $data = sanitize_recursive($data);
 
 $authorization = (string) (headerValue($headers, 'Authorization') ?? '');
 $tokencheck = preg_match('/^\s*Bearer\s+(\S+)\s*$/i', $authorization, $bearerMatch) ? $bearerMatch[1] : '';
-if ($tokencheck === '') {
-    http_response_code(403);
-    echo json_encode([
-        'status' => false,
-        'msg' => "Token invalid",
-    ]);
-    return;
+$usercheck = null;
+
+if ($tokencheck !== '') {
+    $candidate = select('user', "*", "token", $tokencheck, "select");
+    if (is_array($candidate)
+        && is_string($candidate['token'] ?? null)
+        && hash_equals((string) $candidate['token'], $tokencheck)) {
+        $usercheck = $candidate;
+    }
 }
 
-// Authenticate before touching anything else: the session token, not the
-// client-supplied user_id, decides whose account this request acts on.
-$usercheck = select('user', "*", "token", $tokencheck, "select");
-if (!$usercheck || !is_string($usercheck['token']) || !hash_equals($usercheck['token'], $tokencheck)) {
+// The Digital Services storefront can authenticate directly with Telegram's
+// signed initData. This keeps it independent from the legacy React token cache
+// and never rotates/invalidates the existing app session token.
+if (!is_array($usercheck)) {
+    $telegramInitData = (string) (headerValue($headers, 'X-Telegram-Init-Data') ?? '');
+    if ($telegramInitData !== '') {
+        try {
+            $telegramUser = validateTelegramInitDataForMiniApp($telegramInitData, $APIKEY);
+            $candidate = select('user', "*", "id", (string) ($telegramUser['id'] ?? ''), "select");
+            if (is_array($candidate)) {
+                $usercheck = $candidate;
+            }
+        } catch (Throwable $e) {
+            bluebotLog('warning', 'Mini App Telegram authentication failed', [
+                'reason' => $e->getMessage(),
+            ]);
+        }
+    }
+}
+
+if (!is_array($usercheck)) {
     http_response_code(403);
     echo json_encode([
         'status' => false,
-        'msg' => "Token invalid",
+        'msg' => "Authentication required",
     ]);
     return;
 }
