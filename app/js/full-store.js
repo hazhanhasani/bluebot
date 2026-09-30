@@ -2,14 +2,15 @@
 const API="../api/miniapp.php",rootId="bluebot-full-store";
 const esc=s=>String(s??"").replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[m]));
 const token=()=>localStorage.getItem("token")||sessionStorage.getItem("token")||window.__BLUEBOT_SESSION_TOKEN__||"";
-async function waitForToken(timeout=7000){
- const started=Date.now();
- while(Date.now()-started<timeout){
-  const value=token();
-  if(value)return value;
-  await new Promise(resolve=>setTimeout(resolve,120));
- }
- return "";
+async function waitForToken(timeout=12000){
+ const existing=token();if(existing)return existing;
+ return await new Promise(resolve=>{
+  let done=false;
+  const finish=value=>{if(done)return;done=true;clearTimeout(timer);window.removeEventListener("bluebot:session-ready",onReady);resolve(value||"")};
+  const onReady=e=>finish((e&&e.detail&&e.detail.token)||token());
+  const timer=setTimeout(()=>finish(token()),timeout);
+  window.addEventListener("bluebot:session-ready",onReady,{once:true});
+ });
 }
 async function call(actions,method="GET",body={}){
  const sessionToken=await waitForToken();
@@ -35,6 +36,6 @@ function modal(html){const d=document.createElement("div");d.className="bbs-moda
 function openProduct(id){const p=state.products.find(x=>x.id===id);if(!p)return;const q=p.quantity||{},d=modal(`<h3>${esc(p.name)}</h3><div class="bbs-muted">${esc(p.target_prompt||"مقصد سفارش را وارد کنید.")}</div><input class="bbs-input" name="target" placeholder="مقصد / یوزرنیم / لینک">${q.variable?`<input class="bbs-input" name="quantity" type="number" min="${q.min}" max="${q.max}" value="${q.min}" placeholder="تعداد">`:""}<div class="bbs-row"><button class="bbs-btn" data-quote>بررسی قیمت</button><button class="bbs-chip" data-close>بستن</button></div><div data-result class="bbs-muted"></div>`);
 d.querySelector("[data-close]").onclick=()=>d.remove();d.querySelector("[data-quote]").onclick=async()=>{const target=d.querySelector('[name=target]').value,quantity=q.variable?Number(d.querySelector('[name=quantity]').value):q.fixed;const out=d.querySelector("[data-result]");try{out.textContent="در حال بررسی…";const quote=await call("digital_quote","POST",{product_id:p.id,target,quantity});out.innerHTML=`<p>مبلغ نهایی: <b>${Number(quote.amount).toLocaleString("fa-IR")} تومان</b></p><button class="bbs-btn" data-confirm>تأیید و ثبت سفارش</button>`;out.querySelector("[data-confirm]").onclick=async()=>{try{out.textContent="در حال ثبت سفارش…";const res=await call("digital_purchase","POST",{product_id:p.id,target:quote.target,quantity:quote.quantity});out.innerHTML=`<p>✅ سفارش ثبت شد.</p><p>کد: <b>${esc(res.order?.order_code||"")}</b></p>`}catch(e){out.textContent="❌ "+e.message}}}catch(e){out.textContent="❌ "+e.message}}}
 async function openOrders(){const d=modal("<h3>📋 سفارش‌های من</h3><div data-orders>در حال دریافت…</div>");try{const r=await call("digital_orders","GET",{page:1});d.querySelector("[data-orders]").innerHTML=(r.orders||[]).map(o=>`<div class="bbs-order"><b>${esc(o.service_name)}</b><br><span class="bbs-muted">${esc(o.order_code)} · ${esc(o.status)} · ${Number(o.amount||0).toLocaleString("fa-IR")} تومان</span></div>`).join("")||'<div class="bbs-empty">هنوز سفارشی ندارید.</div>'}catch(e){d.querySelector("[data-orders]").textContent="❌ "+e.message}}
-async function init(){css();try{const r=await call("digital_catalog");state.products=r.products||[];render()}catch(e){host().innerHTML='<div class="bbs-empty">فروشگاه خدمات در دسترس نیست: '+esc(e.message)+'</div>'}}
-function setSessionToken(value){if(typeof value==="string"&&value){window.__BLUEBOT_SESSION_TOKEN__=value;window.dispatchEvent(new CustomEvent("bluebot:session-ready"))}}
+async function init(){css();const el=host();el.innerHTML='<div class="bbs-empty">در حال آماده‌سازی فروشگاه…</div>';try{const r=await call("digital_catalog");state.products=r.products||[];render()}catch(e){el.innerHTML='<div class="bbs-empty">'+esc(e.message)+'</div>'}}
+function setSessionToken(value){if(typeof value==="string"&&value){window.__BLUEBOT_SESSION_TOKEN__=value;window.dispatchEvent(new CustomEvent("bluebot:session-ready",{detail:{token:value}}))}}
 window.BlueBotFullStore={init,setSessionToken};})();
