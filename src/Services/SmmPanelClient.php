@@ -22,12 +22,22 @@ final class SmmPanelClient
     private string $baseUrl;
     private string $apiKey;
     private string $providerKey;
+    private string $transport;
 
-    public function __construct(string $baseUrl, string $apiKey, string $providerKey = 'generic')
-    {
+    public function __construct(
+        string $baseUrl,
+        string $apiKey,
+        string $providerKey = 'generic',
+        string $transport = 'post'
+    ) {
         $this->providerKey = strtolower(trim($providerKey));
         $this->baseUrl = self::normaliseBaseUrl($baseUrl);
         $this->apiKey = trim($apiKey);
+        $this->transport = strtolower(trim($transport));
+
+        if (!in_array($this->transport, ['post', 'get'], true)) {
+            throw new InvalidArgumentException('Unsupported SMM transport.');
+        }
 
         if ($this->apiKey === '' || strlen($this->apiKey) > 2048 || preg_match('/[\r\n]/', $this->apiKey)) {
             throw new InvalidArgumentException('SMM API key is missing or invalid.');
@@ -206,6 +216,62 @@ final class SmmPanelClient
         ]);
     }
 
+    public function statusesNormalized(array $orderIds): array
+    {
+        $response = $this->statuses($orderIds);
+        if (empty($response['ok'])) {
+            return $response;
+        }
+
+        $data = is_array($response['data'] ?? null) ? $response['data'] : [];
+        $orders = [];
+        foreach ($data as $key => $value) {
+            $reference = trim((string) $key);
+            if (is_array($value)) {
+                $reference = trim((string) ($value['order'] ?? $reference));
+                $rawStatus = trim((string) ($value['status'] ?? ''));
+                if ($reference === '' || $rawStatus === '') {
+                    continue;
+                }
+                $orders[$reference] = [
+                    'ok' => true,
+                    'reference' => $reference,
+                    'status' => self::normaliseStatus($rawStatus),
+                    'raw_status' => $rawStatus,
+                    'charge' => isset($value['charge']) && is_numeric($value['charge']) ? (float) $value['charge'] : null,
+                    'start_count' => isset($value['start_count']) && is_numeric($value['start_count']) ? (int) $value['start_count'] : null,
+                    'remains' => isset($value['remains']) && is_numeric($value['remains']) ? (int) $value['remains'] : null,
+                    'data' => $value,
+                ];
+                continue;
+            }
+
+            if ($reference !== '') {
+                $orders[$reference] = [
+                    'ok' => false,
+                    'reference' => $reference,
+                    'message' => is_scalar($value) ? trim((string) $value) : 'Invalid provider status response.',
+                ];
+            }
+        }
+
+        if ($orders === []) {
+            return [
+                'ok' => false,
+                'http_status' => (int) ($response['http_status'] ?? 0),
+                'message' => 'Provider multi-status response could not be normalized.',
+                'data' => $data,
+            ];
+        }
+
+        return [
+            'ok' => true,
+            'http_status' => (int) ($response['http_status'] ?? 0),
+            'orders' => $orders,
+            'data' => $data,
+        ];
+    }
+
     public function refill(string $orderId): array
     {
         $orderId = trim($orderId);
@@ -322,8 +388,11 @@ final class SmmPanelClient
     {
         $payload = ['key' => $this->apiKey] + $payload;
         $body = http_build_query($payload, '', '&', PHP_QUERY_RFC3986);
+        $requestUrl = $this->transport === 'get'
+            ? $this->baseUrl . (str_contains($this->baseUrl, '?') ? '&' : '?') . $body
+            : $this->baseUrl;
 
-        $ch = curl_init($this->baseUrl);
+        $ch = curl_init($requestUrl);
         if ($ch === false) {
             return ['ok' => false, 'message' => 'Unable to initialise SMM request.'];
         }
@@ -331,13 +400,13 @@ final class SmmPanelClient
         $scheme = strtolower((string) parse_url($this->baseUrl, PHP_URL_SCHEME));
         $protocol = $scheme === 'http' ? CURLPROTO_HTTP : CURLPROTO_HTTPS;
 
-        curl_setopt_array($ch, [
-            CURLOPT_POST => true,
-            CURLOPT_POSTFIELDS => $body,
-            CURLOPT_HTTPHEADER => [
-                'Accept: application/json',
-                'Content-Type: application/x-www-form-urlencoded',
-            ],
+        $headers = ['Accept: application/json'];
+        if ($this->transport === 'post') {
+            $headers[] = 'Content-Type: application/x-www-form-urlencoded';
+        }
+
+        $options = [
+            CURLOPT_HTTPHEADER => $headers,
             CURLOPT_RETURNTRANSFER => true,
             CURLOPT_CONNECTTIMEOUT => 5,
             CURLOPT_TIMEOUT => 20,
@@ -346,7 +415,12 @@ final class SmmPanelClient
             CURLOPT_SSL_VERIFYHOST => 2,
             CURLOPT_SSL_VERIFYPEER => true,
             CURLOPT_USERAGENT => 'BlueBot/0.5.36 SmmPanelClient',
-        ]);
+        ];
+        if ($this->transport === 'post') {
+            $options[CURLOPT_POST] = true;
+            $options[CURLOPT_POSTFIELDS] = $body;
+        }
+        curl_setopt_array($ch, $options);
 
         $raw = curl_exec($ch);
         $error = curl_error($ch);
