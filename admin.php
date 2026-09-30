@@ -8292,6 +8292,42 @@ elseif ($text == $textbotlang['keyboard']['hidePanelForUser'] && $adminrulecheck
         [['text' => '↩️ تنظیمات زیرمجموعه', 'callback_data' => 'affiliatesettings']],
     ]], JSON_UNESCAPED_UNICODE);
     Editmessagetext($from_id, $message_id, trim($output), $pageKeyboard);
+} elseif (preg_match('/^affiliate-risk-(\\d+)$/', (string) $datain, $riskPageMatch) && $adminrulecheck['rule'] == "administrator") {
+    $page = max(1, (int) $riskPageMatch[1]);
+    $perPage = 8;
+    $total = (int) $pdo->query("SELECT COUNT(*) FROM referral_risk_events")->fetchColumn();
+    $pages = max(1, (int) ceil($total / $perPage));
+    $page = min($page, $pages);
+    $offset = ($page - 1) * $perPage;
+    $items = $pdo->query(
+        "SELECT * FROM referral_risk_events ORDER BY id DESC LIMIT " . $perPage . " OFFSET " . $offset
+    )->fetchAll(PDO::FETCH_ASSOC) ?: [];
+    $riskLabels = [
+        'self_referral' => 'معرفی خود',
+        'referral_cycle' => 'حلقه زیرمجموعه',
+        'same_verified_phone' => 'شماره مشترک',
+        'invalid_referral_relationship' => 'رابطه معرفی نامعتبر',
+    ];
+    $out = "🛡 <b>گزارش ضدتقلب زیرمجموعه</b>\n\n";
+    foreach ($items as $item) {
+        $reason = $riskLabels[$item['reason'] ?? ''] ?? (string) ($item['reason'] ?? 'نامشخص');
+        $out .= "⚠️ <b>" . htmlspecialchars($reason, ENT_QUOTES, 'UTF-8') . "</b>\n"
+            . "👤 <code>" . htmlspecialchars((string) $item['user_id'], ENT_QUOTES, 'UTF-8') . "</code>"
+            . " · 🤝 <code>" . htmlspecialchars((string) ($item['inviter_id'] ?? '-'), ENT_QUOTES, 'UTF-8') . "</code>\n"
+            . "🔎 " . htmlspecialchars((string) $item['event_type'], ENT_QUOTES, 'UTF-8')
+            . " · " . htmlspecialchars((string) $item['created_at'], ENT_QUOTES, 'UTF-8') . "\n\n";
+    }
+    if ($items === []) $out .= "مورد مشکوکی ثبت نشده است. ✅";
+    $nav = [];
+    if ($page > 1) $nav[] = ['text' => '⬅️ قبلی', 'callback_data' => 'affiliate-risk-' . ($page - 1)];
+    $nav[] = ['text' => $page . '/' . $pages, 'callback_data' => 'affiliate-risk-' . $page];
+    if ($page < $pages) $nav[] = ['text' => 'بعدی ➡️', 'callback_data' => 'affiliate-risk-' . ($page + 1)];
+    $riskKeyboard = json_encode(['inline_keyboard' => [
+        $nav,
+        [['text' => '🧾 تراکنش‌ها', 'callback_data' => 'affiliate-transactions-1'], ['text' => '📊 آمار کلی', 'callback_data' => 'affiliate-analytics']],
+        [['text' => '↩️ تنظیمات زیرمجموعه', 'callback_data' => 'affiliatesettings']],
+    ]], JSON_UNESCAPED_UNICODE);
+    Editmessagetext($from_id, $message_id, trim($out), $riskKeyboard);
 } elseif ($datain === "affiliate-search" && $adminrulecheck['rule'] == "administrator") {
     savedata("clear", "message_id", $message_id);
     step("affiliate_admin_search", $from_id);

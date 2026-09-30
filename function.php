@@ -1340,7 +1340,18 @@ function creditReferralCommission(string $buyerId, int $sourceAmount, string $so
     $buyer = select("user", "*", "id", $buyerId, "select");
     $referrerId = trim((string) ($buyer['affiliates'] ?? ''));
     if ($referrerId === '' || $referrerId === '0' || $referrerId === $buyerId || !rowExists("user", "id", $referrerId)) {
+        if ($referrerId === $buyerId) {
+            logReferralRiskEvent($buyerId, $referrerId, 'commission_rejected', 'self_referral', $sourceType . ':' . $sourceId);
+        }
         return ['credited' => false, 'reason' => 'no_referrer'];
+    }
+    if (referralCreatesCycle($buyerId, $referrerId)) {
+        logReferralRiskEvent($buyerId, $referrerId, 'commission_rejected', 'referral_cycle', $sourceType . ':' . $sourceId);
+        return ['credited' => false, 'reason' => 'referral_cycle'];
+    }
+    if (referralPhoneCollision($buyerId, $referrerId)) {
+        logReferralRiskEvent($buyerId, $referrerId, 'commission_rejected', 'same_verified_phone', $sourceType . ':' . $sourceId);
+        return ['credited' => false, 'reason' => 'same_verified_phone'];
     }
 
     $settingRow = select("setting", "*", null, null, "select");
@@ -3383,6 +3394,52 @@ function sendMessageService($panel_info, $config, $sub_link, $username_service, 
             sendmessage($user_id, $textbotlang['users']['status']['getConfigHint'], keyboard_config($config, $invoice_id, false), 'HTML');
         }
     }
+}
+
+function logReferralRiskEvent(string $userId, ?string $inviterId, string $eventType, string $reason, ?string $payload = null): void
+{
+    global $pdo;
+    try {
+        $stmt = $pdo->prepare(
+            "INSERT INTO referral_risk_events (user_id, inviter_id, event_type, reason, payload)
+             VALUES (?, ?, ?, ?, ?)"
+        );
+        $stmt->execute([
+            $userId,
+            $inviterId,
+            substr($eventType, 0, 60),
+            substr($reason, 0, 120),
+            $payload === null ? null : substr($payload, 0, 255),
+        ]);
+    } catch (Throwable $e) {
+        bluebotLog('warning', 'Unable to record referral risk event', ['user_id' => $userId, 'reason' => $reason]);
+    }
+}
+
+function referralCreatesCycle(string $userId, string $inviterId, int $maxDepth = 20): bool
+{
+    $current = $inviterId;
+    $seen = [];
+    for ($depth = 0; $depth < $maxDepth; $depth++) {
+        if ($current === '' || $current === '0') return false;
+        if ($current === $userId || isset($seen[$current])) return true;
+        $seen[$current] = true;
+        $row = select("user", "*", "id", $current, "select");
+        if (!is_array($row)) return false;
+        $current = trim((string) ($row['affiliates'] ?? '0'));
+    }
+    return $current !== '' && $current !== '0';
+}
+
+function referralPhoneCollision(string $userId, string $inviterId): bool
+{
+    $user = select("user", "*", "id", $userId, "select");
+    $inviter = select("user", "*", "id", $inviterId, "select");
+    if (!is_array($user) || !is_array($inviter)) return false;
+    $a = preg_replace('/\D+/', '', (string) ($user['number'] ?? ''));
+    $b = preg_replace('/\D+/', '', (string) ($inviter['number'] ?? ''));
+    if (strlen($a) < 10 || strlen($b) < 10) return false;
+    return $a === $b;
 }
 
 function resolveInvitationOwnerId(string $payload): ?string
