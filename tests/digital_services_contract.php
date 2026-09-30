@@ -113,6 +113,8 @@ $checks = [
     [str_contains($nobitexClient, "Nobitex-Signature:"), 'Nobitex signed API key signature header missing'],
     [str_contains($nobitexClient, "Nobitex-Timestamp:"), 'Nobitex signed API key timestamp header missing'],
     [str_contains($nobitexClient, "sodium_crypto_sign_detached"), 'Nobitex Ed25519 signing support missing'],
+    [str_contains($nobitexClient, "return strtr(base64_encode(\$value), '+/', '-_');"), 'Nobitex URL-safe Base64 signature must preserve padding'],
+    [!str_contains($nobitexClient, "rtrim(strtr(base64_encode(\$value), '+/', '-_'), '=')"), 'Nobitex signature padding must not be stripped'],
     [str_contains($nobitexClient, "/users/profile"), 'Nobitex API key validation endpoint missing'],
     [str_contains($manager, "testNobitexApiKey"), 'Nobitex API key test bridge missing'],
     [str_contains($panel, "Nobitex Public Key"), 'Nobitex Public Key panel input missing'],
