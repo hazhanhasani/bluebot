@@ -2065,6 +2065,9 @@ if ($text == "/start" || $datain == "start" || $text == "start") {
     $automaticHandled = false;
     try {
         $automaticResult = BluebotDigitalServices::maybeAutoApproveOrder($pdo, $order);
+        if (is_array($automaticResult['order'] ?? null)) {
+            $order = $automaticResult['order'];
+        }
         $automaticHandled = !empty($automaticResult['automatic']);
     } catch (Throwable $autoError) {
         bluebotLog('warning', 'Automatic digital service delivery failed before completion', [
