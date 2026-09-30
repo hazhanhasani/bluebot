@@ -1,21 +1,18 @@
 (()=>{"use strict";
 const API="../api/miniapp.php",rootId="bluebot-full-store";
-(function captureAppSession(){
- if(window.__BLUEBOT_XHR_SESSION_BRIDGE__)return;window.__BLUEBOT_XHR_SESSION_BRIDGE__=true;
- const originalOpen=XMLHttpRequest.prototype.open,originalSet=XMLHttpRequest.prototype.setRequestHeader;
- XMLHttpRequest.prototype.open=function(method,url){this.__bluebotUrl=String(url||"");return originalOpen.apply(this,arguments)};
- XMLHttpRequest.prototype.setRequestHeader=function(name,value){
-  if(String(name).toLowerCase()==="authorization"&&/^Bearer\s+\S+/i.test(String(value))){
-   const valueToken=String(value).replace(/^Bearer\s+/i,"").trim();
-   if(valueToken){window.__BLUEBOT_SESSION_TOKEN__=valueToken;window.dispatchEvent(new CustomEvent("bluebot:session-ready",{detail:{token:valueToken}}))}
-  }
-  return originalSet.apply(this,arguments);
- };
-})();
+
 const esc=s=>String(s??"").replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[m]));
 const token=()=>localStorage.getItem("token")||sessionStorage.getItem("token")||window.__BLUEBOT_SESSION_TOKEN__||"";
 async function waitForToken(timeout=12000){
  const existing=token();if(existing)return existing;
+ const initData=window.Telegram&&window.Telegram.WebApp&&window.Telegram.WebApp.initData;
+ if(initData){
+  try{
+   const response=await fetch("../api/verify.php",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({initData,reuse_session:true})});
+   const verified=await response.json();
+   if(response.ok&&verified&&verified.token){setSessionToken(verified.token);return verified.token}
+  }catch(error){console.warn("Store session bootstrap failed",error)}
+ }
  return await new Promise(resolve=>{
   let done=false;
   const finish=value=>{if(done)return;done=true;clearTimeout(timer);window.removeEventListener("bluebot:session-ready",onReady);resolve(value||"")};
