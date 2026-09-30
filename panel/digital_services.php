@@ -66,6 +66,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $tradeFeePercent = (float) ($_POST['tgtools_nobitex_trade_fee_percent'] ?? 0.25);
         $networkFeeGram = (float) ($_POST['tgtools_gram_network_fee'] ?? 0.000562);
         $fundingBatchGram = (float) ($_POST['tgtools_gram_funding_batch'] ?? 1);
+        $approvalMode = strtolower(trim((string) ($_POST['tgtools_approval_mode'] ?? 'manual')));
 
         if ($starsProfit < 0 || $starsProfit > 1000 || $premiumProfit < 0 || $premiumProfit > 1000) {
             flash('error', 'درصد سود باید بین ۰ تا ۱۰۰۰ باشد.');
@@ -89,6 +90,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if ($nobitexPrivateKey !== '') {
             ds_panel_set_setting($pdo, 'nobitex_api_private_key', $nobitexPrivateKey, true);
         }
+        BluebotDigitalServices::setProviderApprovalMode($pdo, 'tgtools', $approvalMode);
 
         $rateRefresh = BluebotDigitalServices::refreshTgToolsTonRateFromNobitex($pdo, true, 60);
 
@@ -169,6 +171,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $apiKey = trim((string) ($_POST['tivanovin_api_key'] ?? ''));
         $profitPercent = (float) ($_POST['tivanovin_profit_percent'] ?? 0);
         $syncInterval = max(1, min(1440, (int) ($_POST['tivanovin_sync_interval_minutes'] ?? 15)));
+        $approvalMode = strtolower(trim((string) ($_POST['tivanovin_approval_mode'] ?? 'manual')));
 
         if ($apiKey !== '' && (strlen($apiKey) > 2048 || preg_match('/[\r\n]/', $apiKey))) {
             flash('error', 'API Key تیوا نوین معتبر نیست.');
@@ -183,6 +186,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         try {
             BluebotDigitalServices::saveTivaNovinProvider($pdo, $apiKey, $profitPercent, $syncInterval);
+            BluebotDigitalServices::setProviderApprovalMode($pdo, 'tivanovin', $approvalMode);
             $sync = BluebotProviderCatalogService::syncProvider($pdo, 'tivanovin');
             $wallet = BluebotDigitalServices::tivaNovinWalletStatus($pdo);
 
@@ -243,6 +247,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 
     if ($action === 'save_provider_catalog') {
+        $requestedApprovalMode = strtolower(trim((string) ($_POST['provider_approval_mode'] ?? 'manual')));
         try {
             $provider = BluebotProviderCatalogService::saveProvider($pdo, [
                 'provider_key' => $_POST['provider_key'] ?? '',
@@ -262,13 +267,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 'sync_interval_minutes' => $_POST['sync_interval_minutes'] ?? 15,
             ]);
 
-            $sync = BluebotProviderCatalogService::syncProvider($pdo, (string) ($provider['provider_key'] ?? ''));
+            $providerKey = (string) ($provider['provider_key'] ?? '');
+            $sync = BluebotProviderCatalogService::syncProvider($pdo, $providerKey);
+            $approvalWarning = '';
+            try {
+                BluebotDigitalServices::setProviderApprovalMode($pdo, $providerKey, $requestedApprovalMode);
+            } catch (InvalidArgumentException $approvalError) {
+                BluebotDigitalServices::setProviderApprovalMode($pdo, $providerKey, 'manual');
+                $approvalWarning = ' · حالت ارسال روی دستی باقی ماند: ' . $approvalError->getMessage();
+            }
+
             if (!empty($sync['ok'])) {
                 flash(
-                    'success',
+                    $approvalWarning === '' ? 'success' : 'warning',
                     'ارائه‌دهنده ذخیره و محصولات همگام شدند: '
                     . (int) ($sync['created'] ?? 0) . ' جدید، '
                     . (int) ($sync['updated'] ?? 0) . ' بروزرسانی.'
+                    . $approvalWarning
                 );
             } else {
                 flash('warning', 'ارائه‌دهنده ذخیره شد اما دریافت محصولات ناموفق بود: ' . (string) ($sync['message'] ?? 'خطای نامشخص'));
@@ -298,6 +313,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
         } catch (Throwable $e) {
             flash('error', 'همگام‌سازی انجام نشد: ' . $e->getMessage());
+        }
+        header('Location: digital_services.php#providers');
+        exit;
+    }
+
+    if ($action === 'set_provider_approval_mode') {
+        $providerKey = strtolower(trim((string) ($_POST['provider_key'] ?? '')));
+        $approvalMode = strtolower(trim((string) ($_POST['approval_mode'] ?? 'manual')));
+        try {
+            BluebotDigitalServices::setProviderApprovalMode($pdo, $providerKey, $approvalMode);
+            flash(
+                'success',
+                $approvalMode === 'automatic'
+                    ? 'ارسال خودکار برای این Provider فعال شد.'
+                    : 'تأیید دستی برای این Provider فعال شد.'
+            );
+        } catch (Throwable $e) {
+            flash('error', 'تغییر نوع تأیید انجام نشد: ' . $e->getMessage());
         }
         header('Location: digital_services.php#providers');
         exit;
@@ -333,6 +366,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $apiKey = trim((string) ($_POST['ozvinoo_api_key'] ?? ''));
         $profitPercent = (float) ($_POST['ozvinoo_profit_percent'] ?? 0);
         $syncInterval = max(1, min(1440, (int) ($_POST['ozvinoo_sync_interval_minutes'] ?? 15)));
+        $approvalMode = strtolower(trim((string) ($_POST['ozvinoo_approval_mode'] ?? 'manual')));
 
         if ($apiKey !== '' && (strlen($apiKey) > 2048 || preg_match('/[\r\n]/', $apiKey))) {
             flash('error', 'API Key عضوینو معتبر نیست.');
@@ -367,6 +401,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
 
         try {
+            BluebotDigitalServices::setProviderApprovalMode($pdo, 'ozvinoo', $approvalMode);
             $sync = BluebotDigitalServices::syncOZVinooCatalog($pdo);
             if (!empty($sync['ok'])) {
                 $wallet = BluebotDigitalServices::ozvinooWalletStatus($pdo);
@@ -442,6 +477,7 @@ $nobitexPublicKey = ds_panel_setting($pdo, 'nobitex_api_public_key');
 $nobitexPrivateKey = ds_panel_setting($pdo, 'nobitex_api_private_key');
 $tgStarsProfit = (float) ds_panel_setting($pdo, 'tgtools_stars_profit_percent', '0');
 $tgPremiumProfit = (float) ds_panel_setting($pdo, 'tgtools_premium_profit_percent', '0');
+$tgApprovalMode = BluebotDigitalServices::providerApprovalMode($pdo, 'tgtools');
 BluebotDigitalServices::refreshTgToolsTonRateFromNobitex($pdo, false, 60);
 $tgTonRateStatus = BluebotDigitalServices::tgToolsTonRateStatus($pdo);
 $tgTonRateToman = (float) ($tgTonRateStatus['rate_toman'] ?? 0);
@@ -461,6 +497,7 @@ $tivaProvider = BluebotProviderCatalogService::findProvider($pdo, 'tivanovin');
 $tivaApiKey = is_array($tivaProvider) ? trim((string) ($tivaProvider['api_key'] ?? '')) : '';
 $tivaProfitPercent = is_array($tivaProvider) ? (float) ($tivaProvider['profit_percent'] ?? 0) : 0.0;
 $tivaSyncInterval = is_array($tivaProvider) ? max(1, (int) ($tivaProvider['sync_interval_minutes'] ?? 15)) : 15;
+$tivaApprovalMode = BluebotDigitalServices::providerApprovalMode($pdo, 'tivanovin');
 $tivaProductCountStmt = $pdo->query("SELECT COUNT(*) FROM digital_service_products WHERE provider = 'tivanovin' AND active = 1");
 $tivaProductCount = (int) $tivaProductCountStmt->fetchColumn();
 $tivaWalletStatus = $tivaApiKey !== ''
@@ -469,6 +506,7 @@ $tivaWalletStatus = $tivaApiKey !== ''
 $ozApiKey = ds_panel_setting($pdo, 'ozvinoo_api_key');
 $ozProfitPercent = (float) ds_panel_setting($pdo, 'ozvinoo_profit_percent', '0');
 $ozSyncInterval = (int) ds_panel_setting($pdo, 'ozvinoo_sync_interval_minutes', '15');
+$ozApprovalMode = BluebotDigitalServices::providerApprovalMode($pdo, 'ozvinoo');
 $ozProvider = BluebotProviderCatalogService::findProvider($pdo, 'ozvinoo');
 $ozProductCountStmt = $pdo->query("SELECT COUNT(*) FROM digital_service_products WHERE provider = 'ozvinoo' AND active = 1");
 $ozProductCount = (int) $ozProductCountStmt->fetchColumn();
@@ -546,6 +584,14 @@ include __DIR__ . '/inc/layout_head.php';
                     <input class="input" type="number" name="tgtools_premium_profit_percent" min="0" max="1000" step="0.1"
                         value="<?= htmlspecialchars((string) $tgPremiumProfit) ?>" required>
                 </div>
+            </div>
+            <div class="field">
+                <label>نوع تأیید و ارسال سفارش</label>
+                <select class="select" name="tgtools_approval_mode">
+                    <option value="manual" <?= $tgApprovalMode === 'manual' ? 'selected' : '' ?>>🛡️ دستی — ادمین تأیید و ارسال کند</option>
+                    <option value="automatic" <?= $tgApprovalMode === 'automatic' ? 'selected' : '' ?>>⚡ خودکار — بلافاصله بعد از پرداخت ارسال شود</option>
+                </select>
+                <small class="field-hint">این تنظیم فقط برای TGTools است و روی Providerهای دیگر اثری ندارد.</small>
             </div>
             <div class="field">
                 <label>نرخ لحظه‌ای TON به تومان</label>
@@ -691,6 +737,14 @@ include __DIR__ . '/inc/layout_head.php';
                         value="<?= htmlspecialchars((string) $ozSyncInterval) ?>" required>
                 </div>
             </div>
+            <div class="field">
+                <label>نوع تأیید و ارسال سفارش</label>
+                <select class="select" name="ozvinoo_approval_mode">
+                    <option value="manual" <?= $ozApprovalMode === 'manual' ? 'selected' : '' ?>>🛡️ دستی — ادمین تأیید و ارسال کند</option>
+                    <option value="automatic" <?= $ozApprovalMode === 'automatic' ? 'selected' : '' ?>>⚡ خودکار — بلافاصله بعد از پرداخت ارسال شود</option>
+                </select>
+                <small class="field-hint">انتخاب مستقل عضوینو؛ در حالت خودکار سفارش بدون دکمه تأیید ادمین به API ارسال می‌شود.</small>
+            </div>
 
             <div class="notice <?= !empty($ozWalletStatus['ok']) ? 'notice-info' : 'notice-warn' ?>">
                 <strong>کیف پول API عضوینو:</strong>
@@ -794,6 +848,14 @@ include __DIR__ . '/inc/layout_head.php';
                         value="<?= htmlspecialchars((string) $tivaSyncInterval) ?>" required>
                 </div>
             </div>
+            <div class="field">
+                <label>نوع تأیید و ارسال سفارش</label>
+                <select class="select" name="tivanovin_approval_mode">
+                    <option value="manual" <?= $tivaApprovalMode === 'manual' ? 'selected' : '' ?>>🛡️ دستی — ادمین تأیید و ارسال کند</option>
+                    <option value="automatic" <?= $tivaApprovalMode === 'automatic' ? 'selected' : '' ?>>⚡ خودکار — بلافاصله بعد از پرداخت ارسال شود</option>
+                </select>
+                <small class="field-hint">در حالت خودکار، سفارش مستقیماً با <code>add</code> ثبت و سپس با <code>status</code> پیگیری می‌شود.</small>
+            </div>
 
             <div class="notice <?= !empty($tivaWalletStatus['ok']) ? 'notice-info' : 'notice-warn' ?>">
                 <strong>کیف پول API تیوا نوین:</strong>
@@ -816,7 +878,7 @@ include __DIR__ . '/inc/layout_head.php';
                 <br><small>
                     <code>services</code> برای کاتالوگ · <code>add</code> برای سفارش ·
                     <code>status</code> برای پیگیری · <code>balance</code> برای کیف پول.
-                    سفارش فقط بعد از تأیید دستی ادمین به Provider ارسال می‌شود.
+                    نوع تأیید فعلی: <strong><?= $tivaApprovalMode === 'automatic' ? '⚡ خودکار' : '🛡️ دستی' ?></strong>.
                 </small>
             </div>
 
@@ -910,6 +972,14 @@ include __DIR__ . '/inc/layout_head.php';
                 <small class="field-hint">برای تومان ۱ و برای ریال ۰.۱ خودکار اعمال می‌شود.</small>
             </div>
         </div>
+        <div class="field">
+            <label>نوع تأیید و ارسال سفارش</label>
+            <select class="select" name="provider_approval_mode">
+                <option value="manual" selected>🛡️ دستی — ابتدا تأیید ادمین</option>
+                <option value="automatic">⚡ خودکار — ارسال مستقیم بعد از پرداخت</option>
+            </select>
+            <small class="field-hint">خودکار فقط برای Providerهای SMM سازگار با <code>add/status</code> فعال می‌شود؛ در غیر این صورت BlueBot آن را روی دستی نگه می‌دارد.</small>
+        </div>
 
         <details>
             <summary style="cursor:pointer;font-weight:700">تنظیم ساختار JSON کاتالوگ</summary>
@@ -961,6 +1031,11 @@ include __DIR__ . '/inc/layout_head.php';
         <?php else: ?>
             <div style="display:grid;gap:10px">
                 <?php foreach ($providerCatalogs as $providerCatalog): ?>
+                    <?php
+                    $providerKey = strtolower((string) ($providerCatalog['provider_key'] ?? ''));
+                    $providerApprovalMode = BluebotDigitalServices::providerApprovalMode($pdo, $providerKey);
+                    $providerAutoCapable = BluebotDigitalServices::providerSupportsAutomaticDelivery($pdo, $providerKey);
+                    ?>
                     <div class="notice <?= (int) $providerCatalog['active'] === 1 ? 'notice-info' : 'notice-warn' ?>" style="display:flex;justify-content:space-between;gap:12px;align-items:center;flex-wrap:wrap">
                         <div>
                             <strong><?= htmlspecialchars($providerCatalog['name']) ?></strong>
@@ -968,6 +1043,7 @@ include __DIR__ . '/inc/layout_head.php';
                             <div class="field-hint" style="margin-top:4px">
                                 سود: <?= htmlspecialchars((string) $providerCatalog['profit_percent']) ?>٪
                                 · ارز: <?= htmlspecialchars(strtoupper((string) $providerCatalog['currency'])) ?>
+                                · تأیید: <strong><?= $providerApprovalMode === 'automatic' ? '⚡ خودکار' : '🛡️ دستی' ?></strong>
                                 · آخرین Sync: <?= htmlspecialchars((string) ($providerCatalog['last_sync_at'] ?? '—')) ?>
                                 <?php if (!empty($providerCatalog['last_sync_status'])): ?>
                                     · <?= htmlspecialchars((string) $providerCatalog['last_sync_status']) ?>
@@ -975,6 +1051,19 @@ include __DIR__ . '/inc/layout_head.php';
                             </div>
                         </div>
                         <div style="display:flex;gap:6px;flex-wrap:wrap">
+                            <?php if ($providerAutoCapable): ?>
+                                <form method="post">
+                                    <input type="hidden" name="_csrf" value="<?= htmlspecialchars(csrf_token()) ?>">
+                                    <input type="hidden" name="action" value="set_provider_approval_mode">
+                                    <input type="hidden" name="provider_key" value="<?= htmlspecialchars($providerKey) ?>">
+                                    <input type="hidden" name="approval_mode" value="<?= $providerApprovalMode === 'automatic' ? 'manual' : 'automatic' ?>">
+                                    <button class="btn btn-ghost btn-sm" type="submit">
+                                        <?= $providerApprovalMode === 'automatic' ? '🛡️ تغییر به دستی' : '⚡ تغییر به خودکار' ?>
+                                    </button>
+                                </form>
+                            <?php else: ?>
+                                <span class="btn btn-ghost btn-sm" style="opacity:.55;cursor:not-allowed" title="این Provider مسیر ارسال خودکار سازگار ندارد">🛡️ فقط دستی</span>
+                            <?php endif; ?>
                             <form method="post">
                                 <input type="hidden" name="_csrf" value="<?= htmlspecialchars(csrf_token()) ?>">
                                 <input type="hidden" name="action" value="sync_provider_catalog">
