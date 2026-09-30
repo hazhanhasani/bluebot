@@ -473,7 +473,7 @@ $checks = [
     [str_contains($manager, "'application_id' => \$serviceId"), 'Callinoo application metadata missing'],
     [str_contains($manager, "'application_name' => \$applicationName"), 'Callinoo application name metadata missing'],
     [!str_contains($manager, "\$telegramServiceId = 0"), 'Callinoo sync must not be limited to Telegram'],
-    [str_contains($manager, "getCodeV1"), 'OZVinoo V1 reconciliation fallback missing'],
+    [str_contains($ozvinooNumberProvider, "getCodeV1"), 'OZVinoo V1 reconciliation fallback missing'],
     [str_contains($ozvinooClient, "/numbers/getAllOrders/"), 'OZVinoo all-orders endpoint missing'],
     [str_contains($ozvinooClient, "/numbers/getOpenOrders/"), 'OZVinoo open-orders endpoint missing'],
     [str_contains($ozvinooClient, "/numbers/getOrder/"), 'OZVinoo get-order endpoint missing'],
