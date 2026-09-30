@@ -7,8 +7,8 @@
     <meta name="color-scheme" content="dark light" />
     <title>BlueBot Web App</title>
 
-    <link rel="preload" href="./js/telegram-web-app.js?v=0.2.1" as="script" />
-    <link rel="preload" href="./js/telegram-bootstrap.js?v=0.2.1" as="script" />
+    <link rel="preload" href="./js/telegram-web-app.js?v=0.2.2" as="script" />
+    <link rel="preload" href="./js/telegram-bootstrap.js?v=0.2.2" as="script" />
     <link rel="modulepreload" crossorigin href="./assets/index-C-2a0Dur.js" />
     <link rel="modulepreload" crossorigin href="./assets/vendor-CIGJ9g2q.js" />
     <link rel="stylesheet" crossorigin href="./assets/index-BoHBsj0Z.css" />
@@ -25,10 +25,10 @@
       @keyframes bluebot-spin{to{transform:rotate(360deg)}}
     </style>
 
-    <script defer src="./js/telegram-web-app.js?v=0.2.1"></script>
-    <script defer src="./js/telegram-bootstrap.js?v=0.2.1"></script>
-    <script defer src="./js/app-loader.js?v=0.2.1"></script>
-    <script defer src="./js/full-store.js?v=0.2.1"></script>
+    <script defer src="./js/telegram-web-app.js?v=0.2.2"></script>
+    <script defer src="./js/telegram-bootstrap.js?v=0.2.2"></script>
+    <script defer src="./js/app-loader.js?v=0.2.2"></script>
+    <script defer src="./js/full-store.js?v=0.2.2"></script>
   </head>
   <body>
     <div id="root">
@@ -43,7 +43,7 @@
       window.addEventListener('load', function () {
         setTimeout(function () {
           if (window.BlueBotFullStore) window.BlueBotFullStore.init();
-        }, 250);
+        }, 900);
       });
     </script>
   </body>
