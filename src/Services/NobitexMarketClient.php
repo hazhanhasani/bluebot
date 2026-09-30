@@ -276,7 +276,7 @@ final class NobitexMarketClient
 
     private function base64UrlEncode(string $value): string
     {
-        return rtrim(strtr(base64_encode($value), '+/', '-_'), '=');
+        return strtr(base64_encode($value), '+/', '-_');
     }
 
     private function findCurrencyNode(array $node, string $currency): ?array
