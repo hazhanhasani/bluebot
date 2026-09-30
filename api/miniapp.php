@@ -1272,7 +1272,7 @@ function mini_digital_catalog(array $data, string $method): void
     }
 
     try {
-        $products = DigitalServiceManager::listActive($pdo);
+        $products = BluebotDigitalServices::listActive($pdo);
         $items = [];
         $categories = [];
 
@@ -1281,10 +1281,10 @@ function mini_digital_catalog(array $data, string $method): void
                 continue;
             }
 
-            $category = DigitalServiceManager::categoryForProduct($product);
-            $scope = DigitalServiceManager::serviceScopeForProduct($product);
-            $group = DigitalServiceManager::serviceGroupForProduct($product);
-            $rules = DigitalServiceManager::quantityRules($product);
+            $category = BluebotDigitalServices::categoryForProduct($product);
+            $scope = BluebotDigitalServices::serviceScopeForProduct($product);
+            $group = BluebotDigitalServices::serviceGroupForProduct($product);
+            $rules = BluebotDigitalServices::quantityRules($product);
 
             $items[] = [
                 'id' => (int) $product['id'],
@@ -1298,7 +1298,7 @@ function mini_digital_catalog(array $data, string $method): void
                 'scope' => $scope,
                 'group' => $group,
                 'quantity' => $rules,
-                'target_prompt' => strip_tags(DigitalServiceManager::targetPrompt($product)),
+                'target_prompt' => strip_tags(BluebotDigitalServices::targetPrompt($product)),
             ];
             $categories[$category] = ($categories[$category] ?? 0) + 1;
         }
@@ -1325,7 +1325,7 @@ function mini_digital_orders(array $data, string $method): void
     global $pdo;
     if ($method !== 'GET') sendJsonResponse(false, 'Method invalid; must be GET', [], 405);
     $page = max(1, (int) ($data['page'] ?? 1));
-    $result = DigitalServiceManager::userOrdersPage($pdo, (string) $data['user_id'], $page, 10);
+    $result = BluebotDigitalServices::userOrdersPage($pdo, (string) $data['user_id'], $page, 10);
     sendJsonResponse(true, 'Successful', $result);
 }
 
@@ -1333,14 +1333,14 @@ function mini_digital_quote(array $data, string $method): void
 {
     global $pdo;
     if ($method !== 'POST') sendJsonResponse(false, 'Method invalid; must be POST', [], 405);
-    $product = DigitalServiceManager::findProduct($pdo, (int) ($data['product_id'] ?? 0), true);
+    $product = BluebotDigitalServices::findProduct($pdo, (int) ($data['product_id'] ?? 0), true);
     if (!$product) sendJsonResponse(false, 'Service unavailable', [], 404);
     $quantity = isset($data['quantity']) ? (int) $data['quantity'] : null;
-    [$quantityOk, $normalizedQuantity] = DigitalServiceManager::validateQuantity($product, $quantity);
+    [$quantityOk, $normalizedQuantity] = BluebotDigitalServices::validateQuantity($product, $quantity);
     if (!$quantityOk || !is_int($normalizedQuantity)) sendJsonResponse(false, (string) $normalizedQuantity, [], 422);
-    [$targetOk, $target] = DigitalServiceManager::validateTarget($product, (string) ($data['target'] ?? ''));
+    [$targetOk, $target] = BluebotDigitalServices::validateTarget($product, (string) ($data['target'] ?? ''));
     if (!$targetOk) sendJsonResponse(false, (string) $target, [], 422);
-    $amount = DigitalServiceManager::priceForQuantity($product, $normalizedQuantity);
+    $amount = BluebotDigitalServices::priceForQuantity($product, $normalizedQuantity);
     if ($amount <= 0) sendJsonResponse(false, 'Service price invalid', [], 422);
     $flow = json_encode([
         'digital_service_id' => (int) $product['id'],
@@ -1366,17 +1366,17 @@ function mini_digital_purchase(array $data, string $method): void
     global $pdo;
     if ($method !== 'POST') sendJsonResponse(false, 'Method invalid; must be POST', [], 405);
     $user = select('user', '*', 'id', (string) $data['user_id'], 'select');
-    $product = DigitalServiceManager::findProduct($pdo, (int) ($data['product_id'] ?? 0), true);
+    $product = BluebotDigitalServices::findProduct($pdo, (int) ($data['product_id'] ?? 0), true);
     if (!$user || !$product) sendJsonResponse(false, 'Service unavailable', [], 404);
     try {
-        $order = DigitalServiceManager::createWalletOrder(
+        $order = BluebotDigitalServices::createWalletOrder(
             $pdo,
             $user,
             $product,
             (string) ($data['target'] ?? ''),
             isset($data['quantity']) ? (int) $data['quantity'] : null
         );
-        $delivery = DigitalServiceManager::maybeAutoApproveOrder($pdo, $order);
+        $delivery = BluebotDigitalServices::maybeAutoApproveOrder($pdo, $order);
         $finalOrder = is_array($delivery['order'] ?? null) ? $delivery['order'] : $order;
         sendJsonResponse(true, 'Successful', ['order' => $finalOrder, 'automatic' => !empty($delivery['automatic'])]);
     } catch (DomainException $e) {
