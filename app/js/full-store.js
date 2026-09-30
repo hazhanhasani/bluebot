@@ -25,7 +25,7 @@ async function call(actions,method="GET",body={}){
  const opt={method,headers,cache:"no-store",credentials:"same-origin"};
  let url=API;
  if(method==="GET"){const q=new URLSearchParams({actions,...body,_ts:String(Date.now())});url+="?"+q.toString()}else opt.body=JSON.stringify({actions,...body});
- const r=await fetch(url,opt);const j=await r.json().catch(()=>({status:false,msg:"پاسخ نامعتبر"}));if(!r.ok||j.status===false)throw new Error(j.msg||"خطا");return j.obj??j;
+ const r=await fetch(url,opt);const raw=await r.text();let j=null;try{j=raw?JSON.parse(raw):null}catch(_){j=null}if(!j||typeof j!=="object"){throw new Error("پاسخ سرویس قابل پردازش نیست. لطفاً دوباره تلاش کنید.")}if(!r.ok||j.status===false)throw new Error(j.msg||"خطا");return j.obj??j;
 }
 const labels={telegram:"تلگرام",instagram:"اینستاگرام",premium:"تلگرام پرمیوم",stars:"استارز تلگرام",virtual_number:"شماره مجازی",other:"سایر خدمات"};
 function css(){if(document.getElementById("bluebot-store-css"))return;const s=document.createElement("style");s.id="bluebot-store-css";s.textContent=`
