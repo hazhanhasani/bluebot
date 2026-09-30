@@ -51,27 +51,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         $starsProfit = (float) ($_POST['tgtools_stars_profit_percent'] ?? 0);
         $premiumProfit = (float) ($_POST['tgtools_premium_profit_percent'] ?? 0);
-        $tonRateToman = (float) ($_POST['tgtools_ton_toman_rate'] ?? 0);
 
         if ($starsProfit < 0 || $starsProfit > 1000 || $premiumProfit < 0 || $premiumProfit > 1000) {
             flash('error', 'درصد سود باید بین ۰ تا ۱۰۰۰ باشد.');
             header('Location: digital_services.php#tgtools');
             exit;
         }
-        if ($tonRateToman < 0) {
-            flash('error', 'نرخ TON معتبر نیست.');
-            header('Location: digital_services.php#tgtools');
-            exit;
-        }
-
         ds_panel_set_setting($pdo, 'tgtools_base_url', 'https://api.tg-tools.shop');
         ds_panel_set_setting($pdo, 'tgtools_payment_method', 'ton');
         ds_panel_set_setting($pdo, 'tgtools_stars_profit_percent', (string) $starsProfit);
         ds_panel_set_setting($pdo, 'tgtools_premium_profit_percent', (string) $premiumProfit);
-        ds_panel_set_setting($pdo, 'tgtools_ton_toman_rate', (string) $tonRateToman);
         if ($apiKey !== '') {
             ds_panel_set_setting($pdo, 'tgtools_api_key', $apiKey, true);
         }
+
+        $rateRefresh = BluebotDigitalServices::refreshTgToolsTonRateFromNobitex($pdo, true, 60);
 
         // TGTools owns only its own synchronized products. Other providers
         // (for example OZVinoo) may expose the same package sizes and must
@@ -81,9 +75,34 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             . (int) ($catalog['created'] ?? 0) . ' جدید، '
             . (int) ($catalog['updated'] ?? 0) . ' بروزرسانی.';
         if (!empty($catalog['remote_ok'])) {
-            flash('success', $catalogMessage . ' قیمت‌های زنده TGTools نیز دریافت شد.');
+            $rateMessage = !empty($rateRefresh['ok'])
+                ? ' نرخ GRAMIRT نوبیتکس: ' . number_format((float) ($rateRefresh['rate_toman'] ?? 0)) . ' تومان.'
+                : ' نرخ قبلی TON حفظ شد؛ دریافت نوبیتکس موقتاً ناموفق بود.';
+            flash('success', $catalogMessage . ' قیمت‌های زنده TGTools نیز دریافت شد.' . $rateMessage);
         } else {
             flash('warning', $catalogMessage . ' دریافت قیمت زنده موقتاً ممکن نبود و کاتالوگ جایگزین استفاده شد.');
+        }
+        header('Location: digital_services.php#tgtools');
+        exit;
+    }
+
+    if ($action === 'refresh_tgtools_ton_rate') {
+        $rate = BluebotDigitalServices::refreshTgToolsTonRateFromNobitex($pdo, true, 60);
+        if (!empty($rate['ok'])) {
+            flash(
+                'success',
+                'نرخ لحظه‌ای GRAMIRT از نوبیتکس دریافت شد: '
+                . number_format((float) ($rate['rate_toman'] ?? 0))
+                . ' تومان · '
+                . number_format((int) ($rate['repriced'] ?? 0))
+                . ' محصول TGTools دوباره قیمت‌گذاری شد.'
+            );
+        } else {
+            flash(
+                'warning',
+                'دریافت نرخ نوبیتکس ناموفق بود؛ نرخ ذخیره‌شده قبلی حفظ شد. '
+                . (string) ($rate['message'] ?? '')
+            );
         }
         header('Location: digital_services.php#tgtools');
         exit;
@@ -305,7 +324,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 $tgApiKey = ds_panel_setting($pdo, 'tgtools_api_key');
 $tgStarsProfit = (float) ds_panel_setting($pdo, 'tgtools_stars_profit_percent', '0');
 $tgPremiumProfit = (float) ds_panel_setting($pdo, 'tgtools_premium_profit_percent', '0');
-$tgTonRateToman = (float) ds_panel_setting($pdo, 'tgtools_ton_toman_rate', '0');
+BluebotDigitalServices::refreshTgToolsTonRateFromNobitex($pdo, false, 60);
+$tgTonRateStatus = BluebotDigitalServices::tgToolsTonRateStatus($pdo);
+$tgTonRateToman = (float) ($tgTonRateStatus['rate_toman'] ?? 0);
 $tgWalletStatus = $tgApiKey !== ''
     ? BluebotDigitalServices::tgToolsWalletStatus($pdo)
     : ['ok' => false, 'configured' => false, 'balance_ton' => null, 'deposit_address' => '', 'message' => 'API Key تنظیم نشده است.'];
@@ -395,10 +416,22 @@ include __DIR__ . '/inc/layout_head.php';
                 </div>
             </div>
             <div class="field">
-                <label>نرخ هر 1 TON به تومان</label>
-                <input class="input" type="number" name="tgtools_ton_toman_rate" min="0" step="1"
-                    value="<?= htmlspecialchars((string) $tgTonRateToman) ?>" placeholder="مثلاً 350000">
-                <small class="field-hint">قیمت فروش TGTools = قیمت عمده TON × نرخ تومان × (۱ + درصد سود). در پایان به هزار تومان رو به بالا گرد می‌شود.</small>
+                <label>نرخ لحظه‌ای TON به تومان</label>
+                <input class="input" type="text"
+                    value="<?= $tgTonRateToman > 0 ? htmlspecialchars(number_format($tgTonRateToman) . ' تومان') : 'در انتظار دریافت نرخ...' ?>"
+                    readonly dir="ltr">
+                <small class="field-hint">
+                    منبع: <strong>Nobitex</strong> · بازار <code>GRAMIRT</code> ·
+                    بروزرسانی خودکار هر ۱ دقیقه.
+                    <?php if ((int) ($tgTonRateStatus['last_sync'] ?? 0) > 0): ?>
+                        آخرین دریافت: <?= htmlspecialchars(date('Y/m/d H:i:s', (int) $tgTonRateStatus['last_sync'])) ?>
+                    <?php endif; ?>
+                </small>
+                <?php if (!empty($tgTonRateStatus['last_error'])): ?>
+                    <small class="field-hint" style="color:var(--danger)">
+                        آخرین خطا: <?= htmlspecialchars((string) $tgTonRateStatus['last_error']) ?> · نرخ قبلی حفظ شده است.
+                    </small>
+                <?php endif; ?>
             </div>
             <div class="notice notice-info">
                 BlueBot بسته‌های Stars و Premium را از <code>/api/purchase/prices</code> می‌خواند، قیمت عمده را دریافت می‌کند و قیمت فروش را خودکار می‌سازد.
@@ -406,11 +439,18 @@ include __DIR__ . '/inc/layout_head.php';
             </div>
             <button class="btn btn-primary" type="submit"><?= icon('check', 14) ?> ذخیره TGTools</button>
         </form>
-        <form method="post" class="card-body" style="padding-top:0">
-            <input type="hidden" name="_csrf" value="<?= htmlspecialchars(csrf_token()) ?>">
-            <input type="hidden" name="action" value="sync_tgtools_catalog">
-            <button class="btn btn-ghost" type="submit">↻ ساخت/همگام‌سازی خودکار محصولات</button>
-        </form>
+        <div class="card-body" style="padding-top:0;display:flex;gap:8px;flex-wrap:wrap">
+            <form method="post">
+                <input type="hidden" name="_csrf" value="<?= htmlspecialchars(csrf_token()) ?>">
+                <input type="hidden" name="action" value="refresh_tgtools_ton_rate">
+                <button class="btn btn-ghost" type="submit">↻ دریافت نرخ لحظه‌ای نوبیتکس</button>
+            </form>
+            <form method="post">
+                <input type="hidden" name="_csrf" value="<?= htmlspecialchars(csrf_token()) ?>">
+                <input type="hidden" name="action" value="sync_tgtools_catalog">
+                <button class="btn btn-ghost" type="submit">↻ ساخت/همگام‌سازی خودکار محصولات</button>
+            </form>
+        </div>
     </div>
 
     <div class="card fade-up d1" id="ozvinoo">
