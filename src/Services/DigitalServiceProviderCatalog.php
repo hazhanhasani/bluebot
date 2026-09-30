@@ -766,6 +766,8 @@ final class BluebotProviderCatalogService
             'linkedin' => ['label' => '💼 خدمات لینکدین', 'needles' => ['linkedin', 'لینکدین']],
             'facebook' => ['label' => '📘 خدمات فیسبوک', 'needles' => ['facebook', 'فیسبوک']],
             'whatsapp' => ['label' => '🟢 خدمات واتساپ', 'needles' => ['whatsapp', 'واتساپ']],
+            'rubika' => ['label' => '⭐ خدمات روبیکا', 'needles' => ['rubika', 'روبیکا']],
+            'rubino' => ['label' => '⭐ خدمات روبینو', 'needles' => ['rubino', 'روبینو']],
             'likee' => ['label' => '💜 خدمات Likee', 'needles' => ['likee', 'لایکی']],
             'naver' => ['label' => '🟩 Naver TV', 'needles' => ['naver', 'ناور']],
             'virtual_number' => ['label' => '📱 شماره مجازی', 'needles' => ['virtual number', 'شماره مجازی']],
