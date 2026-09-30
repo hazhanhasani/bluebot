@@ -174,6 +174,7 @@ if ($rawInput !== '') {
 }
 
 $headers = getallheaders();
+requireApiRateLimit('telegram-verify', 30, 60);
 $candidates = [];
 
 $headerKeys = [
