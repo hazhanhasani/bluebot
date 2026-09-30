@@ -951,13 +951,23 @@ if ($text == "/start" || $datain == "start" || $text == "start") {
     step('home', $from_id);
     update('user', 'Processing_value', '0', 'id', $from_id);
     return;
-} elseif (preg_match('/^ds_category:([a-z0-9_-]{1,40})$/', (string) $datain, $digitalCategoryMatch)) {
+} elseif (preg_match('/^ds_category:([a-z0-9_-]{1,40})(?::(\d{1,4}))?$/', (string) $datain, $digitalCategoryMatch)) {
     if (!check_active_btn($setting['keyboardmain'], 'text_digital_services')) {
         sendmessage($from_id, $textbotlang['users']['buttonDisabled'], null, 'HTML');
         return;
     }
 
+    if (!empty($callback_query_id)) {
+        telegram('answerCallbackQuery', [
+            'callback_query_id' => $callback_query_id,
+            'cache_time' => 0,
+        ]);
+    }
+
     $category = (string) $digitalCategoryMatch[1];
+    $requestedPage = isset($digitalCategoryMatch[2])
+        ? max(1, (int) $digitalCategoryMatch[2])
+        : 1;
 
     if ($category === 'virtual_number') {
         $applications = BluebotDigitalServices::virtualNumberApplications($pdo);
@@ -972,25 +982,56 @@ if ($text == "/start" || $datain == "start" || $text == "start") {
 
         step('home', $from_id);
         update('user', 'Processing_value', '0', 'id', $from_id);
-        if (!empty($callback_query_id)) {
-            telegram('answerCallbackQuery', ['callback_query_id' => $callback_query_id]);
+        $editResult = Editmessagetext($from_id, $message_id, $categoryText, $categoryKeyboard);
+        if (!is_array($editResult) || empty($editResult['ok'])) {
+            $description = is_array($editResult) ? trim((string) ($editResult['description'] ?? '')) : '';
+            bluebotLog('warning', 'Digital service virtual-number category edit failed', [
+                'user_id' => (string) $from_id,
+                'category' => $category,
+                'description' => $description,
+            ]);
+            if (!str_contains(strtolower($description), 'message is not modified')) {
+                sendmessage($from_id, $categoryText, $categoryKeyboard, 'HTML');
+            }
         }
-        Editmessagetext($from_id, $message_id, $categoryText, $categoryKeyboard);
         return;
     }
 
+    $pageInfo = BluebotDigitalServices::catalogPageInfo($pdo, $category, $requestedPage, 8);
+    $currentPage = (int) ($pageInfo['page'] ?? 1);
     $categoryKeyboard = BluebotDigitalServices::catalogKeyboard(
         $pdo,
         $textbotlang['users']['backbtn'],
-        $category
+        $category,
+        $currentPage,
+        8
     );
     $categoryTitle = BluebotDigitalServices::categoryLabel($category, $pdo);
     $categoryText = "<b>" . htmlspecialchars($categoryTitle, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . "</b>\n\n"
         . htmlspecialchars($textbotlang['digitalServices']['select'] ?? 'سرویس موردنظر را انتخاب کنید 👇', ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
 
+    if ((int) ($pageInfo['pages'] ?? 1) > 1) {
+        $categoryText .= "\n\n📦 " . number_format((int) ($pageInfo['total'] ?? 0))
+            . " سرویس · صفحه " . number_format($currentPage)
+            . " از " . number_format((int) ($pageInfo['pages'] ?? 1));
+    }
+
     step('home', $from_id);
     update('user', 'Processing_value', '0', 'id', $from_id);
-    Editmessagetext($from_id, $message_id, $categoryText, $categoryKeyboard);
+
+    $editResult = Editmessagetext($from_id, $message_id, $categoryText, $categoryKeyboard);
+    if (!is_array($editResult) || empty($editResult['ok'])) {
+        $description = is_array($editResult) ? trim((string) ($editResult['description'] ?? '')) : '';
+        bluebotLog('warning', 'Digital service category edit failed', [
+            'user_id' => (string) $from_id,
+            'category' => $category,
+            'page' => $currentPage,
+            'description' => $description,
+        ]);
+        if (!str_contains(strtolower($description), 'message is not modified')) {
+            sendmessage($from_id, $categoryText, $categoryKeyboard, 'HTML');
+        }
+    }
     return;
 } elseif (preg_match('/^ds_vn_app:(\d+):(\d+)$/', (string) $datain, $virtualNumberApplicationMatch)) {
     if (!check_active_btn($setting['keyboardmain'], 'text_digital_services')) {
