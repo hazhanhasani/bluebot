@@ -331,6 +331,37 @@ processing orders that have not changed for more than 30 minutes. These stale-or
 signals are diagnostic only; BlueBot does not blindly refund an unknown provider
 state.
 
+## Provider resilience
+
+Automatic providers use a lightweight circuit breaker inspired by production SMM
+panel behavior. Retryable provider failures are counted per provider. After three
+consecutive retryable failures, BlueBot pauses new automatic calls to that provider
+for ten minutes by default. New customer orders remain registered and are surfaced
+to administrators instead of repeatedly hitting a failing upstream service.
+
+A successful automatic delivery resets the failure counter. The threshold and
+cooldown can be adjusted through `digital_service_settings` using
+`provider_circuit_threshold` and `provider_circuit_cooldown_minutes`. The
+administrator `/debug` report marks an affected provider as `circuit-open`
+without exposing credentials.
+
+## Reference-project improvements
+
+The Digital Services subsystem also incorporates reusable architectural ideas from
+the supplied reference projects without copying their framework-specific code:
+
+- provider-agnostic virtual-number lifecycle
+  (`request/status/cancel/reportBanned`) with an OZVinoo adapter;
+- normalized Persian service/country presentation for virtual numbers;
+- favorites and 30-day best-selling service discovery;
+- duplicate active-order protection before wallet debit;
+- explicit legacy GET SMM transport (`smm-get:`) alongside normal POST SMM;
+- bulk SMM order-status reconciliation with safe per-order fallback;
+- provider circuit breaking and operational admin alerts.
+
+The supplied V8 package is ionCube-protected. BlueBot does not bypass or decode
+protected code; only observable configuration/help behavior is used as a reference.
+
 ## Runtime diagnostics
 
 The admin-only Telegram `/debug` report includes a Digital Services health
