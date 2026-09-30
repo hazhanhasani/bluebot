@@ -445,7 +445,7 @@ include __DIR__ . '/inc/layout_head.php';
                 <code><?= $tgLandedTonRateToman > 0 ? htmlspecialchars(number_format($tgLandedTonRateToman)) . ' تومان' : '—' ?></code>
                 <br><small>شامل کارمزد خرید در بازار تومانی نوبیتکس و کارمزد انتقال شبکه تا کیف پول TGTools.</small>
             </div>
-            <div class="three-col" style="gap:10px">
+            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px">
                 <div class="field">
                     <label>کارمزد بازار تومانی نوبیتکس (%)</label>
                     <input class="input" type="number" name="tgtools_nobitex_trade_fee_percent" min="0" max="20" step="0.001"
