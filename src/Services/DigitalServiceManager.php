@@ -3937,6 +3937,15 @@ final class BluebotDigitalServices
         }
 
         $text = self::adminOrderText($order);
+        $providerKey = strtolower(trim((string) ($order['provider'] ?? '')));
+        $circuit = self::providerCircuitStatus($pdo, $providerKey);
+        if (!empty($circuit['open'])) {
+            $remainingSeconds = max(0, (int) ($circuit['until'] ?? 0) - time());
+            $remainingMinutes = max(1, (int) ceil($remainingSeconds / 60));
+            $text .= "\n\n🛡 <b>ارسال خودکار Provider موقتاً متوقف شده</b>"
+                . "\nپس از چند خطای پیاپی، Circuit Breaker برای جلوگیری از سفارش تکراری باز شده است."
+                . "\n⏱ تلاش خودکار بعدی: حدود <b>" . $remainingMinutes . " دقیقه</b>";
+        }
         $keyboard = (string) ($order['status'] ?? '') === self::STATUS_PARTIAL_REVIEW
             ? self::adminPartialReviewKeyboard((int) $order['id'])
             : self::adminKeyboard((int) $order['id']);
