@@ -31,11 +31,29 @@ if (!function_exists('getallheaders')) {
 function sendJsonResponse($status, $message, $data = [], $httpCode = 200)
 {
     http_response_code($httpCode);
-    echo json_encode([
+    if (!headers_sent()) {
+        header('Content-Type: application/json; charset=utf-8');
+        header('Cache-Control: private, no-store, no-cache, must-revalidate');
+    }
+
+    $payload = [
         'status' => $status,
         'msg' => $message,
-        'obj' => $data
-    ], JSON_UNESCAPED_UNICODE);
+        'obj' => $data,
+    ];
+    $options = JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_INVALID_UTF8_SUBSTITUTE;
+    $json = json_encode($payload, $options);
+
+    if ($json === false) {
+        http_response_code(500);
+        $json = '{"status":false,"msg":"JSON encoding failed","obj":[]}';
+    }
+
+    if (ob_get_level() > 0) {
+        @ob_clean();
+    }
+
+    echo $json;
     exit;
 }
 
