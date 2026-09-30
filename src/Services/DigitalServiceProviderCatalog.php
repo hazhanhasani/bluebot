@@ -485,7 +485,21 @@ final class BluebotProviderCatalogService
             }
             $stats['checked']++;
 
-            $forcePanelBazReprice = strtolower((string) ($provider['provider_key'] ?? '')) === 'panelbaz'
+            $providerKey = strtolower((string) ($provider['provider_key'] ?? ''));
+            $subcategoryMigrationNeeded = false;
+            try {
+                $subcategoryCheck = $pdo->prepare(
+                    "SELECT COUNT(*) FROM digital_service_products
+                     WHERE provider = ? AND active = 1
+                       AND (metadata IS NULL OR metadata NOT LIKE '%\"service_group_key\"%')"
+                );
+                $subcategoryCheck->execute([$providerKey]);
+                $subcategoryMigrationNeeded = (int) $subcategoryCheck->fetchColumn() > 0;
+            } catch (Throwable $e) {
+                $subcategoryMigrationNeeded = false;
+            }
+
+            $forcePanelBazReprice = $providerKey === 'panelbaz'
                 && (
                     strtolower((string) ($provider['currency'] ?? '')) !== 'toman'
                     || abs((float) ($provider['exchange_rate_toman'] ?? 0) - 1.0) > 0.000001
@@ -506,7 +520,9 @@ final class BluebotProviderCatalogService
             $last = trim((string) ($provider['last_sync_at'] ?? ''));
             if ($last !== '') {
                 $lastTs = strtotime($last);
-                if ($lastTs !== false && time() - $lastTs < $interval * 60) {
+                if (!$subcategoryMigrationNeeded
+                    && $lastTs !== false
+                    && time() - $lastTs < $interval * 60) {
                     continue;
                 }
             }
