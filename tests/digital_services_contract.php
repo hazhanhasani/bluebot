@@ -166,9 +166,9 @@ $checks = [
     [str_contains($manager, "serviceGroupForProduct"), 'digital service subgroup resolver missing'],
     [str_contains($manager, "serviceGroups"), 'digital service subgroup collection missing'],
     [str_contains($manager, "serviceGroupKeyboard"), 'digital service subgroup keyboard missing'],
-    [str_contains($manager, "'callback_data' => 'ds_sg:'"), 'digital service subgroup callback missing'],
+    [str_contains($manager, "'ds_sg:' . \$category"), 'digital service subgroup callback missing'],
     [str_contains($manager, "'callback_data' => 'ds_scope:'"), 'Telegram scope callback missing'],
-    [str_contains($manager, "serviceGroups(PDO $pdo, string $category, ?string $serviceScope = null)"), 'service groups must filter by scope'],
+    [str_contains($manager, 'serviceGroups(PDO $pdo, string $category, ?string $serviceScope = null)'), 'service groups must filter by scope'],
 
     [str_contains($manager, "categoryUsesServiceGroups"), 'digital service subgroup category guard missing'],
     [str_contains($manager, "catalogPageInfo"), 'digital service catalog pagination info missing'],
