@@ -13,13 +13,19 @@ final class BluebotDigitalServices
     private const STATUS_DELIVERED = 'delivered';
     private const STATUS_REJECTED = 'rejected';
     private const STATUS_FAILED = 'failed';
+    private const STATUS_PARTIAL_REVIEW = 'partial_review';
     private const OZVINOO_CATALOG_SCHEMA_VERSION = 2;
 
     public static function isAvailable(PDO $pdo): bool
     {
         try {
-            $stmt = $pdo->query("SHOW TABLES LIKE 'digital_service_products'");
-            return (bool) $stmt->fetchColumn();
+            foreach (['digital_service_products', 'digital_service_orders'] as $table) {
+                $stmt = $pdo->query("SHOW TABLES LIKE " . $pdo->quote($table));
+                if (!(bool) $stmt->fetchColumn()) {
+                    return false;
+                }
+            }
+            return true;
         } catch (Throwable $e) {
             return false;
         }
@@ -2888,6 +2894,7 @@ final class BluebotDigitalServices
             self::STATUS_FAILED => $refunded
                 ? ['↩️', 'ناموفق / مبلغ برگشت خورده']
                 : ['🛠', 'در حال بررسی'],
+            self::STATUS_PARTIAL_REVIEW => ['⚠️', 'تحویل ناقص / نیازمند بررسی'],
             default => ['•', 'نامشخص'],
         };
     }
@@ -3067,6 +3074,24 @@ final class BluebotDigitalServices
                 ]],
                 [[
                     'text' => '❌ رد و برگشت وجه',
+                    'callback_data' => 'ds_reject:' . $orderId,
+                    'style' => 'danger',
+                ]],
+            ],
+        ], JSON_UNESCAPED_UNICODE);
+    }
+
+    public static function adminPartialReviewKeyboard(int $orderId): string
+    {
+        return json_encode([
+            'inline_keyboard' => [
+                [[
+                    'text' => '✅ تکمیل دستی شد',
+                    'callback_data' => 'ds_complete:' . $orderId,
+                    'style' => 'success',
+                ]],
+                [[
+                    'text' => '↩️ رد و برگشت وجه',
                     'callback_data' => 'ds_reject:' . $orderId,
                     'style' => 'danger',
                 ]],
@@ -3301,7 +3326,9 @@ final class BluebotDigitalServices
         }
 
         $text = self::adminOrderText($order);
-        $keyboard = self::adminKeyboard((int) $order['id']);
+        $keyboard = (string) ($order['status'] ?? '') === self::STATUS_PARTIAL_REVIEW
+            ? self::adminPartialReviewKeyboard((int) $order['id'])
+            : self::adminKeyboard((int) $order['id']);
         foreach (array_unique(array_map('strval', $admins)) as $adminId) {
             if ($adminId === '' || $adminId === '0') {
                 continue;
@@ -3342,6 +3369,8 @@ final class BluebotDigitalServices
         if (in_array($status, [self::STATUS_PENDING, self::STATUS_FAILED], true)
             && (int) ($order['refunded'] ?? 0) === 0) {
             $text .= "\n\nبرای ادامه، «تأیید و ارسال» یا «رد و برگشت وجه» را انتخاب کنید.";
+        } elseif ($status === self::STATUS_PARTIAL_REVIEW) {
+            $text .= "\n\n⚠️ Provider تحویل ناقص گزارش کرده است. ارسال مجدد خودکار غیرفعال است تا از تحویل تکراری جلوگیری شود. پس از بررسی، سفارش را «تکمیل دستی» یا «رد و برگشت وجه» کنید.";
         } elseif ($status === self::STATUS_PROCESSING) {
             $text .= "\n\n⏳ سفارش در Provider در حال پردازش است.";
         }
@@ -3372,12 +3401,15 @@ final class BluebotDigitalServices
                 throw new RuntimeException('This failed order was already refunded. Create a new order before retrying.');
             }
 
+            $retryReference = $status === self::STATUS_FAILED
+                ? null
+                : ($order['provider_reference'] ?? null);
             $claim = $pdo->prepare(
                 "UPDATE digital_service_orders
-                 SET status = ?, admin_id = ?, approved_at = NOW(), updated_at = NOW()
+                 SET status = ?, admin_id = ?, provider_reference = ?, approved_at = NOW(), updated_at = NOW()
                  WHERE id = ?"
             );
-            $claim->execute([self::STATUS_PROCESSING, $adminId, $orderId]);
+            $claim->execute([self::STATUS_PROCESSING, $adminId, $retryReference, $orderId]);
             $pdo->commit();
         } catch (Throwable $e) {
             if ($pdo->inTransaction()) {
@@ -3446,6 +3478,19 @@ final class BluebotDigitalServices
         if (!empty($delivery['pending'])) {
             $responseJson = json_encode($delivery['response'] ?? $delivery, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
             $reference = trim((string) ($delivery['reference'] ?? ''));
+            if ($reference === '') {
+                return self::markRetryableProviderFailure(
+                    $pdo,
+                    $orderId,
+                    'Provider accepted an asynchronous order but returned no tracking reference.',
+                    is_array($delivery['response'] ?? null) ? $delivery['response'] : $delivery,
+                    [
+                        'retryable' => true,
+                        'manual_review' => true,
+                        'code' => 'PROVIDER_REFERENCE_MISSING',
+                    ]
+                );
+            }
             $pending = $pdo->prepare(
                 "UPDATE digital_service_orders
                  SET status = ?, provider_reference = ?, provider_response = ?, updated_at = NOW()
@@ -3811,6 +3856,12 @@ final class BluebotDigitalServices
                 }
 
                 if ($normalized === 'partial') {
+                    self::markPartialReview(
+                        $pdo,
+                        (int) $order['id'],
+                        $status,
+                        'SMM provider reported partial delivery: ' . (string) ($status['raw_status'] ?? 'partial')
+                    );
                     $stats['partial']++;
                     continue;
                 }
@@ -3909,8 +3960,12 @@ final class BluebotDigitalServices
             }
 
             if ($normalized === 'partial') {
-                // Partial SMM orders may have a provider-side charge. Keep the
-                // order processing for manual review instead of over-refunding.
+                self::markPartialReview(
+                    $pdo,
+                    (int) $order['id'],
+                    $status,
+                    'TivaNovin reported partial delivery: ' . (string) ($status['raw_status'] ?? 'partial')
+                );
                 $stats['partial']++;
                 continue;
             }
@@ -3990,6 +4045,17 @@ final class BluebotDigitalServices
                             (int) $order['id'],
                             'OZVinoo order failed.',
                             $response
+                        );
+                        $stats['failed']++;
+                        continue;
+                    }
+
+                    if (in_array(strtolower((string) $state), ['partial', 'partially_completed', 'partially-completed'], true)) {
+                        self::markPartialReview(
+                            $pdo,
+                            (int) $order['id'],
+                            $response,
+                            'OZVinoo reported partial delivery.'
                         );
                         $stats['failed']++;
                         continue;
@@ -4467,6 +4533,121 @@ final class BluebotDigitalServices
         );
 
         return ['ok' => true, 'order' => $finalOrder, 'delivery' => $delivery];
+    }
+
+    private static function markPartialReview(
+        PDO $pdo,
+        int $orderId,
+        array $providerStatus,
+        string $reason = 'Provider reported partial delivery.'
+    ): array {
+        $payload = json_encode(
+            [
+                'error' => $reason,
+                'partial' => true,
+                'manual_review_only' => true,
+                'response' => $providerStatus,
+            ],
+            JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES
+        );
+
+        $stmt = $pdo->prepare(
+            "UPDATE digital_service_orders
+             SET status = ?, refunded = 0, provider_response = ?, updated_at = NOW()
+             WHERE id = ? AND status = ?"
+        );
+        $stmt->execute([
+            self::STATUS_PARTIAL_REVIEW,
+            is_string($payload) ? $payload : $reason,
+            $orderId,
+            self::STATUS_PROCESSING,
+        ]);
+
+        $order = self::findOrder($pdo, $orderId);
+        if (is_array($order) && (string) ($order['status'] ?? '') === self::STATUS_PARTIAL_REVIEW) {
+            sendmessage(
+                (string) ($order['user_id'] ?? ''),
+                "🛠 <b>سفارش شما نیاز به بررسی دارد</b>\n\n"
+                    . "🧾 کد سفارش: <code>" . self::escape((string) ($order['order_code'] ?? '')) . "</code>\n"
+                    . "بخشی از پردازش انجام شده و سفارش برای بررسی دقیق نگه داشته شده است. نتیجه نهایی برای شما ارسال می‌شود.",
+                self::userOrdersKeyboard($pdo, (string) ($order['user_id'] ?? ''), 1),
+                'HTML'
+            );
+            self::notifyAdmins($pdo, $order);
+        }
+
+        return [
+            'ok' => false,
+            'partial' => true,
+            'retryable' => false,
+            'refunded' => false,
+            'order' => $order,
+            'error' => $reason,
+        ];
+    }
+
+    public static function completePartialReview(PDO $pdo, int $orderId, string $adminId): array
+    {
+        $pdo->beginTransaction();
+        try {
+            $stmt = $pdo->prepare("SELECT * FROM digital_service_orders WHERE id = ? FOR UPDATE");
+            $stmt->execute([$orderId]);
+            $order = $stmt->fetch(PDO::FETCH_ASSOC);
+            if (!is_array($order)) {
+                throw new RuntimeException('Order not found.');
+            }
+
+            $status = (string) ($order['status'] ?? '');
+            if ($status === self::STATUS_DELIVERED) {
+                $pdo->commit();
+                return ['ok' => true, 'already_done' => true, 'order' => $order];
+            }
+            if ($status !== self::STATUS_PARTIAL_REVIEW) {
+                throw new RuntimeException('Only partial-review orders can be completed manually.');
+            }
+            if ((int) ($order['refunded'] ?? 0) === 1) {
+                throw new RuntimeException('Refunded order cannot be completed.');
+            }
+
+            $response = json_decode((string) ($order['provider_response'] ?? ''), true);
+            $response = is_array($response) ? $response : [];
+            $response['manual_completion'] = [
+                'admin_id' => $adminId,
+                'completed_at' => date(DATE_ATOM),
+            ];
+            $responseJson = json_encode($response, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+
+            $update = $pdo->prepare(
+                "UPDATE digital_service_orders
+                 SET status = ?, admin_id = ?, provider_response = ?, delivered_at = NOW(), updated_at = NOW()
+                 WHERE id = ?"
+            );
+            $update->execute([
+                self::STATUS_DELIVERED,
+                $adminId,
+                is_string($responseJson) ? $responseJson : (string) ($order['provider_response'] ?? ''),
+                $orderId,
+            ]);
+            $pdo->commit();
+        } catch (Throwable $e) {
+            if ($pdo->inTransaction()) {
+                $pdo->rollBack();
+            }
+            throw $e;
+        }
+
+        $finalOrder = self::findOrder($pdo, $orderId) ?? $order;
+        sendmessage(
+            (string) ($finalOrder['user_id'] ?? ''),
+            "✅ <b>سفارش شما تکمیل شد</b>\n\n"
+                . "🧾 کد سفارش: <code>" . self::escape((string) ($finalOrder['order_code'] ?? '')) . "</code>\n"
+                . "📦 " . self::escape((string) ($finalOrder['service_name'] ?? 'سرویس')) . "\n"
+                . "🔢 تعداد: <b>" . number_format(max(1, (int) ($finalOrder['quantity'] ?? 1))) . "</b>",
+            self::userOrdersKeyboard($pdo, (string) ($finalOrder['user_id'] ?? ''), 1),
+            'HTML'
+        );
+
+        return ['ok' => true, 'order' => $finalOrder];
     }
 
     private static function markRetryableProviderFailure(
