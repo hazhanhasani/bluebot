@@ -53,6 +53,12 @@ $checks = [
     [str_contains($manager, "setProviderApprovalMode"), 'per-provider approval mode writer missing'],
     [str_contains($manager, "provider_approval_"), 'provider approval mode storage key missing'],
     [str_contains($manager, "maybeAutoApproveOrder"), 'automatic order approval dispatcher missing'],
+    [str_contains($manager, "providerCircuitStatus"), 'provider circuit-breaker status helper missing'],
+    [str_contains($manager, "recordProviderDeliveryResult"), 'provider circuit-breaker failure tracking missing'],
+    [str_contains($manager, "provider_circuit_threshold"), 'provider circuit-breaker threshold setting missing'],
+    [str_contains($manager, "provider_circuit_cooldown_minutes"), 'provider circuit-breaker cooldown setting missing'],
+    [str_contains($manager, "Circuit Breaker"), 'administrator circuit-breaker alert missing'],
+
     [str_contains($manager, "admin_id = ?"), 'automatic delivery must reuse atomic approval claim'],
     [str_contains($manager, "deliverRegisteredSmmProvider"), 'generic SMM provider delivery adapter missing'],
     [substr_count($manager, "\$order['quantity'] ?? \$product['service_value']") >= 3, 'SMM delivery must use the order quantity snapshot'],
