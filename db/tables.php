@@ -38,6 +38,7 @@ return [
     'referral_commissions',
     'referral_risk_events',
     'referral_commission_reversals',
+    'referral_first_purchase_claims',
     'wallet_transactions',
     'api_rate_limits',
     'sms_settings',
