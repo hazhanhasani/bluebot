@@ -1042,14 +1042,12 @@ final class BluebotDigitalServices
         PDO $pdo,
         string $apiKey,
         float $profitPercent,
-        float $usdToToman,
         int $syncIntervalMinutes = 15
     ): array {
         BluebotProviderCatalogService::ensureStorage($pdo);
 
         $apiKey = trim($apiKey);
         $profitPercent = max(0.0, min(1000.0, $profitPercent));
-        $usdToToman = max(0.0, $usdToToman);
         $syncIntervalMinutes = max(1, min(1440, $syncIntervalMinutes));
 
         $existing = BluebotProviderCatalogService::findProvider($pdo, 'panelbaz');
@@ -1060,10 +1058,6 @@ final class BluebotDigitalServices
         if ($apiKey === '' || strlen($apiKey) > 2048 || preg_match('/[\r\n]/', $apiKey)) {
             throw new InvalidArgumentException('کلید API پنل باز معتبر نیست.');
         }
-        if ($usdToToman <= 0) {
-            throw new InvalidArgumentException('نرخ تبدیل دلار به تومان برای پنل باز باید بیشتر از صفر باشد.');
-        }
-
         $stmt = $pdo->prepare(
             "INSERT INTO digital_service_providers
              (provider_key, name, catalog_url, api_key, auth_header, auth_prefix,
@@ -1071,7 +1065,7 @@ final class BluebotDigitalServices
               currency, exchange_rate_toman, profit_percent, active, sync_interval_minutes)
              VALUES ('panelbaz', 'PanelBaz', 'https://panelbaz.ir/panelbaz/api/v1', ?, '', '',
                      'smm:.', 'service', 'name', 'category', 'rate',
-                     'usd', ?, ?, 1, ?)
+                     'toman', 1, ?, 1, ?)
              ON DUPLICATE KEY UPDATE
                 name = VALUES(name),
                 catalog_url = VALUES(catalog_url),
@@ -1089,7 +1083,7 @@ final class BluebotDigitalServices
                 sync_interval_minutes = VALUES(sync_interval_minutes),
                 active = 1"
         );
-        $stmt->execute([$apiKey, $usdToToman, $profitPercent, $syncIntervalMinutes]);
+        $stmt->execute([$apiKey, $profitPercent, $syncIntervalMinutes]);
 
         return BluebotProviderCatalogService::findProvider($pdo, 'panelbaz') ?? [];
     }
@@ -1102,7 +1096,7 @@ final class BluebotDigitalServices
                 'ok' => false,
                 'configured' => false,
                 'balance' => null,
-                'currency' => 'USD',
+                'currency' => 'TOMAN',
                 'message' => 'API Key پنل باز تنظیم نشده است.',
             ];
         }
@@ -1119,7 +1113,7 @@ final class BluebotDigitalServices
                 'ok' => false,
                 'configured' => true,
                 'balance' => null,
-                'currency' => 'USD',
+                'currency' => 'TOMAN',
                 'message' => $e->getMessage(),
             ];
         }
@@ -1129,7 +1123,7 @@ final class BluebotDigitalServices
                 'ok' => false,
                 'configured' => true,
                 'balance' => null,
-                'currency' => 'USD',
+                'currency' => 'TOMAN',
                 'message' => trim((string) ($response['message'] ?? '')) ?: 'دریافت موجودی پنل باز ناموفق بود.',
                 'response' => $response,
             ];
@@ -1139,7 +1133,7 @@ final class BluebotDigitalServices
             'ok' => true,
             'configured' => true,
             'balance' => (float) ($response['balance'] ?? 0),
-            'currency' => strtoupper(trim((string) ($response['currency'] ?? 'USD'))) ?: 'USD',
+            'currency' => 'TOMAN',
             'message' => '',
             'response' => $response,
         ];

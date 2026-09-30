@@ -484,6 +484,24 @@ final class BluebotProviderCatalogService
                 continue;
             }
             $stats['checked']++;
+
+            $forcePanelBazReprice = strtolower((string) ($provider['provider_key'] ?? '')) === 'panelbaz'
+                && (
+                    strtolower((string) ($provider['currency'] ?? '')) !== 'toman'
+                    || abs((float) ($provider['exchange_rate_toman'] ?? 0) - 1.0) > 0.000001
+                );
+            if ($forcePanelBazReprice) {
+                $repair = $pdo->prepare(
+                    "UPDATE digital_service_providers
+                     SET currency = 'toman', exchange_rate_toman = 1, last_sync_at = NULL, updated_at = NOW()
+                     WHERE provider_key = 'panelbaz'"
+                );
+                $repair->execute();
+                $provider['currency'] = 'toman';
+                $provider['exchange_rate_toman'] = 1.0;
+                $provider['last_sync_at'] = null;
+            }
+
             $interval = max(1, (int) ($provider['sync_interval_minutes'] ?? 15));
             $last = trim((string) ($provider['last_sync_at'] ?? ''));
             if ($last !== '') {
@@ -513,6 +531,24 @@ final class BluebotProviderCatalogService
         $provider = self::findProvider($pdo, $providerKey);
         if (!is_array($provider) || (int) ($provider['active'] ?? 0) !== 1) {
             return ['ok' => false, 'message' => 'Provider is missing or disabled.'];
+        }
+
+        // PanelBaz publishes service rates in Toman. Older BlueBot builds
+        // mistakenly stored it as USD; repair that legacy configuration before
+        // every sync so imported product prices are rebuilt correctly.
+        if (strtolower((string) ($provider['provider_key'] ?? '')) === 'panelbaz'
+            && (
+                strtolower((string) ($provider['currency'] ?? '')) !== 'toman'
+                || abs((float) ($provider['exchange_rate_toman'] ?? 0) - 1.0) > 0.000001
+            )) {
+            $repair = $pdo->prepare(
+                "UPDATE digital_service_providers
+                 SET currency = 'toman', exchange_rate_toman = 1, updated_at = NOW()
+                 WHERE provider_key = 'panelbaz'"
+            );
+            $repair->execute();
+            $provider['currency'] = 'toman';
+            $provider['exchange_rate_toman'] = 1.0;
         }
 
         $response = self::fetchCatalog($provider);
