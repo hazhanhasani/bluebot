@@ -32,6 +32,7 @@ return [
     'digital_service_products',
     'digital_service_providers',
     'digital_service_orders',
+    'digital_service_favorites',
     'digital_service_settings',
     'reagent_report',
     'sms_settings',
