@@ -46,6 +46,7 @@ $vpnDefaultFunc = $read('vpnbot/Default/func.php');
 $vpnUpdateFunc = $read('vpnbot/update/func.php');
 $iranpay1 = $read('payment/iranpay1.php');
 $zarinpal = $read('payment/zarinpal.php');
+$diagnostics = $read('src/Support/Diagnostics.php');
 
 $mustContain = [
     [$functions, "\$allowed = ['fa', 'en', 'ru', 'zh'];", 'languagechange() must only select bundled locales.'],
@@ -117,6 +118,13 @@ $mustContain = [
     [$vpnUpdateFunc, 'function vpnbotSendQrPhoto', 'Update VPNBot must use safe temporary QR handling.'],
     [$vpnDefaultIndex, "getStructuredSettingValue(", 'Default VPNBot must guard per-agent structured settings.'],
     [$vpnUpdateIndex, "getStructuredSettingValue(", 'Update VPNBot must guard per-agent structured settings.'],
+    [$diagnostics, "SHOW TABLES LIKE 'digital_service_orders'", 'Runtime /debug must detect the Digital Services order table safely.'],
+    [$diagnostics, "orders_failed_review", 'Runtime /debug must report digital orders that need manual review.'],
+    [$diagnostics, "<b>🛍 Digital Services</b>", 'Runtime /debug must include a Digital Services health section.'],
+    [$diagnostics, "provider_approval_", 'Runtime /debug must expose provider delivery modes without exposing credentials.'],
+    [$diagnostics, "Active products:", 'Runtime /debug must report active digital-service products.'],
+    [$diagnostics, "Needs review:", 'Runtime /debug must report unresolved digital-service failures.'],
+
 ];
 
 foreach ($mustContain as [$source, $needle, $message]) {
