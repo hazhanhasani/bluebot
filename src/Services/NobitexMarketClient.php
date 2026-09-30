@@ -2,8 +2,9 @@
 
 final class NobitexMarketClient
 {
-    private const BASE_URL = 'https://apiv2.nobitex.ir';
+    private const BASE_URL = 'https://api.nobitex.ir';
     private const TON_MARKET = 'GRAMIRT';
+    private const RIALS_PER_TOMAN = 10.0;
 
     public function tonTomanRate(): array
     {
@@ -69,8 +70,8 @@ final class NobitexMarketClient
             ];
         }
 
-        $rate = $data['lastTradePrice'] ?? null;
-        if (!is_numeric($rate) || (float) $rate <= 0) {
+        $rawRateRial = $data['lastTradePrice'] ?? null;
+        if (!is_numeric($rawRateRial) || (float) $rawRateRial <= 0) {
             return [
                 'ok' => false,
                 'market' => self::TON_MARKET,
@@ -81,10 +82,14 @@ final class NobitexMarketClient
             ];
         }
 
+        $rateToman = (float) $rawRateRial / self::RIALS_PER_TOMAN;
+
         return [
             'ok' => true,
             'market' => self::TON_MARKET,
-            'rate_toman' => (float) $rate,
+            'raw_rate_rial' => (float) $rawRateRial,
+            'rate_toman' => $rateToman,
+            'conversion' => 'rial_to_toman',
             'last_update' => is_numeric($data['lastUpdate'] ?? null)
                 ? (int) $data['lastUpdate']
                 : null,
