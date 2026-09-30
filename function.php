@@ -6,6 +6,7 @@ require_once __DIR__ . '/src/Support/TrustedProxy.php';
 require_once __DIR__ . '/src/Support/RuntimeIdentity.php';
 require_once __DIR__ . '/src/Support/JalaliDate.php';
 require_once __DIR__ . '/src/Support/SmsService.php';
+require_once __DIR__ . '/src/Support/WalletLedger.php';
 require_once __DIR__ . '/src/Payment/PaymentState.php';
 require_once __DIR__ . '/src/Payment/Blupal.php';
 require_once __DIR__ . '/config.php';
@@ -1357,6 +1358,26 @@ function referralTierForUser(string $referrerId, ?array $settingRow = null): arr
     ];
 }
 
+function reverseReferralCommission(string $sourceType,string $sourceId,string $reason='refund'): array
+{
+ global $pdo;
+ $eventKey=hash('sha256',$sourceType.':'.$sourceId);
+ $stmt=$pdo->prepare("SELECT * FROM referral_commissions WHERE event_key=? LIMIT 1");$stmt->execute([$eventKey]);
+ $commission=$stmt->fetch(PDO::FETCH_ASSOC);
+ if(!is_array($commission))return ['reversed'=>false,'reason'=>'commission_not_found'];
+ $reversalKey=hash('sha256','reversal:'.$eventKey);
+ $owns=!$pdo->inTransaction();if($owns)$pdo->beginTransaction();
+ try{
+  $q=$pdo->prepare("SELECT id FROM referral_commission_reversals WHERE event_key=? LIMIT 1");$q->execute([$reversalKey]);
+  if($q->fetchColumn()){if($owns)$pdo->commit();return ['reversed'=>false,'reason'=>'already_reversed'];}
+  bluebotWalletAdjust($pdo,(string)$commission['referrer_id'],-(int)$commission['amount'],'referral_reversal',(string)$commission['id'],$reversalKey,['reason'=>$reason,'source_type'=>$sourceType,'source_id'=>$sourceId],true);
+  $i=$pdo->prepare("INSERT INTO referral_commission_reversals(commission_id,event_key,referrer_id,amount,reason) VALUES(?,?,?,?,?)");
+  $i->execute([(int)$commission['id'],$reversalKey,(string)$commission['referrer_id'],(int)$commission['amount'],substr($reason,0,190)]);
+  if($owns)$pdo->commit();
+  return ['reversed'=>true,'amount'=>(int)$commission['amount'],'referrer_id'=>(string)$commission['referrer_id']];
+ }catch(Throwable $e){if($owns&&$pdo->inTransaction())$pdo->rollBack();throw $e;}
+}
+
 function creditReferralCommission(string $buyerId, int $sourceAmount, string $sourceType, string $sourceId): array
 {
     global $pdo;
@@ -1397,17 +1418,7 @@ function creditReferralCommission(string $buyerId, int $sourceAmount, string $so
         return ['credited' => false, 'reason' => 'zero_percent'];
     }
 
-    // First-purchase-only is enforced by the commission ledger itself.
-    // This avoids depending on invoice timing/status and works across every product family.
-    if (($affiliate['porsant_one_buy'] ?? '') === 'on_buy_porsant') {
-        $first = $pdo->prepare(
-            "SELECT COUNT(*) FROM referral_commissions WHERE referred_user_id = ?"
-        );
-        $first->execute([$buyerId]);
-        if ((int) $first->fetchColumn() > 0) {
-            return ['credited' => false, 'reason' => 'first_purchase_only'];
-        }
-    }
+    $firstPurchaseOnly = (($affiliate['porsant_one_buy'] ?? '') === 'on_buy_porsant');
 
     $amount = (int) floor(($sourceAmount * $percent) / 100);
     if ($amount <= 0) {
@@ -1421,6 +1432,20 @@ function creditReferralCommission(string $buyerId, int $sourceAmount, string $so
     }
 
     try {
+        if ($firstPurchaseOnly) {
+            $historic = $pdo->prepare("SELECT COUNT(*) FROM referral_commissions WHERE referred_user_id = ?");
+            $historic->execute([$buyerId]);
+            if ((int) $historic->fetchColumn() > 0) {
+                if ($started) $pdo->commit();
+                return ['credited' => false, 'reason' => 'first_purchase_only'];
+            }
+            $claim = $pdo->prepare("INSERT IGNORE INTO referral_first_purchase_claims (referred_user_id,event_key) VALUES (?,?)");
+            $claim->execute([$buyerId, $eventKey]);
+            if ($claim->rowCount() !== 1) {
+                if ($started) $pdo->commit();
+                return ['credited' => false, 'reason' => 'first_purchase_only'];
+            }
+        }
         $insert = $pdo->prepare(
             "INSERT IGNORE INTO referral_commissions
              (event_key, referrer_id, referred_user_id, source_type, source_id, amount, percent, source_amount)
@@ -1443,11 +1468,15 @@ function creditReferralCommission(string $buyerId, int $sourceAmount, string $so
             return ['credited' => false, 'reason' => 'already_credited'];
         }
 
-        $credit = $pdo->prepare("UPDATE user SET Balance = Balance + ? WHERE id = ?");
-        $credit->execute([$amount, $referrerId]);
-        if ($credit->rowCount() !== 1) {
-            throw new RuntimeException('Referral commission credit failed.');
-        }
+        bluebotWalletAdjust(
+            $pdo,
+            $referrerId,
+            $amount,
+            'referral_commission',
+            $eventKey,
+            'wallet:' . $eventKey,
+            ['buyer_id' => $buyerId, 'source_type' => $sourceType, 'source_id' => $sourceId]
+        );
 
         if ($started) {
             $pdo->commit();

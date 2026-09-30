@@ -76,6 +76,12 @@ jobs:
       - name: Digital services contract
         run: php tests/digital_services_contract.php
 
+      - name: Production hardening contract
+        run: php tests/production_hardening_contract.php
+
+      - name: Validate guarded restore tool
+        run: php -l scripts/restore-backup.php
+
       - name: Telegram Mini App bootstrap tests
         run: node tests/telegram_bootstrap_test.js
 

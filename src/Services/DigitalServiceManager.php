@@ -3401,11 +3401,28 @@ final class BluebotDigitalServices
                 throw new DomainException('ORDER_CANCEL_UNAVAILABLE');
             }
 
-            $refund = $pdo->prepare("UPDATE user SET Balance = Balance + ? WHERE id = ?");
-            $refund->execute([(int) ($order['amount'] ?? 0), $userId]);
-            if ($refund->rowCount() !== 1) {
-                throw new RuntimeException('Refund failed.');
-            }
+            bluebotWalletAdjust(
+
+
+                $pdo,
+
+
+                (string) $userId,
+
+
+                (int) ($order['amount'] ?? 0),
+
+
+                'digital_service_refund',
+
+
+                (string) ($order['order_code'] ?? $orderId),
+
+
+                'digital-refund:' . (string) ($order['order_code'] ?? $orderId)
+
+
+            );
 
             $update = $pdo->prepare(
                 "UPDATE digital_service_orders
@@ -3775,13 +3792,17 @@ final class BluebotDigitalServices
             );
             $claimIntent->execute([$userId]);
 
-            $debit = $pdo->prepare("UPDATE user SET Balance = Balance - ? WHERE id = ?");
-            $debit->execute([$freshPrice, $userId]);
-            if ($debit->rowCount() !== 1) {
-                throw new RuntimeException('Unable to debit wallet.');
-            }
-
             $orderCode = 'DS-' . strtoupper(bin2hex(random_bytes(6)));
+            bluebotWalletAdjust(
+                $pdo,
+                $userId,
+                -$freshPrice,
+                'digital_service_purchase',
+                $orderCode,
+                'digital-purchase:' . $orderCode,
+                ['service_id' => $productId, 'quantity' => $quantity],
+                true
+            );
             $insert = $pdo->prepare(
                 "INSERT INTO digital_service_orders
                 (order_code, user_id, service_id, service_code, service_name, target, amount, quantity, provider, status)
@@ -4073,11 +4094,15 @@ final class BluebotDigitalServices
             }
 
             if ((int) ($order['refunded'] ?? 0) !== 1) {
-                $refund = $pdo->prepare("UPDATE user SET Balance = Balance + ? WHERE id = ?");
-                $refund->execute([(int) $order['amount'], (string) $order['user_id']]);
-                if ($refund->rowCount() !== 1) {
-                    throw new RuntimeException('Refund failed.');
-                }
+                bluebotWalletAdjust(
+                    $pdo,
+                    (string) $order['user_id'],
+                    (int) $order['amount'],
+                    'digital_service_refund',
+                    (string) ($order['order_code'] ?? $orderId),
+                    'digital-refund:' . (string) ($order['order_code'] ?? $orderId)
+                );
+                reverseReferralCommission('digital_service', (string) ($order['order_code'] ?? $orderId), 'digital_service_refund');
             }
 
             $update = $pdo->prepare(
@@ -5306,11 +5331,15 @@ final class BluebotDigitalServices
             }
 
             if ((int) ($order['refunded'] ?? 0) !== 1) {
-                $refund = $pdo->prepare("UPDATE user SET Balance = Balance + ? WHERE id = ?");
-                $refund->execute([(int) $order['amount'], (string) $order['user_id']]);
-                if ($refund->rowCount() !== 1) {
-                    throw new RuntimeException('Provider failure refund could not be credited.');
-                }
+                bluebotWalletAdjust(
+                    $pdo,
+                    (string) $order['user_id'],
+                    (int) $order['amount'],
+                    'digital_service_refund',
+                    (string) ($order['order_code'] ?? $orderId),
+                    'digital-refund:' . (string) ($order['order_code'] ?? $orderId)
+                );
+                reverseReferralCommission('digital_service', (string) ($order['order_code'] ?? $orderId), 'provider_failure_refund');
             }
 
             $payload = json_encode(

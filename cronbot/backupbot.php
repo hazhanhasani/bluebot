@@ -210,10 +210,14 @@ if (!$isDumped) {
     return;
 }
 
+$backupSha256 = hash_file('sha256', $backup_file_name);
 telegram('sendDocument', [
     'chat_id' => $setting['Channel_Report'],
     'message_thread_id' => $reportbackup,
     'document' => new CURLFile($backup_file_name),
-    'caption' => $textbotlang['Admin']['report']['backupCaption'],
+    'caption' => $textbotlang['Admin']['report']['backupCaption']
+        . "\n\n🔐 SHA256: <code>" . $backupSha256 . "</code>"
+        . "\n📦 Size: " . number_format((int) filesize($backup_file_name)) . " bytes",
+    'parse_mode' => 'HTML',
 ]);
 unlink($backup_file_name);
