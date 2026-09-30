@@ -1441,6 +1441,98 @@ if ($text == "/start" || $datain == "start" || $text == "start") {
         (string) ($catalog['keyboard'] ?? '')
     );
     return;
+} elseif (preg_match('/^ds_favorites:(\d{1,4})$/', (string) $datain, $digitalFavoritesMatch)) {
+    if (!check_active_btn($setting['keyboardmain'], 'text_digital_services')) {
+        sendmessage($from_id, $textbotlang['users']['buttonDisabled'], null, 'HTML');
+        return;
+    }
+
+    $page = max(1, (int) $digitalFavoritesMatch[1]);
+    $products = BluebotDigitalServices::favoriteProducts($pdo, (string) $from_id);
+    $text = "❤️ <b>علاقه‌مندی‌های من</b>\n\n"
+        . ($products === []
+            ? "هنوز سرویسی به علاقه‌مندی‌ها اضافه نکرده‌اید."
+            : "سرویس‌های ذخیره‌شده‌ی شما برای دسترسی سریع:");
+    $keyboardFavorites = BluebotDigitalServices::productCollectionKeyboard(
+        $products,
+        'هنوز علاقه‌مندی ندارید',
+        'ds_home',
+        $page,
+        8,
+        'ds_favorites:'
+    );
+    if (!empty($callback_query_id)) {
+        telegram('answerCallbackQuery', ['callback_query_id' => $callback_query_id, 'cache_time' => 0]);
+    }
+    Editmessagetext($from_id, $message_id, $text, $keyboardFavorites, 'HTML');
+    step('home', $from_id);
+    update('user', 'Processing_value', '0', 'id', $from_id);
+    return;
+} elseif (preg_match('/^ds_bestsellers:(\d{1,4})$/', (string) $datain, $digitalBestSellersMatch)) {
+    if (!check_active_btn($setting['keyboardmain'], 'text_digital_services')) {
+        sendmessage($from_id, $textbotlang['users']['buttonDisabled'], null, 'HTML');
+        return;
+    }
+
+    $page = max(1, (int) $digitalBestSellersMatch[1]);
+    $products = BluebotDigitalServices::bestSellingProducts($pdo, 24, 30);
+    $text = "🔥 <b>پرفروش‌های ۳۰ روز اخیر</b>\n\n"
+        . ($products === []
+            ? "هنوز داده‌ی کافی برای نمایش پرفروش‌ها نداریم."
+            : "محبوب‌ترین سرویس‌ها بر اساس سفارش‌های واقعی کاربران:");
+    $keyboardBestSellers = BluebotDigitalServices::productCollectionKeyboard(
+        $products,
+        'هنوز داده‌ای ثبت نشده',
+        'ds_home',
+        $page,
+        8,
+        'ds_bestsellers:'
+    );
+    if (!empty($callback_query_id)) {
+        telegram('answerCallbackQuery', ['callback_query_id' => $callback_query_id, 'cache_time' => 0]);
+    }
+    Editmessagetext($from_id, $message_id, $text, $keyboardBestSellers, 'HTML');
+    step('home', $from_id);
+    update('user', 'Processing_value', '0', 'id', $from_id);
+    return;
+} elseif (preg_match('/^ds_fav:(\d+)$/', (string) $datain, $digitalFavoriteToggleMatch)) {
+    $productId = (int) $digitalFavoriteToggleMatch[1];
+    try {
+        $favorite = BluebotDigitalServices::toggleFavorite($pdo, (string) $from_id, $productId);
+        if (!empty($callback_query_id)) {
+            telegram('answerCallbackQuery', [
+                'callback_query_id' => $callback_query_id,
+                'text' => $favorite ? '❤️ به علاقه‌مندی‌ها اضافه شد' : '🤍 از علاقه‌مندی‌ها حذف شد',
+                'show_alert' => false,
+                'cache_time' => 0,
+            ]);
+        }
+        $product = BluebotDigitalServices::findProduct($pdo, $productId);
+        if (is_array($product)) {
+            Editmessagetext(
+                $from_id,
+                $message_id,
+                BluebotDigitalServices::productText($product),
+                BluebotDigitalServices::productKeyboard($product),
+                'HTML'
+            );
+        }
+    } catch (Throwable $favoriteError) {
+        bluebotLog('warning', 'Digital service favorite toggle failed', [
+            'user_id' => (string) $from_id,
+            'product_id' => $productId,
+            'error' => $favoriteError->getMessage(),
+        ]);
+        if (!empty($callback_query_id)) {
+            telegram('answerCallbackQuery', [
+                'callback_query_id' => $callback_query_id,
+                'text' => 'تغییر علاقه‌مندی انجام نشد.',
+                'show_alert' => true,
+                'cache_time' => 0,
+            ]);
+        }
+    }
+    return;
 } elseif (preg_match('/^ds_orders:(\d{1,4})$/', (string) $datain, $digitalOrdersMatch)) {
     if (!check_active_btn($setting['keyboardmain'], 'text_digital_services')) {
         sendmessage($from_id, $textbotlang['users']['buttonDisabled'], null, 'HTML');
