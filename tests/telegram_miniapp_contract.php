@@ -9,22 +9,29 @@ $appIndex = @file_get_contents($root . '/app/index.php');
 if ($appIndex !== false && str_contains($appIndex, 'https://telegram.org/js/telegram-web-app.js')) {
     $failures[] = 'Mini App startup must not block on the external Telegram SDK.';
 }
-if ($appIndex === false || !str_contains($appIndex, './js/telegram-bootstrap.js?v=0.1.7')) {
+if ($appIndex === false || !str_contains($appIndex, './js/telegram-bootstrap.js?v=0.1.8')) {
     $failures[] = 'Mini App compatibility bootstrap is not loaded with the current cache key.';
 }
-if ($appIndex === false || !str_contains($appIndex, './js/telegram-web-app.js?v=0.1.7')) {
+if ($appIndex === false || !str_contains($appIndex, './js/telegram-web-app.js?v=0.1.8')) {
     $failures[] = 'Local Telegram SDK is not loaded first.';
 }
 
-if ($appIndex === false || !str_contains($appIndex, 'script defer src="./js/telegram-web-app.js?v=0.1.7"')) {
+if ($appIndex === false || !str_contains($appIndex, 'script defer src="./js/telegram-web-app.js?v=0.1.8"')) {
     $failures[] = 'Mini App Telegram SDK must load with defer for non-blocking first paint.';
 }
 if ($appIndex === false || !str_contains($appIndex, 'bluebot-boot')) {
     $failures[] = 'Mini App must provide an immediate boot/loading surface.';
 }
 
-if ($appIndex === false || !str_contains($appIndex, './js/app-loader.js?v=0.1.7')) {
+if ($appIndex === false || !str_contains($appIndex, './js/app-loader.js?v=0.1.8')) {
     $failures[] = 'Mini App ordered application loader is missing.';
+}
+if ($appIndex === false || !str_contains($appIndex, './js/full-store.js?v=0.1.8')) {
+    $failures[] = 'Mini App full digital-services storefront is not mounted.';
+}
+$fullStore = @file_get_contents($root . '/app/js/full-store.js');
+if ($fullStore === false || !str_contains($fullStore, 'digital_catalog') || !str_contains($fullStore, 'digital_purchase')) {
+    $failures[] = 'Mini App digital storefront does not use the authenticated catalog/purchase API.';
 }
 
 $appLoader = @file_get_contents($root . '/app/js/app-loader.js');
@@ -65,8 +72,8 @@ if ($appHtaccess === false || !str_contains($appHtaccess, 'Cloudflare-CDN-Cache-
 if ($appHtaccess === false || !str_contains($appHtaccess, 'app-loader|telegram-bootstrap|telegram-web-app')) {
     $failures[] = 'Mini App runtime bootstrap scripts need an explicit non-immutable cache policy.';
 }
-if ($appHtaccess === false || !str_contains($appHtaccess, 'JS/CSS filenames in this legacy Mini App build')) {
-    $failures[] = 'Mini App JS/CSS must be revalidated to prevent mixed cached bundle generations.';
+if ($appHtaccess === false || !str_contains($appHtaccess, 'Non-hashed scripts/styles must revalidate')) {
+    $failures[] = 'Mini App non-hashed JS/CSS must be revalidated to prevent mixed cached bundle generations.';
 }
 
 $apiHtaccess = @file_get_contents($root . '/api/.htaccess');
@@ -108,6 +115,9 @@ $miniApi = @file_get_contents($root . '/api/miniapp.php');
 if ($miniApi === false || !str_contains($miniApi, "/src/Support/JalaliDate.php")) {
     $failures[] = 'Mini App API does not load JalaliDate from the organized path.';
 }
+if ($miniApi === false || !str_contains($miniApi, "DigitalServiceManager.php") || !str_contains($miniApi, "'digital_catalog'") || !str_contains($miniApi, "'digital_purchase'")) {
+    $failures[] = 'Mini App API is not synchronized with digital services.';
+}
 if ($miniApi !== false && str_contains($miniApi, "/../jdf.php")) {
     $failures[] = 'Mini App API still references removed root jdf.php.';
 }
@@ -124,7 +134,7 @@ if ($verify === false || !str_contains($verify, "hash_equals")) {
 }
 
 $version = trim((string) @file_get_contents($root . '/app/version'));
-if ($version !== '0.1.7') {
+if ($version !== '0.1.8') {
     $failures[] = 'Unexpected Mini App version: ' . $version;
 }
 
