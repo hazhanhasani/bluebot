@@ -819,7 +819,7 @@ final class BluebotProviderCatalogService
         $known = [
             'premium' => ['label' => '🎁 تلگرام پرمیوم', 'needles' => ['telegram premium', 'تلگرام پرمیوم', 'پرمیوم اکانت']],
             'stars' => ['label' => '⭐ استارز تلگرام', 'needles' => ['telegram stars', 'telegram star', 'استارز', 'استار تلگرام']],
-            'telegram' => ['label' => '✈️ خدمات تلگرام', 'needles' => ['telegram', 'تلگرام', 'member', 'ممبر']],
+            'telegram' => ['label' => '✈️ خدمات تلگرام', 'needles' => ['telegram', 'تلگرام']],
             'instagram' => ['label' => '📸 خدمات اینستاگرام', 'needles' => ['instagram', 'اینستاگرام']],
             'youtube' => ['label' => '▶️ خدمات یوتیوب', 'needles' => ['youtube', 'یوتیوب']],
             'twitter' => ['label' => '𝕏 خدمات X / توییتر', 'needles' => ['twitter', 'توییتر', 'x.com']],
