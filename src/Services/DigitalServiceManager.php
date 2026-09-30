@@ -125,6 +125,258 @@ final class BluebotDigitalServices
         self::setSetting($pdo, self::providerApprovalSettingKey($providerKey), $mode, false);
     }
 
+    private static function ensureProviderHealthStorage(PDO $pdo): void
+    {
+        $pdo->exec(
+            "CREATE TABLE IF NOT EXISTS digital_service_provider_health (
+                id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+                provider VARCHAR(50) NOT NULL,
+                service_id INT UNSIGNED NOT NULL,
+                total_requests INT UNSIGNED NOT NULL DEFAULT 0,
+                success_count INT UNSIGNED NOT NULL DEFAULT 0,
+                consecutive_failures INT UNSIGNED NOT NULL DEFAULT 0,
+                availability_failures INT UNSIGNED NOT NULL DEFAULT 0,
+                timeout_failures INT UNSIGNED NOT NULL DEFAULT 0,
+                suspended_until DATETIME NULL,
+                suspend_reason VARCHAR(50) NULL,
+                last_error VARCHAR(500) NULL,
+                last_result_at DATETIME NULL,
+                created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                UNIQUE KEY uniq_digital_provider_health (provider, service_id),
+                KEY idx_digital_provider_suspended (suspended_until),
+                KEY idx_digital_provider_health_updated (updated_at)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci"
+        );
+    }
+
+    public static function providerHealthGuard(PDO $pdo, array $product): array
+    {
+        $provider = strtolower(trim((string) ($product['provider'] ?? '')));
+        $serviceId = (int) ($product['id'] ?? 0);
+        if ($provider === '' || $serviceId <= 0) {
+            return ['allowed' => true, 'suspended' => false];
+        }
+
+        self::ensureProviderHealthStorage($pdo);
+        $stmt = $pdo->prepare(
+            "SELECT * FROM digital_service_provider_health
+             WHERE provider = ? AND service_id = ?
+             LIMIT 1"
+        );
+        $stmt->execute([$provider, $serviceId]);
+        $state = $stmt->fetch(PDO::FETCH_ASSOC);
+        if (!is_array($state)) {
+            return ['allowed' => true, 'suspended' => false];
+        }
+
+        $until = trim((string) ($state['suspended_until'] ?? ''));
+        if ($until === '' || strtotime($until) <= time()) {
+            if ($until !== '') {
+                $clear = $pdo->prepare(
+                    "UPDATE digital_service_provider_health
+                     SET suspended_until = NULL, suspend_reason = NULL, updated_at = NOW()
+                     WHERE id = ?"
+                );
+                $clear->execute([(int) $state['id']]);
+            }
+            return [
+                'allowed' => true,
+                'suspended' => false,
+                'state' => $state,
+            ];
+        }
+
+        return [
+            'allowed' => false,
+            'suspended' => true,
+            'reason' => (string) ($state['suspend_reason'] ?? 'provider_health'),
+            'until' => $until,
+            'state' => $state,
+        ];
+    }
+
+    public static function activeProviderHealthSuspensions(PDO $pdo, int $limit = 100): array
+    {
+        self::ensureProviderHealthStorage($pdo);
+        $limit = max(1, min(500, $limit));
+        $stmt = $pdo->query(
+            "SELECT h.*, p.name AS service_name
+             FROM digital_service_provider_health h
+             LEFT JOIN digital_service_products p ON p.id = h.service_id
+             WHERE h.suspended_until IS NOT NULL
+               AND h.suspended_until > NOW()
+             ORDER BY h.suspended_until DESC
+             LIMIT " . $limit
+        );
+        return $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+    }
+
+    private static function providerFailureType(array $result): string
+    {
+        $explicit = strtolower(trim((string) ($result['failure_type'] ?? '')));
+        if (in_array($explicit, ['availability', 'timeout'], true)) {
+            return $explicit;
+        }
+
+        $http = (int) ($result['http_status'] ?? $result['response']['http_status'] ?? 0);
+        $code = strtolower(trim((string) ($result['code'] ?? '')));
+        $message = strtolower(trim(
+            (string) ($result['error'] ?? $result['message'] ?? '')
+        ));
+        $haystack = $code . ' ' . $message;
+
+        if (in_array($http, [408, 504], true)
+            || str_contains($haystack, 'timeout')
+            || str_contains($haystack, 'timed out')
+            || str_contains($haystack, 'curl 28')
+            || str_contains($haystack, 'زمان درخواست')) {
+            return 'timeout';
+        }
+
+        foreach ([
+            'no_number',
+            'no number',
+            'no numbers',
+            'out_of_stock',
+            'out of stock',
+            'not available',
+            'temporarily unavailable',
+            'ناموجود',
+            'موجود نیست',
+        ] as $needle) {
+            if (str_contains($haystack, $needle)) {
+                return 'availability';
+            }
+        }
+
+        return '';
+    }
+
+    private static function recordProviderHealth(PDO $pdo, array $product, array $result): void
+    {
+        $provider = strtolower(trim((string) ($product['provider'] ?? '')));
+        $serviceId = (int) ($product['id'] ?? 0);
+        if ($provider === '' || $serviceId <= 0) {
+            return;
+        }
+
+        self::ensureProviderHealthStorage($pdo);
+
+        if (!empty($result['ok'])) {
+            $stmt = $pdo->prepare(
+                "INSERT INTO digital_service_provider_health
+                 (provider, service_id, total_requests, success_count, consecutive_failures,
+                  availability_failures, timeout_failures, suspended_until, suspend_reason,
+                  last_error, last_result_at)
+                 VALUES (?, ?, 1, 1, 0, 0, 0, NULL, NULL, NULL, NOW())
+                 ON DUPLICATE KEY UPDATE
+                    total_requests = total_requests + 1,
+                    success_count = success_count + 1,
+                    consecutive_failures = 0,
+                    availability_failures = 0,
+                    timeout_failures = 0,
+                    suspended_until = NULL,
+                    suspend_reason = NULL,
+                    last_error = NULL,
+                    last_result_at = NOW()"
+            );
+            $stmt->execute([$provider, $serviceId]);
+            return;
+        }
+
+        $failureType = self::providerFailureType($result);
+        if ($failureType === '') {
+            return;
+        }
+
+        $availabilityThreshold = max(
+            1,
+            min(100, (int) self::setting($pdo, 'provider_health_availability_threshold', '10'))
+        );
+        $availabilitySuspendMinutes = max(
+            1,
+            min(1440, (int) self::setting($pdo, 'provider_health_availability_suspend_minutes', '30'))
+        );
+        $timeoutThreshold = max(
+            1,
+            min(100, (int) self::setting($pdo, 'provider_health_timeout_threshold', '3'))
+        );
+        $timeoutSuspendMinutes = max(
+            1,
+            min(10080, (int) self::setting($pdo, 'provider_health_timeout_suspend_minutes', '120'))
+        );
+
+        $error = trim((string) ($result['error'] ?? $result['message'] ?? 'Provider request failed.'));
+        $error = mb_substr($error, 0, 500, 'UTF-8');
+
+        $pdo->beginTransaction();
+        try {
+            $ensure = $pdo->prepare(
+                "INSERT INTO digital_service_provider_health (provider, service_id)
+                 VALUES (?, ?)
+                 ON DUPLICATE KEY UPDATE provider = VALUES(provider)"
+            );
+            $ensure->execute([$provider, $serviceId]);
+
+            $lock = $pdo->prepare(
+                "SELECT * FROM digital_service_provider_health
+                 WHERE provider = ? AND service_id = ?
+                 FOR UPDATE"
+            );
+            $lock->execute([$provider, $serviceId]);
+            $state = $lock->fetch(PDO::FETCH_ASSOC);
+            if (!is_array($state)) {
+                throw new RuntimeException('Provider health state could not be created.');
+            }
+
+            $availabilityFailures = (int) ($state['availability_failures'] ?? 0);
+            $timeoutFailures = (int) ($state['timeout_failures'] ?? 0);
+            if ($failureType === 'availability') {
+                $availabilityFailures++;
+                $timeoutFailures = 0;
+            } else {
+                $timeoutFailures++;
+                $availabilityFailures = 0;
+            }
+
+            $threshold = $failureType === 'availability'
+                ? $availabilityThreshold
+                : $timeoutThreshold;
+            $suspendMinutes = $failureType === 'availability'
+                ? $availabilitySuspendMinutes
+                : $timeoutSuspendMinutes;
+            $shouldSuspend = ($failureType === 'availability' ? $availabilityFailures : $timeoutFailures) >= $threshold;
+
+            $update = $pdo->prepare(
+                "UPDATE digital_service_provider_health
+                 SET total_requests = total_requests + 1,
+                     consecutive_failures = consecutive_failures + 1,
+                     availability_failures = ?,
+                     timeout_failures = ?,
+                     suspended_until = ?,
+                     suspend_reason = ?,
+                     last_error = ?,
+                     last_result_at = NOW(),
+                     updated_at = NOW()
+                 WHERE id = ?"
+            );
+            $update->execute([
+                $availabilityFailures,
+                $timeoutFailures,
+                $shouldSuspend ? date('Y-m-d H:i:s', time() + ($suspendMinutes * 60)) : null,
+                $shouldSuspend ? $failureType : null,
+                $error,
+                (int) $state['id'],
+            ]);
+            $pdo->commit();
+        } catch (Throwable $e) {
+            if ($pdo->inTransaction()) {
+                $pdo->rollBack();
+            }
+        }
+    }
+
     public static function maybeAutoApproveOrder(PDO $pdo, array $order): array
     {
         $provider = strtolower(trim((string) ($order['provider'] ?? 'manual')));
@@ -132,8 +384,24 @@ final class BluebotDigitalServices
             return ['automatic' => false, 'order' => $order];
         }
 
+        $product = self::findProduct($pdo, (int) ($order['service_id'] ?? 0), false);
+        if (is_array($product)) {
+            $guard = self::providerHealthGuard($pdo, $product);
+            if (empty($guard['allowed'])) {
+                return [
+                    'automatic' => false,
+                    'guarded' => true,
+                    'guard' => $guard,
+                    'order' => $order,
+                ];
+            }
+        }
+
         $result = self::approveAndDeliver($pdo, (int) ($order['id'] ?? 0), 'auto');
         $result['automatic'] = true;
+        if (is_array($product)) {
+            self::recordProviderHealth($pdo, $product, $result);
+        }
 
         if (empty($result['ok']) && !empty($result['retryable'])) {
             $failedOrder = is_array($result['order'] ?? null)
@@ -3745,6 +4013,22 @@ final class BluebotDigitalServices
             }
             if ($flowAmount <= 0 || $flowAmount !== $freshPrice) {
                 throw new DomainException('PRICE_CHANGED');
+            }
+
+            $ordersPerMinute = max(
+                0,
+                min(100, (int) self::setting($pdo, 'digital_order_rate_limit_per_minute', '10'))
+            );
+            if ($ordersPerMinute > 0) {
+                $rateStmt = $pdo->prepare(
+                    "SELECT COUNT(*) FROM digital_service_orders
+                     WHERE user_id = ?
+                       AND created_at >= DATE_SUB(NOW(), INTERVAL 60 SECOND)"
+                );
+                $rateStmt->execute([$userId]);
+                if ((int) $rateStmt->fetchColumn() >= $ordersPerMinute) {
+                    throw new DomainException('ORDER_RATE_LIMITED');
+                }
             }
 
             $duplicate = self::activeDuplicateOrder(
