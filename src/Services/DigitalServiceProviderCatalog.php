@@ -1181,7 +1181,16 @@ final class BluebotProviderCatalogService
             ];
         }
 
-        return self::autoDiscoverCatalogMapping($body);
+        $auto = self::autoDiscoverCatalogMapping($body);
+        if ($smmStyle && !empty($auto['ok'])) {
+            $detectedPath = trim((string) ($auto['products_path'] ?? '.'));
+            if ($detectedPath === '') {
+                $detectedPath = '.';
+            }
+            $auto['products_path'] = $smmPrefix . $detectedPath;
+        }
+
+        return $auto;
     }
 
     private static function autoDiscoverCatalogMapping(array $body): array
