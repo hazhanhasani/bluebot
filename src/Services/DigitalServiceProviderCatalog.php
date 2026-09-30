@@ -1569,12 +1569,7 @@ final class BluebotProviderCatalogService
             CURLOPT_PROTOCOLS => CURLPROTO_HTTPS,
             CURLOPT_FOLLOWLOCATION => false,
             CURLOPT_USERAGENT => 'BlueBot/0.5.36 ProviderCatalog',
-        ];
-        if ($transport === 'post') {
-            $options[CURLOPT_POST] = true;
-            $options[CURLOPT_POSTFIELDS] = $payload;
-        }
-        curl_setopt_array($ch, $options);
+        ]);
 
         $raw = curl_exec($ch);
         $error = curl_error($ch);
