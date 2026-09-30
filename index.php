@@ -661,6 +661,12 @@ if (strpos($text, "/start ") !== false && $user['step'] != "gettextSystemMessage
 
         if ($affiliatesid !== null) {
             if ((string) $affiliatesid === (string) $from_id) {
+                logReferralRiskEvent((string) $from_id, (string) $affiliatesid, 'join_rejected', 'self_referral', $affiliatesPayload);
+                sendmessage($from_id, $textbotlang['users']['affiliates']['invalidaffiliates'], null, 'html');
+                return;
+            }
+            if (referralCreatesCycle((string) $from_id, (string) $affiliatesid)) {
+                logReferralRiskEvent((string) $from_id, (string) $affiliatesid, 'join_rejected', 'referral_cycle', $affiliatesPayload);
                 sendmessage($from_id, $textbotlang['users']['affiliates']['invalidaffiliates'], null, 'html');
                 return;
             }
@@ -8285,8 +8291,21 @@ if ($text == "/start" || $datain == "start" || $text == "start") {
         sendmessage($from_id, $textbotlang['users']['affiliates']['notReferral'], $keyboard, 'HTML');
         return;
     }
-    $claimGift = $pdo->prepare("UPDATE reagent_report SET get_gift = 1 WHERE user_id = ? AND get_gift = 0");
-    $claimGift->execute([$from_id]);
+    $reagentId = trim((string) ($reagent['reagent'] ?? ''));
+    if ($reagentId === '' || $reagentId === '0' || $reagentId === (string) $from_id
+        || !rowExists("user", "id", $reagentId)
+        || referralCreatesCycle((string) $from_id, $reagentId)) {
+        logReferralRiskEvent((string) $from_id, $reagentId ?: null, 'gift_rejected', 'invalid_referral_relationship');
+        sendmessage($from_id, "⚠️ این هدیه به دلیل نامعتبر بودن رابطه معرفی قابل دریافت نیست.", $keyboard, 'HTML');
+        return;
+    }
+    if (referralPhoneCollision((string) $from_id, $reagentId)) {
+        logReferralRiskEvent((string) $from_id, $reagentId, 'gift_rejected', 'same_verified_phone');
+        sendmessage($from_id, "⚠️ هدیه شروع برای حساب‌هایی با شماره یکسان قابل دریافت نیست.", $keyboard, 'HTML');
+        return;
+    }
+    $claimGift = $pdo->prepare("UPDATE reagent_report SET get_gift = 1 WHERE user_id = ? AND reagent = ? AND get_gift = 0");
+    $claimGift->execute([$from_id, $reagentId]);
     if ($claimGift->rowCount() !== 1) {
         sendmessage($from_id, $textbotlang['users']['affiliates']['membershipGiftClaimed'], $keyboard, 'HTML');
         return;
