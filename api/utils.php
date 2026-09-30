@@ -87,6 +87,7 @@ function apiTokens()
 
 function validateToken($headers)
 {
+    requireApiRateLimit('token-api', 120, 60);
     $provided = headerValue($headers, 'Token');
     if ($provided === null) {
         return false;
@@ -124,7 +125,6 @@ function requireApiRateLimit(string $scope='api',int $limit=120,int $windowSecon
 
 function requireApiToken($headers)
 {
-    requireApiRateLimit('token-api', 120, 60);
     if (!validateToken($headers)) {
         sendJsonResponse(false, "token invalid", [], 403);
     }
@@ -152,7 +152,6 @@ function hasAdminSession()
 
 function requireApiTokenOrAdminSession($headers)
 {
-    requireApiRateLimit('token-or-admin', 120, 60);
     if (validateToken($headers) || hasAdminSession()) {
         return;
     }
