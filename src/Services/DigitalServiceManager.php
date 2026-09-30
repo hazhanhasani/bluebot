@@ -3179,6 +3179,9 @@ final class BluebotDigitalServices
             $flowQuantity = isset($flowData['digital_service_quantity'])
                 ? (int) $flowData['digital_service_quantity']
                 : null;
+            $flowAmount = isset($flowData['digital_service_amount'])
+                ? (int) $flowData['digital_service_amount']
+                : 0;
             [$flowTargetValid, $normalizedFlowTarget] = self::validateTarget($product, $flowTarget);
             [$flowQuantityValid, $normalizedFlowQuantity] = self::validateQuantity($product, $flowQuantity);
 
@@ -3216,6 +3219,9 @@ final class BluebotDigitalServices
             $freshPrice = self::priceForQuantity($freshProduct, $quantity);
             if ($freshPrice <= 0) {
                 throw new RuntimeException('Service price is invalid.');
+            }
+            if ($flowAmount <= 0 || $flowAmount !== $freshPrice) {
+                throw new DomainException('PRICE_CHANGED');
             }
 
             $minBalance = ($freshUser['agent'] ?? 'f') === 'n2' && (int) ($freshUser['maxbuyagent'] ?? 0) !== 0
