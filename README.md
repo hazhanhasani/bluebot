@@ -142,6 +142,7 @@ BlueBot می‌تواند کاتالوگ JSON ارائه‌دهندگان خدم
 - برای TGTools، حاشیه سود <strong>Stars</strong> و <strong>Premium</strong> مستقل است و قیمت عمده از <code>/api/purchase/prices</code> خوانده می‌شود.
 - Providerهای عمومی تا زمانی که delivery adapter اختصاصی نداشته باشند، پس از تأیید ادمین با حالت تحویل دستی ثبت می‌شوند؛ Providerهای یکپارچه مثل TGTools، OZVinoo و TivaNovin از مسیر اختصاصی خودشان استفاده می‌کنند.
 - TivaNovin از قرارداد SMM با درخواست‌های POST پشتیبانی می‌شود: `services`، `add`، `status` و `balance`. نرخ‌های IRR به تومان تبدیل، درصد سود Provider اعمال و وضعیت سفارش‌ها با Cron پیگیری می‌شود.
+- PanelBaz / پنل باز با Endpoint ثابت `https://panelbaz.ir/panelbaz/api/v1` پشتیبانی می‌شود. کاتالوگ `services`، ثبت سفارش `add`، پیگیری `status`، موجودی `balance` و عملیات SMM تکمیلی `refill`، `refill_status` و `cancel` در کلاینت مشترک پشتیبانی می‌شوند. نرخ‌های USD با نرخ قابل تنظیم دلار→تومان و درصد سود Provider قیمت‌گذاری می‌شوند.
 - Endpoint فعلی TivaNovin طبق مستندات Provider روی HTTP است؛ BlueBot این استثنا را فقط به دامنه `tivanovin.ir` و مسیر `/api` محدود می‌کند و برای سایر Providerها HTTPS اجباری باقی می‌ماند.
 - OZVinoo با Deep Discovery بررسی می‌شود: REST GET و SMM `action=services`، روش‌های `Bearer`، `X-API-Key`، `Api-Key` و body-only، و ساختارهای تو‌در‌توی JSON به‌صورت خودکار بررسی می‌شوند.
 - دسته‌های عمومی عضوینو مثل Telegram، Instagram، YouTube، X/Twitter، TikTok، Spotify، LinkedIn، Facebook، WhatsApp، Likee و Naver TV به دسته‌های مرتب فروش خدمات نگاشت می‌شوند.
@@ -150,7 +151,7 @@ BlueBot می‌تواند کاتالوگ JSON ارائه‌دهندگان خدم
 <h2 dir="rtl" align="right">⭐ فروش Telegram Stars و Premium</h2>
 
 <p dir="rtl" align="right">
-بخش «فروش خدمات» از Provider <strong>TGTools</strong> برای Telegram Stars و Telegram Premium پشتیبانی می‌کند. سفارش از کیف پول داخلی BlueBot ثبت می‌شود و فقط بعد از تأیید دستی ادمین به Provider فرستاده می‌شود.
+بخش «فروش خدمات» از Provider <strong>TGTools</strong> برای Telegram Stars و Telegram Premium پشتیبانی می‌کند. سفارش از کیف پول داخلی BlueBot ثبت می‌شود و بسته به تنظیم مستقل Provider می‌تواند پس از تأیید دستی ادمین یا به‌صورت خودکار به Provider ارسال شود.
 </p>
 
 - <code>GET /api/purchase/prices</code> — دریافت قیمت‌های زنده و بسته‌های Stars/Premium از TGTools

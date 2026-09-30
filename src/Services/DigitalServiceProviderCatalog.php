@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 final class BluebotProviderCatalogService
 {
-    private const RESERVED_KEYS = ['manual', 'telegram_bot', 'tgtools', 'tivanovin'];
+    private const RESERVED_KEYS = ['manual', 'telegram_bot', 'tgtools', 'tivanovin', 'panelbaz'];
     private const DISCOVERY_MAX_ATTEMPTS = 12;
     private const DISCOVERY_BUDGET_SECONDS = 8.0;
     private const DISCOVERY_CONNECT_TIMEOUT_SECONDS = 2;
@@ -638,7 +638,7 @@ final class BluebotProviderCatalogService
                 'profit_percent' => (float) $provider['profit_percent'],
                 'price_mode' => 'margin',
                 'synced_at' => gmdate(DATE_ATOM),
-                'delivery_mode' => in_array($providerKey, ['ozvinoo', 'tivanovin'], true) ? 'integrated' : 'manual',
+                'delivery_mode' => $smmStyle || in_array($providerKey, ['ozvinoo', 'tivanovin'], true) ? 'integrated' : 'manual',
                 'api_style' => $smmStyle ? 'smm' : 'rest',
                 'service_value' => $serviceValue,
             ];
@@ -766,6 +766,8 @@ final class BluebotProviderCatalogService
             'linkedin' => ['label' => '💼 خدمات لینکدین', 'needles' => ['linkedin', 'لینکدین']],
             'facebook' => ['label' => '📘 خدمات فیسبوک', 'needles' => ['facebook', 'فیسبوک']],
             'whatsapp' => ['label' => '🟢 خدمات واتساپ', 'needles' => ['whatsapp', 'واتساپ']],
+            'rubika' => ['label' => '⭐ خدمات روبیکا', 'needles' => ['rubika', 'روبیکا']],
+            'rubino' => ['label' => '⭐ خدمات روبینو', 'needles' => ['rubino', 'روبینو']],
             'likee' => ['label' => '💜 خدمات Likee', 'needles' => ['likee', 'لایکی']],
             'naver' => ['label' => '🟩 Naver TV', 'needles' => ['naver', 'ناور']],
             'virtual_number' => ['label' => '📱 شماره مجازی', 'needles' => ['virtual number', 'شماره مجازی']],
