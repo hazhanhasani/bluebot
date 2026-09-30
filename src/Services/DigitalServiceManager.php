@@ -5082,6 +5082,22 @@ final class BluebotDigitalServices
         }
 
         $finalOrder = self::findOrder($pdo, $orderId) ?? $order;
+        $commission = creditReferralCommission(
+            (string) ($finalOrder['user_id'] ?? ''),
+            max(0, (int) ($finalOrder['amount'] ?? 0)),
+            'digital_service',
+            (string) ($finalOrder['order_code'] ?? $orderId)
+        );
+        if (!empty($commission['credited'])) {
+            sendmessage(
+                (string) $commission['referrer_id'],
+                "💸 <b>پورسانت زیرمجموعه واریز شد</b>\n\n"
+                    . "💰 مبلغ: <b>" . number_format((int) $commission['amount']) . " تومان</b>\n"
+                    . "🧾 سفارش: <code>" . self::escape((string) ($finalOrder['order_code'] ?? '')) . "</code>",
+                null,
+                'HTML'
+            );
+        }
         $customerMessage = trim((string) ($delivery['customer_message'] ?? ''));
         if ($customerMessage === '') {
             $customerMessage = "✅ <b>سفارش شما با موفقیت تکمیل شد</b>\n\n"
@@ -5205,6 +5221,22 @@ final class BluebotDigitalServices
         }
 
         $finalOrder = self::findOrder($pdo, $orderId) ?? $order;
+        $commission = creditReferralCommission(
+            (string) ($finalOrder['user_id'] ?? ''),
+            max(0, (int) ($finalOrder['amount'] ?? 0)),
+            'digital_service',
+            (string) ($finalOrder['order_code'] ?? $orderId)
+        );
+        if (!empty($commission['credited'])) {
+            sendmessage(
+                (string) $commission['referrer_id'],
+                "💸 <b>پورسانت زیرمجموعه واریز شد</b>\n\n"
+                    . "💰 مبلغ: <b>" . number_format((int) $commission['amount']) . " تومان</b>\n"
+                    . "🧾 سفارش: <code>" . self::escape((string) ($finalOrder['order_code'] ?? '')) . "</code>",
+                null,
+                'HTML'
+            );
+        }
         sendmessage(
             (string) ($finalOrder['user_id'] ?? ''),
             "✅ <b>سفارش شما تکمیل شد</b>\n\n"
