@@ -264,13 +264,38 @@ The customer sees the order as registered/processing while the administrator get
 the provider error and can safely retry or reject/refund. Non-retryable failure
 paths that are safe to classify as final refund the wallet atomically.
 
+### Partial and ambiguous provider states
+
+An asynchronous order is not allowed to remain in `processing` without a provider
+tracking reference. If a provider says the order is pending but returns no reference,
+BlueBot moves it to administrator review instead of creating an untrackable order.
+
+SMM providers can also report `Partial`. BlueBot treats that as a distinct
+`partial_review` state:
+
+- no automatic resend is offered, because resending can duplicate the portion that
+  was already delivered;
+- the customer receives a neutral “under review” message;
+- administrators receive the provider reference/error context;
+- administrators can either **mark the order manually completed** after resolving
+  the remainder, or explicitly **reject + refund** the wallet.
+
+When an administrator retries a normal failed/retryable order, the old provider
+reference is cleared before the new provider call so the reconciliation cron cannot
+race against an obsolete reference.
+
+The web Orders screen and `/debug` also flag processing orders whose
+`updated_at` is older than 30 minutes. These are diagnostics only: BlueBot does
+not automatically refund an unknown provider state because that could refund an
+order that is still being fulfilled.
+
 ## Runtime diagnostics
 
 The admin-only Telegram `/debug` report includes a Digital Services health
 section without exposing API keys or credentials. It reports active product count,
-pending orders, processing orders, unresolved failed orders requiring review,
-delivered orders, and each registered provider's enabled state, manual/automatic
-mode and latest sync state.
+pending orders, processing orders, partial-review orders, stale processing orders
+(older than 30 minutes), unresolved failed orders requiring review, delivered orders,
+and each registered provider's enabled state, manual/automatic mode and latest sync state.
 
 ## Background reconciliation
 
