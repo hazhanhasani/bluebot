@@ -515,6 +515,24 @@ final class BluebotProviderCatalogService
             return ['ok' => false, 'message' => 'Provider is missing or disabled.'];
         }
 
+        // PanelBaz publishes service rates in Toman. Older BlueBot builds
+        // mistakenly stored it as USD; repair that legacy configuration before
+        // every sync so imported product prices are rebuilt correctly.
+        if (strtolower((string) ($provider['provider_key'] ?? '')) === 'panelbaz'
+            && (
+                strtolower((string) ($provider['currency'] ?? '')) !== 'toman'
+                || abs((float) ($provider['exchange_rate_toman'] ?? 0) - 1.0) > 0.000001
+            )) {
+            $repair = $pdo->prepare(
+                "UPDATE digital_service_providers
+                 SET currency = 'toman', exchange_rate_toman = 1, updated_at = NOW()
+                 WHERE provider_key = 'panelbaz'"
+            );
+            $repair->execute();
+            $provider['currency'] = 'toman';
+            $provider['exchange_rate_toman'] = 1.0;
+        }
+
         $response = self::fetchCatalog($provider);
         if (empty($response['ok'])) {
             self::markSync($pdo, $providerKey, 'failed', (string) ($response['message'] ?? 'Catalog request failed.'));
