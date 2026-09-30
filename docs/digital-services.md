@@ -1,8 +1,11 @@
 # Digital Services
 
-BlueBot sells Telegram Stars, Telegram Premium, virtual numbers and other
-digital services. Orders are charged from the customer wallet and remain in
-`pending_approval` until an administrator clicks **Approve & Send**.
+BlueBot sells Telegram Stars, Telegram Premium, virtual numbers and provider-backed
+SMM/digital services. Checkout is wallet-based and each provider has an independent
+delivery mode. Manual providers keep the order in `pending_approval` until an
+administrator approves it; automatic providers claim the same order atomically and
+send it to the provider immediately. Retryable automatic failures fall back to
+administrator review without exposing provider internals to the customer.
 
 ## Admin architecture
 
@@ -14,6 +17,58 @@ Digital-service administration is intentionally split across the existing BlueBo
 - **Categories / دسته‌بندی‌ها → فروش خدمات**: create, rename, order, hide and delete customer-facing categories.
 
 This avoids duplicate product/order management screens and keeps each resource in the panel section where administrators already expect it.
+
+## Customer checkout
+
+The customer-facing flow is intentionally staged so the payable amount and target
+are explicit before the wallet is charged:
+
+1. Choose the platform/category.
+2. Choose the scope where applicable (for example Telegram channel, group, post,
+   story, bot or account).
+3. Choose the service type (members, views, reactions, comments, likes, etc.).
+4. Choose the product.
+5. For variable-quantity SMM services, enter a quantity within the provider's
+   advertised minimum and maximum.
+6. Enter the destination using a context-aware prompt (post link, channel/group
+   link, profile, or Telegram username depending on the product).
+7. Review quantity, target, exact Toman amount, current wallet balance and the
+   post-purchase balance.
+8. Confirm once. The order intent is consumed under a user-row lock so duplicate
+   Telegram callbacks cannot double-charge the wallet.
+9. Track the order from **سفارش‌های من**.
+
+### Variable SMM quantities and pricing
+
+Standard SMM catalogs publish a `rate` per 1000 units plus `min`/`max`.
+BlueBot stores those wholesale values in product metadata instead of forcing the
+customer to buy only the provider minimum. At checkout the selected quantity is
+validated against the latest product metadata and the retail price is recalculated
+from:
+
+`wholesale = rate_per_1000 × quantity / 1000`
+
+The normal currency conversion and provider profit percentage are then applied,
+followed by BlueBot's normal price rounding. The final quantity and amount are
+snapshotted into `digital_service_orders`; provider delivery uses that order
+quantity rather than the catalog's minimum package.
+
+Fixed products such as Stars, Premium and virtual numbers keep their existing
+fixed quantity/package behavior.
+
+### Customer order status
+
+Customers can open **سفارش‌های من** from the Digital Services menu. The view is
+paginated and deliberately uses customer-facing status language:
+
+- registered / waiting for processing
+- processing
+- completed
+- under review
+- cancelled/refunded
+- failed/refunded
+
+Provider references and raw provider error messages remain admin-facing.
 
 ### Nobitex API host and optional API Key
 > **Signature encoding:** Nobitex's documented `urlsafe_b64encode` output
@@ -196,6 +251,26 @@ manual lock and returns the product to provider-managed availability.
 
 This rule applies consistently to OZVinoo/Callinoo, TGTools and generic catalog
 providers.
+
+## Manual and automatic delivery
+
+Every supported provider can keep its own approval mode where an automatic
+delivery adapter exists. Manual mode notifies administrators and waits for
+**Approve & Send**. Automatic mode uses the same atomic approval claim, sends the
+order immediately and lets cron reconcile asynchronous provider status.
+
+A retryable automatic failure does not show API/provider details to the customer.
+The customer sees the order as registered/processing while the administrator gets
+the provider error and can safely retry or reject/refund. Non-retryable failure
+paths that are safe to classify as final refund the wallet atomically.
+
+## Runtime diagnostics
+
+The admin-only Telegram `/debug` report includes a Digital Services health
+section without exposing API keys or credentials. It reports active product count,
+pending orders, processing orders, unresolved failed orders requiring review,
+delivered orders, and each registered provider's enabled state, manual/automatic
+mode and latest sync state.
 
 ## Background reconciliation
 
