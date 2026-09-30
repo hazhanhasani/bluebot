@@ -14,6 +14,7 @@ $categoryPanel = file_get_contents($root . '/panel/category.php');
 $categoryTable = file_get_contents($root . '/db/tables/digital_service_categories.php');
 $tgTools = file_get_contents($root . '/src/Services/TgToolsClient.php');
 $ozvinooClient = file_get_contents($root . '/src/Services/OZVinooClient.php');
+$smmClient = file_get_contents($root . '/src/Services/SmmPanelClient.php');
 $nobitexClient = file_get_contents($root . '/src/Services/NobitexMarketClient.php');
 $providerCatalog = file_get_contents($root . '/src/Services/DigitalServiceProviderCatalog.php');
 $providerTable = file_get_contents($root . '/db/tables/digital_service_providers.php');
@@ -31,6 +32,27 @@ $buyRoute = ($buyStart !== false && $buyEnd !== false)
     : '';
 
 $checks = [
+    [str_contains($smmClient, "final class SmmPanelClient"), 'generic SMM panel client missing'],
+    [str_contains($smmClient, "['action' => 'services']"), 'SMM services request missing'],
+    [str_contains($smmClient, "'action' => 'add'"), 'SMM add-order request missing'],
+    [str_contains($smmClient, "'action' => 'status'"), 'SMM order-status request missing'],
+    [str_contains($smmClient, "['action' => 'balance']"), 'SMM balance request missing'],
+    [str_contains($smmClient, "tivanovin.ir"), 'TivaNovin legacy endpoint allowlist missing'],
+    [str_contains($smmClient, "CURLOPT_FOLLOWLOCATION => false"), 'SMM API must not follow redirects with credentials'],
+    [str_contains($providerCatalog, "isSafeTivaNovinLegacyUrl"), 'TivaNovin catalog legacy HTTP guard missing'],
+    [str_contains($providerCatalog, "['ozvinoo', 'tivanovin']"), 'TivaNovin catalog products must use integrated delivery metadata'],
+    [str_contains($manager, "saveTivaNovinProvider"), 'TivaNovin provider bootstrap missing'],
+    [str_contains($manager, "tivaNovinWalletStatus"), 'TivaNovin wallet diagnostics missing'],
+    [str_contains($manager, "provider === 'tivanovin'"), 'TivaNovin provider dispatch missing'],
+    [str_contains($manager, "deliverTivaNovin"), 'TivaNovin delivery adapter missing'],
+    [str_contains($manager, "reconcileTivaNovinProcessing"), 'TivaNovin order reconciliation missing'],
+    [str_contains($manager, "'smm:.'"), 'TivaNovin fixed SMM service mapping missing'],
+    [str_contains($manager, "'rial', 0.1"), 'TivaNovin IRR-to-Toman pricing conversion missing'],
+    [str_contains($panel, "save_tivanovin"), 'TivaNovin admin settings action missing'],
+    [str_contains($panel, "sync_tivanovin_catalog"), 'TivaNovin manual catalog sync action missing'],
+    [str_contains($panel, "TivaNovin / تیوا نوین"), 'TivaNovin admin card missing'],
+    [str_contains($panel, "کیف پول API تیوا نوین"), 'TivaNovin wallet UI missing'],
+    [str_contains($digitalServicesCron, "reconcileTivaNovinProcessing"), 'TivaNovin reconciliation cron missing'],
     [str_contains($providerCatalog, "syncDueProviders"), 'provider catalog scheduler missing'],
     [str_contains($providerCatalog, "syncProvider"), 'provider catalog synchronizer missing'],
     [str_contains($providerCatalog, "normaliseCategory"), 'provider automatic categorisation missing'],
