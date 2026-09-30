@@ -3171,6 +3171,7 @@ final class BluebotDigitalServices
             self::STATUS_FAILED => $refunded
                 ? ['↩️', 'ناموفق / مبلغ برگشت خورده']
                 : ['🛠', 'در حال بررسی'],
+            self::STATUS_PARTIAL_REVIEW => ['⚠️', 'تحویل ناقص / نیازمند بررسی'],
             default => ['•', 'نامشخص'],
         };
     }
@@ -3316,6 +3317,8 @@ final class BluebotDigitalServices
             $text .= "\n💰 <b>مبلغ این سفارش به کیف پول برگشته است.</b>";
         } elseif ((string) ($order['status'] ?? '') === self::STATUS_PENDING) {
             $text .= "\n\nتا قبل از شروع پردازش می‌توانید سفارش را لغو کنید.";
+        } elseif ((string) ($order['status'] ?? '') === self::STATUS_PARTIAL_REVIEW) {
+            $text .= "\n\nبخشی از سرویس توسط Provider انجام شده و سفارش برای بررسی دقیق نگه داشته شده است. نتیجه نهایی برای شما ثبت می‌شود.";
         } elseif ((string) ($order['status'] ?? '') === self::STATUS_PROCESSING) {
             $text .= "\n\nنتیجه نهایی پس از بروزرسانی وضعیت برای شما ثبت می‌شود.";
         }
@@ -3531,6 +3534,24 @@ final class BluebotDigitalServices
                 ]],
                 [[
                     'text' => '❌ رد و برگشت وجه',
+                    'callback_data' => 'ds_reject:' . $orderId,
+                    'style' => 'danger',
+                ]],
+            ],
+        ], JSON_UNESCAPED_UNICODE);
+    }
+
+    public static function adminPartialReviewKeyboard(int $orderId): string
+    {
+        return json_encode([
+            'inline_keyboard' => [
+                [[
+                    'text' => '✅ تکمیل دستی شد',
+                    'callback_data' => 'ds_complete:' . $orderId,
+                    'style' => 'success',
+                ]],
+                [[
+                    'text' => '↩️ رد و برگشت وجه',
                     'callback_data' => 'ds_reject:' . $orderId,
                     'style' => 'danger',
                 ]],
@@ -3811,7 +3832,9 @@ final class BluebotDigitalServices
         }
 
         $text = self::adminOrderText($order);
-        $keyboard = self::adminKeyboard((int) $order['id']);
+        $keyboard = (string) ($order['status'] ?? '') === self::STATUS_PARTIAL_REVIEW
+            ? self::adminPartialReviewKeyboard((int) $order['id'])
+            : self::adminKeyboard((int) $order['id']);
         foreach (array_unique(array_map('strval', $admins)) as $adminId) {
             if ($adminId === '' || $adminId === '0') {
                 continue;
@@ -3867,6 +3890,8 @@ final class BluebotDigitalServices
         if (in_array($status, [self::STATUS_PENDING, self::STATUS_FAILED], true)
             && (int) ($order['refunded'] ?? 0) === 0) {
             $text .= "\n\nبرای ادامه، «تأیید و ارسال» یا «رد و برگشت وجه» را انتخاب کنید.";
+        } elseif ($status === self::STATUS_PARTIAL_REVIEW) {
+            $text .= "\n\n⚠️ تحویل Provider ناقص بوده است. ارسال مجدد خودکار غیرفعال است تا بخش تحویل‌شده دوباره سفارش داده نشود. پس از بررسی، «تکمیل دستی» یا «رد و برگشت وجه» را انتخاب کنید.";
         } elseif ($status === self::STATUS_PROCESSING) {
             $text .= "\n\n⏳ سفارش در Provider در حال پردازش است.";
         }
@@ -3897,12 +3922,15 @@ final class BluebotDigitalServices
                 throw new RuntimeException('This failed order was already refunded. Create a new order before retrying.');
             }
 
+            $retryReference = $status === self::STATUS_FAILED
+                ? null
+                : ($order['provider_reference'] ?? null);
             $claim = $pdo->prepare(
                 "UPDATE digital_service_orders
-                 SET status = ?, admin_id = ?, approved_at = NOW(), updated_at = NOW()
+                 SET status = ?, admin_id = ?, provider_reference = ?, approved_at = NOW(), updated_at = NOW()
                  WHERE id = ?"
             );
-            $claim->execute([self::STATUS_PROCESSING, $adminId, $orderId]);
+            $claim->execute([self::STATUS_PROCESSING, $adminId, $retryReference, $orderId]);
             $pdo->commit();
         } catch (Throwable $e) {
             if ($pdo->inTransaction()) {
@@ -3971,6 +3999,19 @@ final class BluebotDigitalServices
         if (!empty($delivery['pending'])) {
             $responseJson = json_encode($delivery['response'] ?? $delivery, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
             $reference = trim((string) ($delivery['reference'] ?? ''));
+            if ($reference === '') {
+                return self::markRetryableProviderFailure(
+                    $pdo,
+                    $orderId,
+                    'Provider accepted an asynchronous order but returned no tracking reference.',
+                    is_array($delivery['response'] ?? null) ? $delivery['response'] : $delivery,
+                    [
+                        'retryable' => true,
+                        'manual_review' => true,
+                        'code' => 'PROVIDER_REFERENCE_MISSING',
+                    ]
+                );
+            }
             $pending = $pdo->prepare(
                 "UPDATE digital_service_orders
                  SET status = ?, provider_reference = ?, provider_response = ?, updated_at = NOW()
