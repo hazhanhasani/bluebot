@@ -1211,7 +1211,7 @@ final class BluebotProviderCatalogService
             CURLOPT_TIMEOUT => self::DISCOVERY_REQUEST_TIMEOUT_SECONDS,
             CURLOPT_SSL_VERIFYHOST => 2,
             CURLOPT_SSL_VERIFYPEER => true,
-            CURLOPT_PROTOCOLS => $legacyTivaHttp ? CURLPROTO_HTTP : CURLPROTO_HTTPS,
+            CURLOPT_PROTOCOLS => CURLPROTO_HTTPS,
             CURLOPT_FOLLOWLOCATION => false,
             CURLOPT_USERAGENT => 'BlueBot/0.5.36 ProviderCatalog',
         ]);
@@ -1294,7 +1294,7 @@ final class BluebotProviderCatalogService
             CURLOPT_TIMEOUT => self::DISCOVERY_REQUEST_TIMEOUT_SECONDS,
             CURLOPT_SSL_VERIFYHOST => 2,
             CURLOPT_SSL_VERIFYPEER => true,
-            CURLOPT_PROTOCOLS => CURLPROTO_HTTPS,
+            CURLOPT_PROTOCOLS => $legacyTivaHttp ? CURLPROTO_HTTP : CURLPROTO_HTTPS,
             CURLOPT_FOLLOWLOCATION => false,
             CURLOPT_USERAGENT => 'BlueBot/0.5.36 ProviderCatalog',
         ]);
