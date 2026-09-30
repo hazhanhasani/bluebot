@@ -70,6 +70,16 @@ paginated and deliberately uses customer-facing status language:
 
 Provider references and raw provider error messages remain admin-facing.
 
+### Favorites, bestsellers and duplicate protection
+
+The customer catalog also exposes **علاقه‌مندی‌ها** and **پرفروش‌ها**. Favorites
+are stored per user and only active products are shown. Bestsellers are calculated
+from the last 30 days using delivered, processing and partial-review order quantities.
+
+Before wallet debit, BlueBot also checks for an existing non-refunded active order
+with the same user, product, target and quantity. A duplicate click therefore opens
+the existing order instead of creating a second charge.
+
 Each order in **سفارش‌های من** is individually selectable. The detail view shows
 the order code, product, quantity, target, amount and customer-safe status. A
 manual order that is still `pending_approval` can be cancelled by its owner from
@@ -133,6 +143,22 @@ administrator to maintain a manual TON/Toman conversion rate.
 The provider panel exposes the current cached rate, source market, last refresh
 time and the last fetch error, plus a manual “refresh now” button.
 
+## Generic SMM compatibility
+
+BlueBot keeps the standard SMM POST contract as the default. For older provider
+panels that only implement query-string requests, the provider form offers an
+explicit **SMM Legacy GET** mode. Internally this is stored with an
+`smm-get:` products-path marker, while normal SMM providers use `smm:`.
+
+Legacy GET is opt-in because the API key is placed in the request URL. It should
+only be used when the upstream panel cannot accept POST. The same endpoint safety,
+timeouts, TLS rules and no-follow-redirect policy still apply.
+
+Generic SMM reconciliation prefers the provider's multi-order `status` action
+when more than one order is pending, up to the API's 100-order batch convention.
+If the bulk response cannot be normalized, BlueBot safely falls back to individual
+status requests.
+
 ## Providers
 
 - `tgtools`: Stars and Premium through TGTools.
@@ -142,6 +168,17 @@ time and the last fetch error, plus a manual “refresh now” button.
 - `manual`: administrator-managed fulfillment.
 - Generic catalog providers remain supported separately through the provider
   registry.
+
+## Virtual-number provider architecture
+
+Virtual numbers use a provider-neutral lifecycle contract: request number, poll
+status/code, cancel, and an explicit optional banned-number reporting capability.
+The current OZVinoo adapter implements this normalized contract while retaining
+the provider's raw response only for administrator diagnostics.
+
+Customer-facing application and country names are normalized separately from
+provider IDs. This lets BlueBot present consistent Persian labels while preserving
+the exact service/country identifiers required by each upstream API.
 
 ## OZVinoo / Callinoo
 
@@ -277,13 +314,31 @@ The customer sees the order as registered/processing while the administrator get
 the provider error and can safely retry or reject/refund. Non-retryable failure
 paths that are safe to classify as final refund the wallet atomically.
 
+### Partial and ambiguous provider states
+
+If an asynchronous provider accepts an order but returns no tracking reference,
+BlueBot stops the order for administrator review rather than leaving an
+untrackable `processing` row.
+
+A provider-reported `Partial` result becomes `partial_review`. BlueBot never
+offers an automatic resend for this state because part of the service may already
+have been delivered. Administrators can either mark the order manually completed
+after resolving the remainder, or explicitly reject/refund it.
+
+When retrying a normal failed order, an obsolete provider reference is cleared
+before the new provider request. The web Orders screen and `/debug` also expose
+processing orders that have not changed for more than 30 minutes. These stale-order
+signals are diagnostic only; BlueBot does not blindly refund an unknown provider
+state.
+
 ## Runtime diagnostics
 
 The admin-only Telegram `/debug` report includes a Digital Services health
 section without exposing API keys or credentials. It reports active product count,
-pending orders, processing orders, unresolved failed orders requiring review,
-delivered orders, and each registered provider's enabled state, manual/automatic
-mode and latest sync state.
+pending orders, processing orders, partial-review orders, stale processing orders
+(older than 30 minutes), unresolved failed orders requiring review, delivered
+orders, and each registered provider's enabled state, manual/automatic mode and
+latest sync state.
 
 ## Partial delivery visibility
 
