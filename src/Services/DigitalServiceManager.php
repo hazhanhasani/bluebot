@@ -4280,7 +4280,16 @@ final class BluebotDigitalServices
 
     public static function reconcileRegisteredSmmProcessing(PDO $pdo, int $limit = 50): array
     {
-        $stats = ['checked' => 0, 'completed' => 0, 'failed' => 0, 'pending' => 0, 'partial' => 0, 'errors' => 0];
+        $stats = [
+            'checked' => 0,
+            'completed' => 0,
+            'failed' => 0,
+            'pending' => 0,
+            'partial' => 0,
+            'errors' => 0,
+            'bulk_requests' => 0,
+            'single_fallbacks' => 0,
+        ];
         $limit = max(1, min(100, $limit));
         $remaining = $limit;
 
@@ -4301,7 +4310,8 @@ final class BluebotDigitalServices
                 $client = new SmmPanelClient(
                     (string) ($provider['catalog_url'] ?? ''),
                     (string) ($provider['api_key'] ?? ''),
-                    $providerKey
+                    $providerKey,
+                    self::smmTransportFromProvider($provider)
                 );
             } catch (Throwable $e) {
                 $stats['errors']++;
@@ -4311,11 +4321,39 @@ final class BluebotDigitalServices
             $stmt = $pdo->prepare(
                 "SELECT * FROM digital_service_orders
                  WHERE provider = ? AND status = ? AND provider_reference IS NOT NULL
+                   AND provider_reference <> ''
                  ORDER BY id ASC
                  LIMIT " . $remaining
             );
             $stmt->execute([$providerKey, self::STATUS_PROCESSING]);
             $orders = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+            if ($orders === []) {
+                continue;
+            }
+
+            $references = [];
+            $ordersByReference = [];
+            foreach ($orders as $order) {
+                $reference = trim((string) ($order['provider_reference'] ?? ''));
+                if ($reference === '') {
+                    continue;
+                }
+                $references[] = $reference;
+                $ordersByReference[$reference] = $order;
+            }
+
+            $bulkStatuses = [];
+            if (count($references) > 1) {
+                try {
+                    $bulk = $client->statusesNormalized($references);
+                    if (!empty($bulk['ok']) && is_array($bulk['orders'] ?? null)) {
+                        $bulkStatuses = $bulk['orders'];
+                        $stats['bulk_requests']++;
+                    }
+                } catch (Throwable $e) {
+                    $bulkStatuses = [];
+                }
+            }
 
             foreach ($orders as $order) {
                 if ($remaining <= 0) {
@@ -4330,11 +4368,15 @@ final class BluebotDigitalServices
                     continue;
                 }
 
-                try {
-                    $status = $client->status($reference);
-                } catch (Throwable $e) {
-                    $stats['errors']++;
-                    continue;
+                $status = $bulkStatuses[$reference] ?? null;
+                if (!is_array($status) || empty($status['ok'])) {
+                    try {
+                        $status = $client->status($reference);
+                        $stats['single_fallbacks']++;
+                    } catch (Throwable $e) {
+                        $stats['errors']++;
+                        continue;
+                    }
                 }
 
                 if (empty($status['ok'])) {
@@ -4377,6 +4419,12 @@ final class BluebotDigitalServices
                 }
 
                 if ($normalized === 'partial') {
+                    self::markPartialReview(
+                        $pdo,
+                        (int) $order['id'],
+                        $status,
+                        'SMM provider reported partial delivery: ' . (string) ($status['raw_status'] ?? 'partial')
+                    );
                     $stats['partial']++;
                     continue;
                 }
@@ -4475,8 +4523,12 @@ final class BluebotDigitalServices
             }
 
             if ($normalized === 'partial') {
-                // Partial SMM orders may have a provider-side charge. Keep the
-                // order processing for manual review instead of over-refunding.
+                self::markPartialReview(
+                    $pdo,
+                    (int) $order['id'],
+                    $status,
+                    'TivaNovin reported partial delivery: ' . (string) ($status['raw_status'] ?? 'partial')
+                );
                 $stats['partial']++;
                 continue;
             }
