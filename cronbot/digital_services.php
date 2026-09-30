@@ -59,6 +59,14 @@ try {
         bluebotLog('info', 'Digital service provider catalogs synchronized', $providerStats);
     }
 
+    $tivaStats = BluebotDigitalServices::reconcileTivaNovinProcessing($pdo, 25);
+    if (($tivaStats['completed'] ?? 0) > 0
+        || ($tivaStats['failed'] ?? 0) > 0
+        || ($tivaStats['partial'] ?? 0) > 0
+        || ($tivaStats['errors'] ?? 0) > 0) {
+        bluebotLog('info', 'TivaNovin digital service reconciliation completed', $tivaStats);
+    }
+
     $stats = BluebotDigitalServices::reconcileTgToolsProcessing($pdo, 25);
     if (($stats['completed'] ?? 0) > 0 || ($stats['failed'] ?? 0) > 0 || ($stats['errors'] ?? 0) > 0) {
         bluebotLog('info', 'TGTools digital service reconciliation completed', $stats);
