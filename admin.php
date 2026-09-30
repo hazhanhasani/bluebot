@@ -8210,6 +8210,124 @@ elseif ($text == $textbotlang['keyboard']['hidePanelForUser'] && $adminrulecheck
     step("home", $from_id);
     [$affiliateText, $affiliateKeyboard] = affiliateSettingsMenu();
     Editmessagetext($from_id, $message_id, $affiliateText, $affiliateKeyboard);
+} elseif ($datain === "affiliate-analytics" && $adminrulecheck['rule'] == "administrator") {
+    $stats = $pdo->query(
+        "SELECT
+            (SELECT COUNT(*) FROM user WHERE affiliates IS NOT NULL AND affiliates NOT IN ('', '0')) AS referred_users,
+            (SELECT COUNT(DISTINCT referrer_id) FROM referral_commissions) AS earning_referrers,
+            (SELECT COUNT(*) FROM referral_commissions) AS commission_orders,
+            (SELECT COALESCE(SUM(amount), 0) FROM referral_commissions) AS commission_paid,
+            (SELECT COALESCE(SUM(source_amount), 0) FROM referral_commissions) AS referred_revenue,
+            (SELECT COALESCE(SUM(amount), 0) FROM referral_commissions WHERE created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)) AS paid_30d"
+    )->fetch(PDO::FETCH_ASSOC) ?: [];
+    $textAnalytics = "📊 <b>آمار زیرمجموعه‌گیری</b>\n\n"
+        . "👥 کاربران معرفی‌شده: <b>" . number_format((int) ($stats['referred_users'] ?? 0)) . "</b>\n"
+        . "🤝 معرف‌های درآمدزا: <b>" . number_format((int) ($stats['earning_referrers'] ?? 0)) . "</b>\n"
+        . "🛒 خریدهای پورسانتی: <b>" . number_format((int) ($stats['commission_orders'] ?? 0)) . "</b>\n"
+        . "💵 فروش منتسب: <b>" . number_format((int) ($stats['referred_revenue'] ?? 0)) . " تومان</b>\n"
+        . "💸 کل پورسانت پرداختی: <b>" . number_format((int) ($stats['commission_paid'] ?? 0)) . " تومان</b>\n"
+        . "📅 پورسانت ۳۰ روز اخیر: <b>" . number_format((int) ($stats['paid_30d'] ?? 0)) . " تومان</b>";
+    $analyticsKeyboard = json_encode(['inline_keyboard' => [
+        [['text' => '🏆 برترین معرف‌ها', 'callback_data' => 'affiliate-top-1'], ['text' => '🧾 تراکنش‌ها', 'callback_data' => 'affiliate-transactions-1']],
+        [['text' => '🔄 بروزرسانی', 'callback_data' => 'affiliate-analytics']],
+        [['text' => '↩️ تنظیمات زیرمجموعه', 'callback_data' => 'affiliatesettings']],
+    ]], JSON_UNESCAPED_UNICODE);
+    Editmessagetext($from_id, $message_id, $textAnalytics, $analyticsKeyboard);
+} elseif (preg_match('/^affiliate-(top|transactions)-(\\d+)$/', (string) $datain, $affiliateAdminPage) && $adminrulecheck['rule'] == "administrator") {
+    $view = (string) $affiliateAdminPage[1];
+    $page = max(1, (int) $affiliateAdminPage[2]);
+    $perPage = 8;
+    if ($view === 'top') {
+        $total = (int) $pdo->query("SELECT COUNT(DISTINCT referrer_id) FROM referral_commissions")->fetchColumn();
+        $pages = max(1, (int) ceil($total / $perPage));
+        $page = min($page, $pages);
+        $offset = ($page - 1) * $perPage;
+        $stmt = $pdo->query(
+            "SELECT rc.referrer_id, u.username, COUNT(*) AS orders, SUM(rc.amount) AS earned,
+                    SUM(rc.source_amount) AS revenue
+             FROM referral_commissions rc
+             LEFT JOIN user u ON CAST(u.id AS CHAR) = rc.referrer_id
+             GROUP BY rc.referrer_id, u.username
+             ORDER BY earned DESC, orders DESC
+             LIMIT " . $perPage . " OFFSET " . $offset
+        );
+        $items = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+        $output = "🏆 <b>برترین معرف‌ها</b>\n\n";
+        foreach ($items as $rank => $item) {
+            $label = trim((string) ($item['username'] ?? ''));
+            $label = $label !== '' ? '@' . ltrim($label, '@') : 'ID ' . $item['referrer_id'];
+            $output .= (($page - 1) * $perPage + $rank + 1) . ". <b>" . htmlspecialchars($label, ENT_QUOTES, 'UTF-8') . "</b>\n"
+                . "💸 " . number_format((int) $item['earned']) . " تومان"
+                . " · 🛒 " . number_format((int) $item['orders']) . " خرید"
+                . " · 💵 " . number_format((int) $item['revenue']) . " فروش\n\n";
+        }
+        if ($items === []) $output .= "هنوز پورسانتی ثبت نشده است.";
+    } else {
+        $total = (int) $pdo->query("SELECT COUNT(*) FROM referral_commissions")->fetchColumn();
+        $pages = max(1, (int) ceil($total / $perPage));
+        $page = min($page, $pages);
+        $offset = ($page - 1) * $perPage;
+        $stmt = $pdo->query(
+            "SELECT * FROM referral_commissions ORDER BY id DESC LIMIT " . $perPage . " OFFSET " . $offset
+        );
+        $items = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+        $output = "🧾 <b>آخرین تراکنش‌های پورسانت</b>\n\n";
+        foreach ($items as $item) {
+            $kind = ($item['source_type'] ?? '') === 'digital_service' ? 'خدمات دیجیتال' : 'اشتراک';
+            $output .= "💸 <b>" . number_format((int) $item['amount']) . " تومان</b> · " . $kind . "\n"
+                . "🤝 <code>" . htmlspecialchars((string) $item['referrer_id'], ENT_QUOTES, 'UTF-8') . "</code>"
+                . " ← 👤 <code>" . htmlspecialchars((string) $item['referred_user_id'], ENT_QUOTES, 'UTF-8') . "</code>\n"
+                . "🧾 <code>" . htmlspecialchars((string) $item['source_id'], ENT_QUOTES, 'UTF-8') . "</code>"
+                . " · " . htmlspecialchars((string) $item['created_at'], ENT_QUOTES, 'UTF-8') . "\n\n";
+        }
+        if ($items === []) $output .= "هنوز تراکنشی ثبت نشده است.";
+    }
+    $nav = [];
+    if ($page > 1) $nav[] = ['text' => '⬅️ قبلی', 'callback_data' => 'affiliate-' . $view . '-' . ($page - 1)];
+    $nav[] = ['text' => $page . '/' . $pages, 'callback_data' => 'affiliate-' . $view . '-' . $page];
+    if ($page < $pages) $nav[] = ['text' => 'بعدی ➡️', 'callback_data' => 'affiliate-' . $view . '-' . ($page + 1)];
+    $pageKeyboard = json_encode(['inline_keyboard' => [
+        $nav,
+        [['text' => '📊 آمار کلی', 'callback_data' => 'affiliate-analytics']],
+        [['text' => '↩️ تنظیمات زیرمجموعه', 'callback_data' => 'affiliatesettings']],
+    ]], JSON_UNESCAPED_UNICODE);
+    Editmessagetext($from_id, $message_id, trim($output), $pageKeyboard);
+} elseif ($datain === "affiliate-search" && $adminrulecheck['rule'] == "administrator") {
+    savedata("clear", "message_id", $message_id);
+    step("affiliate_admin_search", $from_id);
+    Editmessagetext($from_id, $message_id, "🔎 <b>جستجوی زیرمجموعه</b>\n\nآیدی عددی یا @username کاربر را ارسال کنید.", $affiliateFlowKeyboard);
+} elseif ($user['step'] === "affiliate_admin_search" && $adminrulecheck['rule'] == "administrator") {
+    $query = trim((string) $text);
+    $query = ltrim($query, '@');
+    $stmt = $pdo->prepare("SELECT * FROM user WHERE CAST(id AS CHAR) = ? OR username = ? LIMIT 1");
+    $stmt->execute([$query, $query]);
+    $target = $stmt->fetch(PDO::FETCH_ASSOC);
+    if (!is_array($target)) {
+        editFlowMessage("❌ کاربری با این مشخصات پیدا نشد.", $affiliateFlowKeyboard);
+        return;
+    }
+    $statsStmt = $pdo->prepare(
+        "SELECT COUNT(*) AS orders, COALESCE(SUM(amount), 0) AS earned, COALESCE(SUM(source_amount), 0) AS revenue
+         FROM referral_commissions WHERE referrer_id = ?"
+    );
+    $statsStmt->execute([(string) $target['id']]);
+    $targetStats = $statsStmt->fetch(PDO::FETCH_ASSOC) ?: [];
+    $childrenStmt = $pdo->prepare("SELECT COUNT(*) FROM user WHERE affiliates = ?");
+    $childrenStmt->execute([(string) $target['id']]);
+    $children = (int) $childrenStmt->fetchColumn();
+    $parent = trim((string) ($target['affiliates'] ?? ''));
+    $resultText = "🔎 <b>گزارش زیرمجموعه کاربر</b>\n\n"
+        . "👤 ID: <code>" . htmlspecialchars((string) $target['id'], ENT_QUOTES, 'UTF-8') . "</code>\n"
+        . "🔗 معرف: <code>" . htmlspecialchars($parent !== '' && $parent !== '0' ? $parent : 'ندارد', ENT_QUOTES, 'UTF-8') . "</code>\n"
+        . "👥 زیرمجموعه‌ها: <b>" . number_format($children) . "</b>\n"
+        . "🛒 خریدهای پورسانتی: <b>" . number_format((int) ($targetStats['orders'] ?? 0)) . "</b>\n"
+        . "💵 فروش منتسب: <b>" . number_format((int) ($targetStats['revenue'] ?? 0)) . " تومان</b>\n"
+        . "💸 پورسانت دریافتی: <b>" . number_format((int) ($targetStats['earned'] ?? 0)) . " تومان</b>";
+    step("home", $from_id);
+    editFlowMessage($resultText, json_encode(['inline_keyboard' => [
+        [['text' => '🔎 جستجوی دوباره', 'callback_data' => 'affiliate-search']],
+        [['text' => '↩️ تنظیمات زیرمجموعه', 'callback_data' => 'affiliatesettings']],
+    ]], JSON_UNESCAPED_UNICODE));
 } elseif (preg_match('/^affiliate-(commission|firstbuy|startgift)$/', $datain, $dataget) && $adminrulecheck['rule'] == "administrator") {
     $affiliateSetting = select("affiliates", "*", null, null, "select");
     [$column, $on, $off] = [
