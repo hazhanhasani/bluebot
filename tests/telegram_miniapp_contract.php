@@ -9,29 +9,35 @@ $appIndex = @file_get_contents($root . '/app/index.php');
 if ($appIndex !== false && str_contains($appIndex, 'https://telegram.org/js/telegram-web-app.js')) {
     $failures[] = 'Mini App startup must not block on the external Telegram SDK.';
 }
-if ($appIndex === false || !str_contains($appIndex, './js/telegram-bootstrap.js?v=0.2.3')) {
+if ($appIndex === false || !str_contains($appIndex, './js/telegram-bootstrap.js?v=0.2.4')) {
     $failures[] = 'Mini App compatibility bootstrap is not loaded with the current cache key.';
 }
-if ($appIndex === false || !str_contains($appIndex, './js/telegram-web-app.js?v=0.2.3')) {
+if ($appIndex === false || !str_contains($appIndex, './js/telegram-web-app.js?v=0.2.4')) {
     $failures[] = 'Local Telegram SDK is not loaded first.';
 }
 
-if ($appIndex === false || !str_contains($appIndex, 'script defer src="./js/telegram-web-app.js?v=0.2.3"')) {
+if ($appIndex === false || !str_contains($appIndex, 'script defer src="./js/telegram-web-app.js?v=0.2.4"')) {
     $failures[] = 'Mini App Telegram SDK must load with defer for non-blocking first paint.';
 }
 if ($appIndex === false || !str_contains($appIndex, 'bluebot-boot')) {
     $failures[] = 'Mini App must provide an immediate boot/loading surface.';
 }
 
-if ($appIndex === false || !str_contains($appIndex, './js/app-loader.js?v=0.2.3')) {
+if ($appIndex === false || !str_contains($appIndex, './js/app-loader.js?v=0.2.4')) {
     $failures[] = 'Mini App ordered application loader is missing.';
 }
-if ($appIndex === false || !str_contains($appIndex, './js/full-store.js?v=0.2.3')) {
+if ($appIndex === false || !str_contains($appIndex, './js/full-store.js?v=0.2.4')) {
     $failures[] = 'Mini App full digital-services storefront is not mounted.';
 }
 $fullStore = @file_get_contents($root . '/app/js/full-store.js');
 if ($fullStore === false || !str_contains($fullStore, 'digital_catalog') || !str_contains($fullStore, 'digital_purchase')) {
     $failures[] = 'Mini App digital storefront does not use the authenticated catalog/purchase API.';
+}
+if ($fullStore === false || !str_contains($fullStore, 'bluebot-digital-nav') || !str_contains($fullStore, 'MutationObserver') || !str_contains($fullStore, 'فروش خدمات')) {
+    $failures[] = 'Mini App digital services must be reachable from the primary navigation.';
+}
+if ($fullStore === false || !str_contains($fullStore, 'position:fixed;inset:0;z-index:45')) {
+    $failures[] = 'Mini App digital storefront must render inside the visible WebView surface.';
 }
 
 $appLoader = @file_get_contents($root . '/app/js/app-loader.js');
@@ -137,7 +143,7 @@ if ($verify === false || !str_contains($verify, "hash_equals")) {
 }
 
 $version = trim((string) @file_get_contents($root . '/app/version'));
-if ($version !== '0.2.3') {
+if ($version !== '0.2.4') {
     $failures[] = 'Unexpected Mini App version: ' . $version;
 }
 
