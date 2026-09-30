@@ -2,6 +2,7 @@
 
 require_once __DIR__ . '/TgToolsClient.php';
 require_once __DIR__ . '/OZVinooClient.php';
+require_once __DIR__ . '/SmmPanelClient.php';
 require_once __DIR__ . '/NobitexMarketClient.php';
 require_once __DIR__ . '/DigitalServiceProviderCatalog.php';
 
@@ -829,6 +830,107 @@ final class BluebotDigitalServices
             'configured' => true,
             'balance_ton' => is_numeric($balance) ? (float) $balance : null,
             'deposit_address' => is_scalar($address) ? trim((string) $address) : '',
+            'message' => '',
+            'response' => $response,
+        ];
+    }
+
+    public static function saveTivaNovinProvider(
+        PDO $pdo,
+        string $apiKey,
+        float $profitPercent,
+        int $syncIntervalMinutes = 15
+    ): array {
+        BluebotProviderCatalogService::ensureStorage($pdo);
+
+        $apiKey = trim($apiKey);
+        $profitPercent = max(0.0, min(1000.0, $profitPercent));
+        $syncIntervalMinutes = max(1, min(1440, $syncIntervalMinutes));
+
+        $existing = BluebotProviderCatalogService::findProvider($pdo, 'tivanovin');
+        if ($apiKey === '' && is_array($existing)) {
+            $apiKey = trim((string) ($existing['api_key'] ?? ''));
+        }
+        if ($apiKey === '' || strlen($apiKey) > 2048 || preg_match('/[\r\n]/', $apiKey)) {
+            throw new InvalidArgumentException('کلید API تیوا نوین معتبر نیست.');
+        }
+
+        $stmt = $pdo->prepare(
+            "INSERT INTO digital_service_providers
+             (provider_key, name, catalog_url, api_key, auth_header, auth_prefix,
+              products_path, id_field, name_field, category_field, price_field,
+              currency, exchange_rate_toman, profit_percent, active, sync_interval_minutes)
+             VALUES ('tivanovin', 'TivaNovin', 'http://tivanovin.ir/api', ?, '', '',
+                     'smm:.', 'service', 'name', 'category', 'rate',
+                     'rial', 0.1, ?, 1, ?)
+             ON DUPLICATE KEY UPDATE
+                name = VALUES(name),
+                catalog_url = VALUES(catalog_url),
+                api_key = VALUES(api_key),
+                auth_header = VALUES(auth_header),
+                auth_prefix = VALUES(auth_prefix),
+                products_path = VALUES(products_path),
+                id_field = VALUES(id_field),
+                name_field = VALUES(name_field),
+                category_field = VALUES(category_field),
+                price_field = VALUES(price_field),
+                currency = VALUES(currency),
+                exchange_rate_toman = VALUES(exchange_rate_toman),
+                profit_percent = VALUES(profit_percent),
+                sync_interval_minutes = VALUES(sync_interval_minutes),
+                active = 1"
+        );
+        $stmt->execute([$apiKey, $profitPercent, $syncIntervalMinutes]);
+
+        return BluebotProviderCatalogService::findProvider($pdo, 'tivanovin') ?? [];
+    }
+
+    public static function tivaNovinWalletStatus(PDO $pdo): array
+    {
+        $provider = BluebotProviderCatalogService::findProvider($pdo, 'tivanovin');
+        if (!is_array($provider) || trim((string) ($provider['api_key'] ?? '')) === '') {
+            return [
+                'ok' => false,
+                'configured' => false,
+                'balance' => null,
+                'currency' => 'IRR',
+                'message' => 'API Key تیوا نوین تنظیم نشده است.',
+            ];
+        }
+
+        try {
+            $client = new SmmPanelClient(
+                (string) ($provider['catalog_url'] ?? 'http://tivanovin.ir/api'),
+                (string) ($provider['api_key'] ?? ''),
+                'tivanovin'
+            );
+            $response = $client->balance();
+        } catch (Throwable $e) {
+            return [
+                'ok' => false,
+                'configured' => true,
+                'balance' => null,
+                'currency' => 'IRR',
+                'message' => $e->getMessage(),
+            ];
+        }
+
+        if (empty($response['ok'])) {
+            return [
+                'ok' => false,
+                'configured' => true,
+                'balance' => null,
+                'currency' => 'IRR',
+                'message' => trim((string) ($response['message'] ?? '')) ?: 'دریافت موجودی تیوا نوین ناموفق بود.',
+                'response' => $response,
+            ];
+        }
+
+        return [
+            'ok' => true,
+            'configured' => true,
+            'balance' => (float) ($response['balance'] ?? 0),
+            'currency' => strtoupper(trim((string) ($response['currency'] ?? 'IRR'))) ?: 'IRR',
             'message' => '',
             'response' => $response,
         ];
@@ -2654,6 +2756,10 @@ final class BluebotDigitalServices
             return self::deliverOZVinoo($pdo, $order, $product);
         }
 
+        if ($provider === 'tivanovin') {
+            return self::deliverTivaNovin($pdo, $order, $product);
+        }
+
         $registeredProvider = BluebotProviderCatalogService::findProvider($pdo, $provider);
         if (is_array($registeredProvider)) {
             return [
@@ -2668,6 +2774,156 @@ final class BluebotDigitalServices
         }
 
         return ['ok' => false, 'error' => 'Unsupported digital service provider.'];
+    }
+
+    private static function deliverTivaNovin(PDO $pdo, array $order, array $product): array
+    {
+        $provider = BluebotProviderCatalogService::findProvider($pdo, 'tivanovin');
+        if (!is_array($provider) || (int) ($provider['active'] ?? 0) !== 1) {
+            return ['ok' => false, 'retryable' => true, 'error' => 'اتصال TivaNovin فعال نیست.'];
+        }
+
+        $serviceCode = trim((string) ($product['provider_service_code'] ?? ''));
+        if ($serviceCode === '') {
+            return ['ok' => false, 'error' => 'کد سرویس TivaNovin برای این محصول ثبت نشده است.'];
+        }
+
+        try {
+            $client = new SmmPanelClient(
+                (string) ($provider['catalog_url'] ?? 'http://tivanovin.ir/api'),
+                (string) ($provider['api_key'] ?? ''),
+                'tivanovin'
+            );
+            $response = $client->addOrder(
+                $serviceCode,
+                (string) ($order['target'] ?? ''),
+                max(1, (int) ($order['quantity'] ?? $product['service_value'] ?? 1))
+            );
+        } catch (Throwable $e) {
+            return [
+                'ok' => false,
+                'retryable' => true,
+                'error' => $e->getMessage(),
+            ];
+        }
+
+        if (empty($response['ok'])) {
+            return [
+                'ok' => false,
+                'retryable' => !empty($response['retryable']),
+                'error' => trim((string) ($response['message'] ?? '')) ?: 'TivaNovin order request failed.',
+                'response' => $response,
+            ];
+        }
+
+        return [
+            'ok' => true,
+            'pending' => true,
+            'reference' => (string) ($response['reference'] ?? ''),
+            'response' => $response,
+            'customer_message_pending' => "⏳ <b>سفارش شما ثبت شد و در حال انجام است</b>\n\n"
+                . "🧾 کد: <code>" . self::escape((string) ($order['order_code'] ?? '')) . "</code>\n"
+                . "📦 " . self::escape((string) ($order['service_name'] ?? $product['name'] ?? '')),
+        ];
+    }
+
+    public static function reconcileTivaNovinProcessing(PDO $pdo, int $limit = 25): array
+    {
+        $stats = ['checked' => 0, 'completed' => 0, 'failed' => 0, 'pending' => 0, 'partial' => 0, 'errors' => 0];
+        $limit = max(1, min(100, $limit));
+
+        $provider = BluebotProviderCatalogService::findProvider($pdo, 'tivanovin');
+        if (!is_array($provider)
+            || (int) ($provider['active'] ?? 0) !== 1
+            || trim((string) ($provider['api_key'] ?? '')) === '') {
+            return $stats;
+        }
+
+        try {
+            $client = new SmmPanelClient(
+                (string) ($provider['catalog_url'] ?? 'http://tivanovin.ir/api'),
+                (string) ($provider['api_key'] ?? ''),
+                'tivanovin'
+            );
+        } catch (Throwable $e) {
+            $stats['errors']++;
+            return $stats;
+        }
+
+        $stmt = $pdo->prepare(
+            "SELECT * FROM digital_service_orders
+             WHERE provider = 'tivanovin' AND status = ? AND provider_reference IS NOT NULL
+             ORDER BY id ASC
+             LIMIT " . $limit
+        );
+        $stmt->execute([self::STATUS_PROCESSING]);
+        $orders = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+
+        foreach ($orders as $order) {
+            $stats['checked']++;
+            $reference = trim((string) ($order['provider_reference'] ?? ''));
+            if ($reference === '') {
+                $stats['errors']++;
+                continue;
+            }
+
+            try {
+                $status = $client->status($reference);
+            } catch (Throwable $e) {
+                $stats['errors']++;
+                continue;
+            }
+
+            if (empty($status['ok'])) {
+                $stats['errors']++;
+                continue;
+            }
+
+            $payload = json_encode($status, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+            $update = $pdo->prepare(
+                "UPDATE digital_service_orders
+                 SET provider_response = ?, updated_at = NOW()
+                 WHERE id = ? AND status = ?"
+            );
+            $update->execute([
+                is_string($payload) ? $payload : null,
+                (int) $order['id'],
+                self::STATUS_PROCESSING,
+            ]);
+
+            $normalized = (string) ($status['status'] ?? 'pending');
+            if ($normalized === 'completed') {
+                self::finalizeDeliveredOrder($pdo, (int) $order['id'], [
+                    'ok' => true,
+                    'reference' => $reference,
+                    'response' => $status,
+                ]);
+                $stats['completed']++;
+                continue;
+            }
+
+            if ($normalized === 'failed') {
+                self::failAndRefundProviderOrder(
+                    $pdo,
+                    (int) $order['id'],
+                    'TivaNovin order failed: ' . (string) ($status['raw_status'] ?? 'failed'),
+                    $status
+                );
+                $stats['failed']++;
+                continue;
+            }
+
+            if ($normalized === 'partial') {
+                // Partial SMM orders may have a provider-side charge. Keep the
+                // order processing for manual review instead of over-refunding.
+                $stats['partial']++;
+                continue;
+            }
+
+            $stats['pending']++;
+        }
+
+        return $stats;
     }
 
     public static function reconcileOZVinooProcessing(PDO $pdo, int $limit = 25): array

@@ -165,6 +165,83 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         exit;
     }
 
+    if ($action === 'save_tivanovin') {
+        $apiKey = trim((string) ($_POST['tivanovin_api_key'] ?? ''));
+        $profitPercent = (float) ($_POST['tivanovin_profit_percent'] ?? 0);
+        $syncInterval = max(1, min(1440, (int) ($_POST['tivanovin_sync_interval_minutes'] ?? 15)));
+
+        if ($apiKey !== '' && (strlen($apiKey) > 2048 || preg_match('/[\r\n]/', $apiKey))) {
+            flash('error', 'API Key تیوا نوین معتبر نیست.');
+            header('Location: digital_services.php#tivanovin');
+            exit;
+        }
+        if ($profitPercent < 0 || $profitPercent > 1000) {
+            flash('error', 'درصد سود تیوا نوین باید بین ۰ تا ۱۰۰۰ باشد.');
+            header('Location: digital_services.php#tivanovin');
+            exit;
+        }
+
+        try {
+            BluebotDigitalServices::saveTivaNovinProvider($pdo, $apiKey, $profitPercent, $syncInterval);
+            $sync = BluebotProviderCatalogService::syncProvider($pdo, 'tivanovin');
+            $wallet = BluebotDigitalServices::tivaNovinWalletStatus($pdo);
+
+            if (!empty($sync['ok'])) {
+                $balanceText = '';
+                if (!empty($wallet['ok']) && is_numeric($wallet['balance'] ?? null)) {
+                    $balance = (float) $wallet['balance'];
+                    $currency = strtoupper((string) ($wallet['currency'] ?? 'IRR'));
+                    $balanceText = ' · موجودی: ' . number_format($balance) . ' ' . $currency;
+                    if ($currency === 'IRR') {
+                        $balanceText .= ' (≈ ' . number_format($balance / 10) . ' تومان)';
+                    }
+                }
+
+                flash(
+                    'success',
+                    'تیوا نوین متصل و همگام شد: '
+                    . (int) ($sync['created'] ?? 0) . ' جدید، '
+                    . (int) ($sync['updated'] ?? 0) . ' بروزرسانی، '
+                    . (int) ($sync['disabled'] ?? 0) . ' غیرفعال'
+                    . $balanceText
+                );
+            } else {
+                flash(
+                    'warning',
+                    'تنظیمات تیوا نوین ذخیره شد اما دریافت سرویس‌ها ناموفق بود: '
+                    . (string) ($sync['message'] ?? 'خطای نامشخص')
+                );
+            }
+        } catch (Throwable $e) {
+            flash('error', 'اتصال تیوا نوین انجام نشد: ' . $e->getMessage());
+        }
+
+        header('Location: digital_services.php#tivanovin');
+        exit;
+    }
+
+    if ($action === 'sync_tivanovin_catalog') {
+        try {
+            $sync = BluebotProviderCatalogService::syncProvider($pdo, 'tivanovin');
+            if (!empty($sync['ok'])) {
+                flash(
+                    'success',
+                    'سرویس‌های تیوا نوین بروزرسانی شدند: '
+                    . (int) ($sync['created'] ?? 0) . ' جدید، '
+                    . (int) ($sync['updated'] ?? 0) . ' بروزرسانی، '
+                    . (int) ($sync['disabled'] ?? 0) . ' غیرفعال.'
+                );
+            } else {
+                flash('error', 'همگام‌سازی تیوا نوین ناموفق بود: ' . (string) ($sync['message'] ?? 'خطای نامشخص'));
+            }
+        } catch (Throwable $e) {
+            flash('error', 'همگام‌سازی تیوا نوین انجام نشد: ' . $e->getMessage());
+        }
+
+        header('Location: digital_services.php#tivanovin');
+        exit;
+    }
+
     if ($action === 'save_provider_catalog') {
         try {
             $provider = BluebotProviderCatalogService::saveProvider($pdo, [
@@ -374,8 +451,21 @@ $tgWalletStatus = $tgApiKey !== ''
     : ['ok' => false, 'configured' => false, 'balance_ton' => null, 'deposit_address' => '', 'message' => 'API Key تنظیم نشده است.'];
 $providerCatalogs = array_values(array_filter(
     BluebotProviderCatalogService::listProviders($pdo),
-    static fn (array $provider): bool => strtolower((string) ($provider['provider_key'] ?? '')) !== 'ozvinoo'
+    static fn (array $provider): bool => !in_array(
+        strtolower((string) ($provider['provider_key'] ?? '')),
+        ['ozvinoo', 'tivanovin'],
+        true
+    )
 ));
+$tivaProvider = BluebotProviderCatalogService::findProvider($pdo, 'tivanovin');
+$tivaApiKey = is_array($tivaProvider) ? trim((string) ($tivaProvider['api_key'] ?? '')) : '';
+$tivaProfitPercent = is_array($tivaProvider) ? (float) ($tivaProvider['profit_percent'] ?? 0) : 0.0;
+$tivaSyncInterval = is_array($tivaProvider) ? max(1, (int) ($tivaProvider['sync_interval_minutes'] ?? 15)) : 15;
+$tivaProductCountStmt = $pdo->query("SELECT COUNT(*) FROM digital_service_products WHERE provider = 'tivanovin' AND active = 1");
+$tivaProductCount = (int) $tivaProductCountStmt->fetchColumn();
+$tivaWalletStatus = $tivaApiKey !== ''
+    ? BluebotDigitalServices::tivaNovinWalletStatus($pdo)
+    : ['ok' => false, 'configured' => false, 'balance' => null, 'currency' => 'IRR', 'message' => 'API Key تنظیم نشده است.'];
 $ozApiKey = ds_panel_setting($pdo, 'ozvinoo_api_key');
 $ozProfitPercent = (float) ds_panel_setting($pdo, 'ozvinoo_profit_percent', '0');
 $ozSyncInterval = (int) ds_panel_setting($pdo, 'ozvinoo_sync_interval_minutes', '15');
@@ -666,6 +756,90 @@ include __DIR__ . '/inc/layout_head.php';
         </script>
     </div>
 
+    <div class="card fade-up d1" id="tivanovin">
+        <div class="card-head">
+            <div>
+                <div class="card-title">TivaNovin / تیوا نوین</div>
+                <div class="card-subtitle">اتصال کامل SMM API برای دریافت سرویس‌ها، ثبت سفارش، پیگیری وضعیت و موجودی کیف پول.</div>
+            </div>
+        </div>
+
+        <form method="post" class="card-body" style="display:grid;gap:12px">
+            <input type="hidden" name="_csrf" value="<?= htmlspecialchars(csrf_token()) ?>">
+            <input type="hidden" name="action" value="save_tivanovin">
+
+            <div class="field">
+                <label>API Endpoint</label>
+                <input class="input" value="http://tivanovin.ir/api" disabled dir="ltr">
+                <small class="field-hint">طبق مستندات خود پنل. BlueBot دسترسی HTTP را فقط به همین دامنه و مسیر محدود کرده است.</small>
+            </div>
+
+            <div class="field">
+                <label>API Key</label>
+                <input class="input" type="password" name="tivanovin_api_key" autocomplete="new-password" dir="ltr"
+                    placeholder="<?= $tivaApiKey !== '' ? '•••••••• (ذخیره شده؛ برای تغییر وارد کنید)' : 'کلید API تیوا نوین' ?>">
+                <small class="field-hint">کلید فقط سمت سرور ذخیره می‌شود و در ربات یا سفارش کاربر نمایش داده نمی‌شود.</small>
+            </div>
+
+            <div class="two-col" style="gap:10px">
+                <div class="field">
+                    <label>درصد سود همه سرویس‌ها</label>
+                    <input class="input" type="number" name="tivanovin_profit_percent" min="0" max="1000" step="0.1"
+                        value="<?= htmlspecialchars((string) $tivaProfitPercent) ?>" required>
+                    <small class="field-hint">قیمت API به‌صورت ریال خوانده و به تومان تبدیل می‌شود؛ سپس این درصد سود اعمال می‌شود.</small>
+                </div>
+                <div class="field">
+                    <label>بروزرسانی خودکار (دقیقه)</label>
+                    <input class="input" type="number" name="tivanovin_sync_interval_minutes" min="1" max="1440"
+                        value="<?= htmlspecialchars((string) $tivaSyncInterval) ?>" required>
+                </div>
+            </div>
+
+            <div class="notice <?= !empty($tivaWalletStatus['ok']) ? 'notice-info' : 'notice-warn' ?>">
+                <strong>کیف پول API تیوا نوین:</strong>
+                <?php if (!empty($tivaWalletStatus['ok'])): ?>
+                    <?php
+                    $tivaBalance = (float) ($tivaWalletStatus['balance'] ?? 0);
+                    $tivaCurrency = strtoupper((string) ($tivaWalletStatus['currency'] ?? 'IRR'));
+                    ?>
+                    <code><?= number_format($tivaBalance) ?> <?= htmlspecialchars($tivaCurrency) ?></code>
+                    <?php if ($tivaCurrency === 'IRR'): ?>
+                        · حدود <code><?= number_format($tivaBalance / 10) ?> تومان</code>
+                    <?php endif; ?>
+                <?php else: ?>
+                    <?= htmlspecialchars((string) ($tivaWalletStatus['message'] ?? 'دریافت موجودی ناموفق بود.')) ?>
+                <?php endif; ?>
+            </div>
+
+            <div class="notice <?= $tivaProductCount > 0 ? 'notice-info' : 'notice-warn' ?>">
+                <strong>سرویس‌های فعال تیوا نوین در ربات:</strong> <?= number_format($tivaProductCount) ?>
+                <br><small>
+                    <code>services</code> برای کاتالوگ · <code>add</code> برای سفارش ·
+                    <code>status</code> برای پیگیری · <code>balance</code> برای کیف پول.
+                    سفارش فقط بعد از تأیید دستی ادمین به Provider ارسال می‌شود.
+                </small>
+            </div>
+
+            <?php if (is_array($tivaProvider)): ?>
+                <div class="notice <?= (string) ($tivaProvider['last_sync_status'] ?? '') === 'success' ? 'notice-info' : 'notice-warn' ?>">
+                    آخرین Sync: <?= htmlspecialchars((string) ($tivaProvider['last_sync_at'] ?? '—')) ?>
+                    · وضعیت: <?= htmlspecialchars((string) ($tivaProvider['last_sync_status'] ?? '—')) ?>
+                    <?php if (!empty($tivaProvider['last_sync_message'])): ?>
+                        <br><small><?= htmlspecialchars((string) $tivaProvider['last_sync_message']) ?></small>
+                    <?php endif; ?>
+                </div>
+            <?php endif; ?>
+
+            <button class="btn btn-primary" type="submit"><?= icon('check', 14) ?> ذخیره + اتصال + همگام‌سازی تیوا نوین</button>
+        </form>
+
+        <form method="post" class="card-body" style="padding-top:0">
+            <input type="hidden" name="_csrf" value="<?= htmlspecialchars(csrf_token()) ?>">
+            <input type="hidden" name="action" value="sync_tivanovin_catalog">
+            <button class="btn btn-ghost" type="submit">↻ بروزرسانی سرویس‌های تیوا نوین</button>
+        </form>
+    </div>
+
 </div>
 <div class="card fade-up d1" id="providers" style="margin-top:16px">
     <div class="card-head">
@@ -687,7 +861,7 @@ include __DIR__ . '/inc/layout_head.php';
             <div class="field">
                 <label>کلید داخلی</label>
                 <input class="input" name="provider_key" maxlength="50" required dir="ltr" placeholder="socialprovider">
-                <small class="field-hint">حروف انگلیسی کوچک، عدد، خط تیره یا زیرخط. <code>tgtools</code> رزرو شده است.</small>
+                <small class="field-hint">حروف انگلیسی کوچک، عدد، خط تیره یا زیرخط. <code>tgtools</code> و <code>tivanovin</code> رزرو شده‌اند.</small>
             </div>
         </div>
 

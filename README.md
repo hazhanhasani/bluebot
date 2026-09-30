@@ -139,7 +139,9 @@ BlueBot می‌تواند کاتالوگ JSON ارائه‌دهندگان خدم
 - دسته‌ها از فیلد category یا نام محصول تشخیص داده می‌شوند و به‌صورت داینامیک در «فروش خدمات» ظاهر می‌شوند.
 - Sync دستی از پنل و Sync زمان‌بندی‌شده از Cron پشتیبانی می‌شود.
 - برای TGTools، حاشیه سود <strong>Stars</strong> و <strong>Premium</strong> مستقل است و قیمت عمده از <code>/api/purchase/prices</code> خوانده می‌شود.
-- Providerهای عمومی تا زمانی که delivery adapter اختصاصی نداشته باشند، پس از تأیید ادمین با حالت تحویل دستی ثبت می‌شوند؛ Providerهای یکپارچه مثل TGTools/OZVinoo از مسیر اختصاصی خودشان استفاده می‌کنند.
+- Providerهای عمومی تا زمانی که delivery adapter اختصاصی نداشته باشند، پس از تأیید ادمین با حالت تحویل دستی ثبت می‌شوند؛ Providerهای یکپارچه مثل TGTools، OZVinoo و TivaNovin از مسیر اختصاصی خودشان استفاده می‌کنند.
+- TivaNovin از قرارداد SMM با درخواست‌های POST پشتیبانی می‌شود: `services`، `add`، `status` و `balance`. نرخ‌های IRR به تومان تبدیل، درصد سود Provider اعمال و وضعیت سفارش‌ها با Cron پیگیری می‌شود.
+- Endpoint فعلی TivaNovin طبق مستندات Provider روی HTTP است؛ BlueBot این استثنا را فقط به دامنه `tivanovin.ir` و مسیر `/api` محدود می‌کند و برای سایر Providerها HTTPS اجباری باقی می‌ماند.
 - OZVinoo با Deep Discovery بررسی می‌شود: REST GET و SMM `action=services`، روش‌های `Bearer`، `X-API-Key`، `Api-Key` و body-only، و ساختارهای تو‌در‌توی JSON به‌صورت خودکار بررسی می‌شوند.
 - دسته‌های عمومی عضوینو مثل Telegram، Instagram، YouTube، X/Twitter، TikTok، Spotify، LinkedIn، Facebook، WhatsApp، Likee و Naver TV به دسته‌های مرتب فروش خدمات نگاشت می‌شوند.
 

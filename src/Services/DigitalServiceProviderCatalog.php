@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 final class BluebotProviderCatalogService
 {
-    private const RESERVED_KEYS = ['manual', 'telegram_bot', 'tgtools'];
+    private const RESERVED_KEYS = ['manual', 'telegram_bot', 'tgtools', 'tivanovin'];
     private const DISCOVERY_MAX_ATTEMPTS = 12;
     private const DISCOVERY_BUDGET_SECONDS = 8.0;
     private const DISCOVERY_CONNECT_TIMEOUT_SECONDS = 2;
@@ -582,12 +582,21 @@ final class BluebotProviderCatalogService
             $minQuantity = null;
             $maxQuantity = null;
             $ratePerThousand = null;
+            $providerDescription = '';
+            $providerType = '';
+            $dripfeed = null;
             if ($smmStyle) {
                 $minRaw = self::firstNumericValue($item, ['min', 'minimum', 'min_quantity', 'minQuantity']);
                 $maxRaw = self::firstNumericValue($item, ['max', 'maximum', 'max_quantity', 'maxQuantity']);
                 $minQuantity = $minRaw !== null ? max(1, (int) floor($minRaw)) : 1;
                 $maxQuantity = $maxRaw !== null ? max($minQuantity, (int) floor($maxRaw)) : null;
                 $serviceValue = $minQuantity;
+                $providerDescription = trim((string) self::valueAtPath($item, 'desc'));
+                $providerType = trim((string) self::valueAtPath($item, 'type'));
+                $dripfeedRaw = self::valueAtPath($item, 'dripfeed');
+                if (is_bool($dripfeedRaw) || is_numeric($dripfeedRaw)) {
+                    $dripfeed = (bool) $dripfeedRaw;
+                }
 
                 // Standard SMM APIs publish "rate" per 1000 units. Import a
                 // safe fixed package using the provider's minimum quantity so
@@ -625,7 +634,7 @@ final class BluebotProviderCatalogService
                 'profit_percent' => (float) $provider['profit_percent'],
                 'price_mode' => 'margin',
                 'synced_at' => gmdate(DATE_ATOM),
-                'delivery_mode' => $providerKey === 'ozvinoo' ? 'integrated' : 'manual',
+                'delivery_mode' => in_array($providerKey, ['ozvinoo', 'tivanovin'], true) ? 'integrated' : 'manual',
                 'api_style' => $smmStyle ? 'smm' : 'rest',
                 'service_value' => $serviceValue,
             ];
@@ -634,9 +643,20 @@ final class BluebotProviderCatalogService
                 $metadata['maximum_quantity'] = $maxQuantity;
                 $metadata['wholesale_rate_per_1000'] = $ratePerThousand;
                 $metadata['price_basis'] = 'minimum-package';
+                if ($providerDescription !== '') {
+                    $metadata['provider_description'] = $providerDescription;
+                }
+                if ($providerType !== '') {
+                    $metadata['provider_type'] = $providerType;
+                }
+                if ($dripfeed !== null) {
+                    $metadata['dripfeed'] = $dripfeed;
+                }
             }
             $metadataJson = json_encode($metadata, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
-            $description = 'محصول همگام‌شده از ' . (string) $provider['name'];
+            $description = $providerDescription !== ''
+                ? $providerDescription
+                : 'محصول همگام‌شده از ' . (string) $provider['name'];
 
             $find->execute([$providerKey, $providerId]);
             $row = $find->fetch(PDO::FETCH_ASSOC);
@@ -1258,7 +1278,8 @@ final class BluebotProviderCatalogService
         string $authPrefix,
         int $redirectsRemaining = 1
     ): array {
-        if (!self::isSafeHttpsUrl($url)) {
+        $legacyTivaHttp = self::isSafeTivaNovinLegacyUrl($url);
+        if (!self::isSafeHttpsUrl($url) && !$legacyTivaHttp) {
             return ['ok' => false, 'message' => 'SMM catalog URL is unsafe.'];
         }
         if (trim($apiKey) === '') {
@@ -1293,7 +1314,7 @@ final class BluebotProviderCatalogService
             CURLOPT_TIMEOUT => self::DISCOVERY_REQUEST_TIMEOUT_SECONDS,
             CURLOPT_SSL_VERIFYHOST => 2,
             CURLOPT_SSL_VERIFYPEER => true,
-            CURLOPT_PROTOCOLS => CURLPROTO_HTTPS,
+            CURLOPT_PROTOCOLS => $legacyTivaHttp ? CURLPROTO_HTTP : CURLPROTO_HTTPS,
             CURLOPT_FOLLOWLOCATION => false,
             CURLOPT_USERAGENT => 'BlueBot/0.5.36 ProviderCatalog',
         ]);
@@ -1310,7 +1331,11 @@ final class BluebotProviderCatalogService
         if ($http >= 300 && $http < 400 && $redirectsRemaining > 0 && $redirectUrl !== '') {
             $sourceHost = strtolower((string) parse_url($url, PHP_URL_HOST));
             $redirectHost = strtolower((string) parse_url($redirectUrl, PHP_URL_HOST));
-            if ($sourceHost !== '' && $sourceHost === $redirectHost && self::isSafeHttpsUrl($redirectUrl)) {
+            if (
+                $sourceHost !== ''
+                && $sourceHost === $redirectHost
+                && (self::isSafeHttpsUrl($redirectUrl) || self::isSafeTivaNovinLegacyUrl($redirectUrl))
+            ) {
                 return self::requestSmmServices(
                     $redirectUrl,
                     $apiKey,
@@ -1397,6 +1422,51 @@ final class BluebotProviderCatalogService
         }
 
         $hostSafetyCache[$host] = true;
+        return true;
+    }
+
+    private static function isSafeTivaNovinLegacyUrl(string $url): bool
+    {
+        if (!filter_var($url, FILTER_VALIDATE_URL)) {
+            return false;
+        }
+
+        $parts = parse_url($url);
+        if (!is_array($parts)
+            || strtolower((string) ($parts['scheme'] ?? '')) !== 'http'
+            || isset($parts['user'])
+            || isset($parts['pass'])) {
+            return false;
+        }
+
+        $host = strtolower(trim((string) ($parts['host'] ?? '')));
+        if (!in_array($host, ['tivanovin.ir', 'www.tivanovin.ir'], true)) {
+            return false;
+        }
+
+        if (isset($parts['port']) && (int) $parts['port'] !== 80) {
+            return false;
+        }
+
+        $path = '/' . ltrim((string) ($parts['path'] ?? ''), '/');
+        $path = preg_replace('#/+#', '/', $path) ?: '/';
+        if (rtrim($path, '/') !== '/api') {
+            return false;
+        }
+
+        $ips = gethostbynamel($host);
+        if (is_array($ips) && $ips !== []) {
+            foreach ($ips as $ip) {
+                if (!filter_var(
+                    $ip,
+                    FILTER_VALIDATE_IP,
+                    FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE
+                )) {
+                    return false;
+                }
+            }
+        }
+
         return true;
     }
 
