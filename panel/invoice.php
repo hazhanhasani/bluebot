@@ -231,6 +231,7 @@ if ($scope === 'digital') {
                     <button class="btn btn-no btn-sm" type="submit">رد + بازگشت وجه</button>
                   </form>
                 <?php elseif ($orderStatus === 'partial_review' && (int) ($order['refunded'] ?? 0) !== 1): ?>
+                  <span class="tag tag-warn">بررسی دستی تحویل جزئی</span>
                   <form method="post" style="display:inline" data-confirm="پس از بررسی، این سفارش به‌عنوان تکمیل‌شده ثبت شود؟">
                     <input type="hidden" name="_csrf" value="<?= csrf_token() ?>">
                     <input type="hidden" name="action" value="digital_complete">
