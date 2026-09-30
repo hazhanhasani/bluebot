@@ -397,11 +397,29 @@ final class BluebotDigitalServices
         if (is_array($product)) {
             $guard = self::providerHealthGuard($pdo, $product);
             if (empty($guard['allowed'])) {
+                $guardPayload = json_encode([
+                    'error' => 'ارسال خودکار موقتاً توسط محافظ سلامت Provider متوقف شده است؛ سفارش نیازمند بررسی دستی مدیر است.',
+                    'health_guard' => true,
+                    'reason' => (string) ($guard['reason'] ?? 'provider_health'),
+                    'suspended_until' => (string) ($guard['until'] ?? ''),
+                ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+                $guardUpdate = $pdo->prepare(
+                    "UPDATE digital_service_orders
+                     SET provider_response = ?, updated_at = NOW()
+                     WHERE id = ? AND status = ?"
+                );
+                $guardUpdate->execute([
+                    is_string($guardPayload) ? $guardPayload : null,
+                    (int) ($order['id'] ?? 0),
+                    self::STATUS_PENDING,
+                ]);
+                $guardedOrder = self::findOrder($pdo, (int) ($order['id'] ?? 0)) ?? $order;
+
                 return [
                     'automatic' => false,
                     'guarded' => true,
                     'guard' => $guard,
-                    'order' => $order,
+                    'order' => $guardedOrder,
                 ];
             }
         }
@@ -4933,6 +4951,7 @@ final class BluebotDigitalServices
                 if ($type === 'virtual_number') {
                     $numberStatus = $numberProvider->status($reference, $product);
                     if (empty($numberStatus['ok'])) {
+                        self::recordProviderHealth($pdo, $product, $numberStatus);
                         $stats['errors']++;
                         continue;
                     }
