@@ -1358,6 +1358,26 @@ function referralTierForUser(string $referrerId, ?array $settingRow = null): arr
     ];
 }
 
+function reverseReferralCommission(string $sourceType,string $sourceId,string $reason='refund'): array
+{
+ global $pdo;
+ $eventKey=hash('sha256',$sourceType.':'.$sourceId);
+ $stmt=$pdo->prepare("SELECT * FROM referral_commissions WHERE event_key=? LIMIT 1");$stmt->execute([$eventKey]);
+ $commission=$stmt->fetch(PDO::FETCH_ASSOC);
+ if(!is_array($commission))return ['reversed'=>false,'reason'=>'commission_not_found'];
+ $reversalKey=hash('sha256','reversal:'.$eventKey);
+ $owns=!$pdo->inTransaction();if($owns)$pdo->beginTransaction();
+ try{
+  $q=$pdo->prepare("SELECT id FROM referral_commission_reversals WHERE event_key=? LIMIT 1");$q->execute([$reversalKey]);
+  if($q->fetchColumn()){if($owns)$pdo->commit();return ['reversed'=>false,'reason'=>'already_reversed'];}
+  bluebotWalletAdjust($pdo,(string)$commission['referrer_id'],-(int)$commission['amount'],'referral_reversal',(string)$commission['id'],$reversalKey,['reason'=>$reason,'source_type'=>$sourceType,'source_id'=>$sourceId]);
+  $i=$pdo->prepare("INSERT INTO referral_commission_reversals(commission_id,event_key,referrer_id,amount,reason) VALUES(?,?,?,?,?)");
+  $i->execute([(int)$commission['id'],$reversalKey,(string)$commission['referrer_id'],(int)$commission['amount'],substr($reason,0,190)]);
+  if($owns)$pdo->commit();
+  return ['reversed'=>true,'amount'=>(int)$commission['amount'],'referrer_id'=>(string)$commission['referrer_id']];
+ }catch(Throwable $e){if($owns&&$pdo->inTransaction())$pdo->rollBack();throw $e;}
+}
+
 function creditReferralCommission(string $buyerId, int $sourceAmount, string $sourceType, string $sourceId): array
 {
     global $pdo;
