@@ -132,6 +132,8 @@ $mustContain = [
     [$diagnostics, "orders_stale_processing", 'Runtime /debug must report stale processing digital orders.'],
     [$diagnostics, "Partial review:", 'Runtime /debug partial-order line missing.'],
     [$diagnostics, "Stale processing (>30m):", 'Runtime /debug stale-processing line missing.'],
+    [$diagnostics, "provider_circuit_", 'Runtime /debug must inspect provider circuit-breaker state without secrets.'],
+    [$diagnostics, "circuit-open", 'Runtime /debug must label providers whose automatic-delivery circuit is open.'],
 
 
 ];
