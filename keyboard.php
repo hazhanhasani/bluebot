@@ -566,7 +566,10 @@ function affiliateSettingsMenu()
         [['text' => $percentText, 'callback_data' => "affiliate-percent"], ['text' => $textbotlang['keyboard']['setAffiliatePercent'], 'callback_data' => "affiliate-percent"]],
         [['text' => $startGiftText, 'callback_data' => "affiliate-startgift"], ['text' => $textbotlang['keyboard']['startGift'], 'callback_data' => "affiliate-startgift"]],
         [['text' => $giftAmountText, 'callback_data' => "affiliate-giftamount"], ['text' => $textbotlang['keyboard']['startGiftAmount'], 'callback_data' => "affiliate-giftamount"]],
-        [['text' => $textbotlang['keyboard']['setAffiliateBanner'], 'callback_data' => "affiliate-banner"]],
+        [
+            ['text' => $textbotlang['keyboard']['setAffiliateBanner'], 'callback_data' => "affiliate-banner"],
+            ['text' => '🗑 حذف بنر', 'callback_data' => "affiliate-removebanner"],
+        ],
         [['text' => $textbotlang['keyboard']['backToPreviousMenu'], 'callback_data' => "featurecat-sales"]],
     ];
     $text = sprintf($textbotlang['Admin']['affiliates']['settingsTitle'], $commissionText, $firstBuyText, $percentText, $startGiftText, $giftAmountText);
