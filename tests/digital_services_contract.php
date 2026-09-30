@@ -22,6 +22,11 @@ $cronJobs = file_get_contents($root . '/cronbot/jobs.php');
 $digitalServicesCron = file_get_contents($root . '/cronbot/digital_services.php');
 $settings = file_get_contents($root . '/db/tables/digital_service_settings.php');
 $langFa = file_get_contents($root . '/lang/fa.php');
+$favoriteTable = file_get_contents($root . '/db/tables/digital_service_favorites.php');
+$tablesRegistry = file_get_contents($root . '/db/tables.php');
+$virtualNumberInterface = file_get_contents($root . '/src/Services/VirtualNumberProviderInterface.php');
+$ozvinooNumberProvider = file_get_contents($root . '/src/Services/OZVinooVirtualNumberProvider.php');
+$virtualNumberLocale = file_get_contents($root . '/src/Services/VirtualNumberLocale.php');
 
 $buyStart = strpos($index, "} elseif (preg_match('/^ds_buy:");
 $buyEnd = $buyStart === false
@@ -33,6 +38,17 @@ $buyRoute = ($buyStart !== false && $buyEnd !== false)
 
 $checks = [
     [str_contains($manager, "providerSupportsAutomaticDelivery"), 'provider automatic-delivery capability check missing'],
+    [str_contains($manager, "isSmmProductsPath"), 'shared SMM products-path detector missing'],
+    [str_contains($manager, "smmTransportFromProvider"), 'generic SMM transport resolver missing'],
+    [str_contains($manager, "STATUS_PARTIAL_REVIEW"), 'partial-review order state missing'],
+    [str_contains($manager, "markPartialReview"), 'partial-delivery review handler missing'],
+    [str_contains($manager, "completePartialReview"), 'manual partial-order completion missing'],
+    [str_contains($manager, "adminPartialReviewKeyboard"), 'partial-review admin keyboard missing'],
+    [str_contains($manager, "PROVIDER_REFERENCE_MISSING"), 'untrackable async provider order guard missing'],
+    [str_contains($manager, "provider_reference = ?"), 'failed-order retry must clear/update provider reference atomically'],
+    [str_contains($manager, "statusesNormalized"), 'generic SMM reconciliation must use batch status when available'],
+    [str_contains($manager, "bulk_requests"), 'generic SMM batch reconciliation diagnostics missing'],
+
     [str_contains($manager, "providerApprovalMode"), 'per-provider approval mode reader missing'],
     [str_contains($manager, "setProviderApprovalMode"), 'per-provider approval mode writer missing'],
     [str_contains($manager, "provider_approval_"), 'provider approval mode storage key missing'],
@@ -51,6 +67,11 @@ $checks = [
     [str_contains($panel, "set_provider_approval_mode"), 'generic provider approval-mode action missing'],
     [str_contains($providerCatalog, "DELETE FROM digital_service_settings WHERE setting_key = ?"), 'provider approval mode cleanup missing'],
     [str_contains($smmClient, "final class SmmPanelClient"), 'generic SMM panel client missing'],
+    [str_contains($smmClient, "private string \$transport"), 'SMM client transport mode missing'],
+    [str_contains($smmClient, "['post', 'get']"), 'SMM client must explicitly support POST and legacy GET'],
+    [str_contains($smmClient, "statusesNormalized"), 'normalized SMM bulk-status support missing'],
+    [str_contains($smmClient, "\$this->transport === 'get'"), 'legacy GET SMM request path missing'],
+
     [str_contains($smmClient, "['action' => 'services']"), 'SMM services request missing'],
     [str_contains($smmClient, "'action' => 'add'"), 'SMM add-order request missing'],
     [str_contains($smmClient, "'action' => 'status'"), 'SMM order-status request missing'],
@@ -148,6 +169,10 @@ $checks = [
     [str_contains($providerCatalog, "collectArrayPaths"), 'recursive JSON catalog discovery missing'],
     [str_contains($providerCatalog, "'action' => 'services'"), 'SMM services action missing'],
     [str_contains($providerCatalog, "'smm:'"), 'SMM catalog style marker missing'],
+    [str_contains($providerCatalog, "'smm-get:'"), 'legacy GET SMM catalog marker missing'],
+    [str_contains($providerCatalog, "requestSmmServices(\$url, \$apiKey, \$authHeader, \$authPrefix, 'get')"), 'legacy GET SMM catalog request missing'],
+    [str_contains($providerCatalog, "(?:(?:smm|smm-get):)?"), 'provider products_path validator must allow legacy SMM GET explicitly'],
+
     [str_contains($providerCatalog, "wholesale_rate_per_1000"), 'SMM per-1000 rate handling missing'],
     [str_contains($providerTable, "profit_percent"), 'provider registry profit column missing'],
     [str_contains($providerTable, "exchange_rate_toman"), 'provider registry exchange-rate column missing'],
@@ -269,6 +294,17 @@ $checks = [
     [str_contains($manager, "ozvinooWalletStatus"), 'OZVinoo wallet diagnostics missing'],
     [str_contains($manager, "reconcileOZVinooProcessing"), 'OZVinoo async reconciliation missing'],
     [str_contains($manager, "deliverOZVinooOfficial"), 'OZVinoo official delivery adapter missing'],
+    [str_contains($virtualNumberInterface, "interface BluebotVirtualNumberProviderInterface"), 'virtual-number provider contract missing'],
+    [str_contains($virtualNumberInterface, "requestNumber"), 'virtual-number request contract missing'],
+    [str_contains($virtualNumberInterface, "reportBanned"), 'virtual-number banned-report capability contract missing'],
+    [str_contains($ozvinooNumberProvider, "implements BluebotVirtualNumberProviderInterface"), 'OZVinoo virtual-number adapter missing'],
+    [str_contains($manager, "new OZVinooVirtualNumberProvider"), 'OZVinoo virtual-number runtime must use normalized adapter'],
+    [str_contains($virtualNumberLocale, "class BluebotVirtualNumberLocale"), 'virtual-number localization dictionary missing'],
+    [str_contains($virtualNumberLocale, "'telegram' => 'تلگرام'"), 'virtual-number service Persian labels missing'],
+    [str_contains($virtualNumberLocale, "'germany' => 'آلمان'"), 'virtual-number country Persian labels missing'],
+    [str_contains($manager, "BluebotVirtualNumberLocale::serviceLabel"), 'virtual-number application labels are not normalized'],
+    [str_contains($manager, "BluebotVirtualNumberLocale::countryLabel"), 'virtual-number country labels are not normalized'],
+
     [str_contains($manager, "presetTarget"), 'OZVinoo virtual-number preset target missing'],
     [str_contains($manager, "ozvinoo_api_style"), 'OZVinoo API style persistence missing'],
     [str_contains($manager, "'youtube' => '▶️ خدمات یوتیوب'"), 'customer YouTube category label missing'],
@@ -282,6 +318,17 @@ $checks = [
     [str_contains($manager, "category_label"), 'dynamic provider category labels missing'],
     [str_contains($manager, "targetKeyboard"), 'dedicated inline target keyboard missing'],
     [str_contains($manager, "ORDER_STATE_INVALID"), 'order confirmation idempotency guard missing'],
+    [str_contains($manager, "activeDuplicateOrder"), 'active duplicate-order guard missing'],
+    [str_contains($manager, "DUPLICATE_ACTIVE_ORDER:"), 'duplicate active order domain guard missing'],
+    [str_contains($manager, "digital_service_favorites"), 'customer favorites storage integration missing'],
+    [str_contains($manager, "toggleFavorite"), 'favorite toggle missing'],
+    [str_contains($manager, "favoriteProducts"), 'favorite service list missing'],
+    [str_contains($manager, "bestSellingProducts"), '30-day bestseller discovery missing'],
+    [str_contains($manager, "SUM(o.quantity)"), 'bestseller ranking must weight delivered quantity'],
+    [str_contains($favoriteTable, "UNIQUE KEY uniq_digital_service_favorite"), 'favorite table uniqueness constraint missing'],
+    [str_contains($tablesRegistry, "'digital_service_favorites'"), 'favorite table is not registered in database bootstrap'],
+
+
     [str_contains($manager, "PRICE_CHANGED"), 'checkout price-change guard missing'],
     [str_contains($manager, "digital_service_amount"), 'confirmed checkout amount snapshot missing'],
     [str_contains($manager, "digital_service_processing"), 'atomic order-intent claim missing'],
@@ -303,6 +350,8 @@ $checks = [
     [str_contains($digitalServicesCron, "syncDueProviders"), 'generic provider catalog cron sync missing'],
     [str_contains($digitalServicesCron, "maybeBootstrapOZVinooCatalog"), 'OZVinoo cron catalog sync missing'],
     [str_contains($digitalServicesCron, "reconcileOZVinooProcessing"), 'OZVinoo order reconciliation cron missing'],
+    [str_contains($digitalServicesCron, "\$ozStats['partial']"), 'OZVinoo partial reconciliation must be surfaced by cron'],
+
     [str_contains($settings, "tgtools_api_key"), 'TGTools API key setting missing'],
     [str_contains($settings, "tgtools_catalog_last_sync"), 'TGTools catalog sync timestamp setting missing'],
     [str_contains($settings, "tgtools_stars_profit_percent"), 'TGTools Stars profit seed missing'],
@@ -340,7 +389,11 @@ $checks = [
     [str_contains($panel, "مدیریت APIها"), 'Digital Services settings page purpose copy missing'],
     [!str_contains($panel, '<div class="card-title">سرویس‌ها</div>'), 'service list leaked back into API settings page'],
     [!str_contains($panel, '<div class="card-title">سفارش‌ها</div>'), 'order list leaked back into API settings page'],
-    [str_contains($panel, "products_path' => \$_POST['products_path'] ?? 'auto'"), 'generic provider mapping must default to auto'],
+    [str_contains($panel, 'name="provider_catalog_mode"'), 'generic provider transport selector missing'],
+    [str_contains($panel, 'value="smm-post"'), 'generic provider SMM POST option missing'],
+    [str_contains($panel, 'value="smm-get"'), 'generic provider legacy GET option missing'],
+    [str_contains($panel, "'smm-get:.'"), 'legacy GET provider mapping persistence missing'],
+
     [str_contains($servicePanel, "digital_add"), 'digital service create action must live under Services'],
     [str_contains($servicePanel, "digital_edit"), 'digital service edit action must live under Services'],
     [str_contains($servicePanel, "digital_toggle"), 'digital service activation action must live under Services'],
@@ -353,6 +406,11 @@ $checks = [
     [str_contains($servicePanel, "'tgtools'"), 'TGTools provider support missing from Services digital scope'],
     [str_contains($invoicePanel, "digital_approve"), 'digital order approval must live under Orders'],
     [str_contains($invoicePanel, "digital_reject"), 'digital order rejection must live under Orders'],
+    [str_contains($invoicePanel, "digital_complete"), 'partial digital order completion action must live under Orders'],
+    [str_contains($invoicePanel, "partial_review"), 'Orders panel partial-review state missing'],
+    [str_contains($invoicePanel, "DATE_SUB(NOW(), INTERVAL 30 MINUTE)"), 'Orders panel stale-processing diagnostic missing'],
+    [str_contains($invoicePanel, "پیگیری طولانی"), 'Orders panel must visibly flag stale processing orders'],
+
     [str_contains($invoicePanel, "number_format(max(1, (int) (\$order['quantity'] ?? 1)))"), 'Orders panel must show order quantity'],
     [str_contains($invoicePanel, "نیازمند بررسی"), 'Orders panel must distinguish non-refunded failed orders requiring review'],
     [str_contains($invoicePanel, "providerProgress"), 'Orders panel provider progress parsing missing'],
@@ -425,6 +483,11 @@ $checks = [
     [str_contains($index, "sendmessage(\$from_id, \$categoryText, \$categoryKeyboard, 'HTML')"), 'digital category edit failure must fall back to a new message'],
     [str_contains($index, "catalogPageInfo(\$pdo, \$category, \$requestedPage, 8)"), 'digital category route must paginate large provider catalogs'],
     [str_contains($index, "ds_confirm:"), 'user order confirmation route missing'],
+    [str_contains($index, "/^ds_favorites:"), 'customer favorites route missing'],
+    [str_contains($index, "/^ds_bestsellers:"), 'customer bestsellers route missing'],
+    [str_contains($index, "/^ds_fav:"), 'favorite toggle route missing'],
+    [str_contains($index, "DUPLICATE_ACTIVE_ORDER:"), 'customer duplicate-order UX missing'],
+
     [str_contains($index, "/^ds_orders:"), 'customer digital-order history route missing'],
     [str_contains($index, "/^ds_order:"), 'customer digital-order detail route missing'],
     [str_contains($index, "/^ds_cancel:"), 'customer digital-order cancel confirmation route missing'],
@@ -467,6 +530,8 @@ $checks = [
     [str_contains($index, "notifyAdmins"), 'admin notification missing'],
     [str_contains($admin, "ds_approve:"), 'bot approval callback missing'],
     [str_contains($admin, "ds_reject:"), 'bot reject callback missing'],
+    [str_contains($admin, "ds_complete:"), 'bot partial-order completion callback missing'],
+
     [str_contains($admin, "نیاز به بررسی و تلاش مجدد دارد"), 'admin retryable provider review UX missing'],
     [str_contains($admin, "مبلغ برگشت خورد"), 'admin refunded provider error UX missing'],
     [str_contains($keyboard, "text_digital_services"), 'main keyboard mapping missing'],
