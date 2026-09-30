@@ -46,6 +46,38 @@ if ($ref === '' || hash_equals((string) ($settings['update_last_notified'] ?? ''
     return;
 }
 
+if (bluebotUpdateAutoInstallEnabled($settings)) {
+    if (bluebotUpdateQueueBusy()) {
+        return;
+    }
+
+    foreach ((array) $adminIds as $adminId) {
+        if (!is_numeric($adminId)) {
+            continue;
+        }
+
+        $queued = bluebotQueueUpdate((string) $adminId, $target);
+        if (!empty($queued['ok'])) {
+            bluebotUpdateMarkNotified($ref);
+
+            $label = htmlspecialchars((string) ($target['label'] ?? $ref), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+            sendmessage(
+                (string) $adminId,
+                "⚙️ <b>بروزرسانی خودکار در صف نصب قرار گرفت</b>\n\n"
+                . "🚀 نسخه: <code>{$label}</code>\n"
+                . "پس از پایان نصب، نتیجه به‌صورت خودکار ارسال می‌شود.",
+                null,
+                'HTML'
+            );
+            return;
+        }
+
+        if (($queued['message'] ?? '') === 'update already queued or running') {
+            return;
+        }
+    }
+}
+
 $channelLabels = [
     'release' => 'پایدار',
     'beta' => 'آزمایشی',
@@ -64,7 +96,7 @@ $text = "✨ <b>آپدیت جدید بلو پنل آماده است</b>\n\n"
     . "📍 نسخه فعلی: <code>{$current}</code>\n"
     . "🚀 نسخه جدید: <code>{$label}</code>"
     . $summary
-    . "\n\nنسخه تازه آماده نصب است. برای بروزرسانی امن و خودکار، دکمه «بروزرسانی» را بزنید.";
+    . "\n\nنصب خودکار برای این سرور انجام نشد؛ برای تلاش دستی دکمه «بروزرسانی» را بزنید.";
 
 $keyboard = json_encode([
     'inline_keyboard' => [
