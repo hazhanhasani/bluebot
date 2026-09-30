@@ -102,8 +102,29 @@ function validateToken($headers)
     return false;
 }
 
+function requireApiRateLimit(string $scope='api',int $limit=120,int $windowSeconds=60): void
+{
+ global $pdo;
+ $limit=max(1,$limit);$windowSeconds=max(10,$windowSeconds);
+ $ip=(string)($_SERVER['REMOTE_ADDR']??'unknown');
+ $route=(string)($_SERVER['SCRIPT_NAME']??'api');
+ $bucket=hash('sha256',$scope.'|'.$route.'|'.$ip);
+ try{
+  $pdo->beginTransaction();
+  $q=$pdo->prepare("SELECT hits,window_started_at FROM api_rate_limits WHERE bucket_key=? FOR UPDATE");$q->execute([$bucket]);$row=$q->fetch(PDO::FETCH_ASSOC);
+  $now=time();$start=is_array($row)?strtotime((string)$row['window_started_at']):false;
+  if(!is_array($row)||$start===false||($now-$start)>=$windowSeconds){
+   $s=$pdo->prepare("INSERT INTO api_rate_limits(bucket_key,hits,window_started_at) VALUES(?,1,NOW()) ON DUPLICATE KEY UPDATE hits=1,window_started_at=NOW()");
+   $s->execute([$bucket]);$hits=1;
+  }else{$hits=(int)$row['hits']+1;$s=$pdo->prepare("UPDATE api_rate_limits SET hits=? WHERE bucket_key=?");$s->execute([$hits,$bucket]);}
+  $pdo->commit();
+  if($hits>$limit){header('Retry-After: '.$windowSeconds);sendJsonResponse(false,'rate limit exceeded',[],429);}
+ }catch(Throwable $e){if($pdo->inTransaction())$pdo->rollBack();error_log('API rate limiter unavailable: '.$e->getMessage());}
+}
+
 function requireApiToken($headers)
 {
+    requireApiRateLimit('token-api', 120, 60);
     if (!validateToken($headers)) {
         sendJsonResponse(false, "token invalid", [], 403);
     }
@@ -131,6 +152,7 @@ function hasAdminSession()
 
 function requireApiTokenOrAdminSession($headers)
 {
+    requireApiRateLimit('token-or-admin', 120, 60);
     if (validateToken($headers) || hasAdminSession()) {
         return;
     }
