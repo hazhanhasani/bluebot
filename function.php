@@ -6,6 +6,7 @@ require_once __DIR__ . '/src/Support/TrustedProxy.php';
 require_once __DIR__ . '/src/Support/RuntimeIdentity.php';
 require_once __DIR__ . '/src/Support/JalaliDate.php';
 require_once __DIR__ . '/src/Support/SmsService.php';
+require_once __DIR__ . '/src/Support/WalletLedger.php';
 require_once __DIR__ . '/src/Payment/PaymentState.php';
 require_once __DIR__ . '/src/Payment/Blupal.php';
 require_once __DIR__ . '/config.php';
