@@ -254,7 +254,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if ($action === 'save_panelbaz') {
         $apiKey = trim((string) ($_POST['panelbaz_api_key'] ?? ''));
         $profitPercent = (float) ($_POST['panelbaz_profit_percent'] ?? 0);
-        $usdToToman = (float) ($_POST['panelbaz_usd_to_toman'] ?? 0);
         $syncInterval = max(1, min(1440, (int) ($_POST['panelbaz_sync_interval_minutes'] ?? 15)));
         $approvalMode = strtolower(trim((string) ($_POST['panelbaz_approval_mode'] ?? 'manual')));
 
@@ -265,11 +264,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
         if ($profitPercent < 0 || $profitPercent > 1000) {
             flash('error', 'درصد سود پنل باز باید بین ۰ تا ۱۰۰۰ باشد.');
-            header('Location: digital_services.php#panelbaz');
-            exit;
-        }
-        if ($usdToToman <= 0) {
-            flash('error', 'نرخ هر دلار به تومان برای پنل باز باید بیشتر از صفر باشد.');
             header('Location: digital_services.php#panelbaz');
             exit;
         }
@@ -284,7 +278,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $pdo,
                 $apiKey,
                 $profitPercent,
-                $usdToToman,
                 $syncInterval
             );
             BluebotDigitalServices::setProviderApprovalMode($pdo, 'panelbaz', $approvalMode);
@@ -295,11 +288,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $balanceText = '';
                 if (!empty($wallet['ok']) && is_numeric($wallet['balance'] ?? null)) {
                     $balance = (float) $wallet['balance'];
-                    $currency = strtoupper((string) ($wallet['currency'] ?? 'USD'));
-                    $balanceText = ' · موجودی: ' . rtrim(rtrim(number_format($balance, 4, '.', ''), '0'), '.') . ' ' . $currency;
-                    if ($currency === 'USD') {
-                        $balanceText .= ' (≈ ' . number_format($balance * $usdToToman) . ' تومان)';
-                    }
+                    $balanceText = ' · موجودی: ' . number_format($balance) . ' تومان';
                 }
 
                 flash(
@@ -607,14 +596,13 @@ $tivaWalletStatus = $tivaApiKey !== ''
 $panelBazProvider = BluebotProviderCatalogService::findProvider($pdo, 'panelbaz');
 $panelBazApiKey = is_array($panelBazProvider) ? trim((string) ($panelBazProvider['api_key'] ?? '')) : '';
 $panelBazProfitPercent = is_array($panelBazProvider) ? (float) ($panelBazProvider['profit_percent'] ?? 0) : 0.0;
-$panelBazUsdToToman = is_array($panelBazProvider) ? (float) ($panelBazProvider['exchange_rate_toman'] ?? 0) : 0.0;
 $panelBazSyncInterval = is_array($panelBazProvider) ? max(1, (int) ($panelBazProvider['sync_interval_minutes'] ?? 15)) : 15;
 $panelBazApprovalMode = BluebotDigitalServices::providerApprovalMode($pdo, 'panelbaz');
 $panelBazProductCountStmt = $pdo->query("SELECT COUNT(*) FROM digital_service_products WHERE provider = 'panelbaz' AND active = 1");
 $panelBazProductCount = (int) $panelBazProductCountStmt->fetchColumn();
 $panelBazWalletStatus = $panelBazApiKey !== ''
     ? BluebotDigitalServices::panelBazWalletStatus($pdo)
-    : ['ok' => false, 'configured' => false, 'balance' => null, 'currency' => 'USD', 'message' => 'API Key تنظیم نشده است.'];
+    : ['ok' => false, 'configured' => false, 'balance' => null, 'currency' => 'TOMAN', 'message' => 'API Key تنظیم نشده است.'];
 $ozApiKey = ds_panel_setting($pdo, 'ozvinoo_api_key');
 $ozProfitPercent = (float) ds_panel_setting($pdo, 'ozvinoo_profit_percent', '0');
 $ozSyncInterval = (int) ds_panel_setting($pdo, 'ozvinoo_sync_interval_minutes', '15');
@@ -1067,7 +1055,7 @@ include __DIR__ . '/inc/layout_head.php';
         <div class="card-head">
             <div>
                 <div class="card-title">PanelBaz / پنل باز</div>
-                <div class="card-subtitle">اتصال SMM API برای دریافت سرویس‌ها، قیمت‌گذاری با دلار، سفارش خودکار/دستی، پیگیری وضعیت و موجودی.</div>
+                <div class="card-subtitle">اتصال SMM API برای دریافت سرویس‌ها، قیمت‌گذاری مستقیم با تومان، سفارش خودکار/دستی، پیگیری وضعیت و موجودی.</div>
             </div>
         </div>
 
@@ -1088,20 +1076,11 @@ include __DIR__ . '/inc/layout_head.php';
                 <small class="field-hint">کلید را از ویرایش پروفایل PanelBaz بسازید؛ فقط سمت سرور ذخیره می‌شود.</small>
             </div>
 
-            <div class="two-col" style="gap:10px">
-                <div class="field">
-                    <label>درصد سود همه سرویس‌ها</label>
-                    <input class="input" type="number" name="panelbaz_profit_percent" min="0" max="1000" step="0.1"
-                        value="<?= htmlspecialchars((string) $panelBazProfitPercent) ?>" required>
-                    <small class="field-hint">قیمت API به‌صورت USD خوانده می‌شود و بعد از تبدیل به تومان، درصد سود اعمال می‌شود.</small>
-                </div>
-                <div class="field">
-                    <label>نرخ هر ۱ دلار به تومان</label>
-                    <input class="input" type="number" name="panelbaz_usd_to_toman" min="1" step="1"
-                        value="<?= htmlspecialchars($panelBazUsdToToman > 0 ? (string) $panelBazUsdToToman : '') ?>"
-                        placeholder="مثلاً 100000" required>
-                    <small class="field-hint">برای محاسبه قیمت فروش سرویس‌های PanelBaz استفاده می‌شود.</small>
-                </div>
+            <div class="field">
+                <label>درصد سود همه سرویس‌ها</label>
+                <input class="input" type="number" name="panelbaz_profit_percent" min="0" max="1000" step="0.1"
+                    value="<?= htmlspecialchars((string) $panelBazProfitPercent) ?>" required>
+                <small class="field-hint">قیمت <code>rate</code> پنل باز مستقیماً تومان است؛ فقط درصد سود روی قیمت پایه اعمال می‌شود.</small>
             </div>
 
             <div class="two-col" style="gap:10px">
@@ -1125,12 +1104,8 @@ include __DIR__ . '/inc/layout_head.php';
                     <?php if (!empty($panelBazWalletStatus['ok'])): ?>
                         <?php
                         $panelBazBalance = (float) ($panelBazWalletStatus['balance'] ?? 0);
-                        $panelBazCurrency = strtoupper((string) ($panelBazWalletStatus['currency'] ?? 'USD'));
                         ?>
-                        <code><?= htmlspecialchars(rtrim(rtrim(number_format($panelBazBalance, 4, '.', ''), '0'), '.')) ?> <?= htmlspecialchars($panelBazCurrency) ?></code>
-                        <?php if ($panelBazCurrency === 'USD' && $panelBazUsdToToman > 0): ?>
-                            · حدود <code><?= number_format($panelBazBalance * $panelBazUsdToToman) ?> تومان</code>
-                        <?php endif; ?>
+                        <code><?= number_format($panelBazBalance) ?> تومان</code>
                     <?php else: ?>
                         <?= htmlspecialchars((string) ($panelBazWalletStatus['message'] ?? 'دریافت موجودی ناموفق بود.')) ?>
                     <?php endif; ?>
