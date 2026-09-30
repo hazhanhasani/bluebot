@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 final class BluebotProviderCatalogService
 {
-    private const RESERVED_KEYS = ['manual', 'telegram_bot', 'tgtools'];
+    private const RESERVED_KEYS = ['manual', 'telegram_bot', 'tgtools', 'tivanovin'];
     private const DISCOVERY_MAX_ATTEMPTS = 12;
     private const DISCOVERY_BUDGET_SECONDS = 8.0;
     private const DISCOVERY_CONNECT_TIMEOUT_SECONDS = 2;
@@ -625,7 +625,7 @@ final class BluebotProviderCatalogService
                 'profit_percent' => (float) $provider['profit_percent'],
                 'price_mode' => 'margin',
                 'synced_at' => gmdate(DATE_ATOM),
-                'delivery_mode' => $providerKey === 'ozvinoo' ? 'integrated' : 'manual',
+                'delivery_mode' => ($smmStyle || $providerKey === 'ozvinoo') ? 'integrated' : 'manual',
                 'api_style' => $smmStyle ? 'smm' : 'rest',
                 'service_value' => $serviceValue,
             ];
@@ -1211,7 +1211,7 @@ final class BluebotProviderCatalogService
             CURLOPT_TIMEOUT => self::DISCOVERY_REQUEST_TIMEOUT_SECONDS,
             CURLOPT_SSL_VERIFYHOST => 2,
             CURLOPT_SSL_VERIFYPEER => true,
-            CURLOPT_PROTOCOLS => CURLPROTO_HTTPS,
+            CURLOPT_PROTOCOLS => $legacyTivaHttp ? CURLPROTO_HTTP : CURLPROTO_HTTPS,
             CURLOPT_FOLLOWLOCATION => false,
             CURLOPT_USERAGENT => 'BlueBot/0.5.36 ProviderCatalog',
         ]);
@@ -1258,7 +1258,8 @@ final class BluebotProviderCatalogService
         string $authPrefix,
         int $redirectsRemaining = 1
     ): array {
-        if (!self::isSafeHttpsUrl($url)) {
+        $legacyTivaHttp = self::isSafeTivaNovinLegacyUrl($url);
+        if (!self::isSafeHttpsUrl($url) && !$legacyTivaHttp) {
             return ['ok' => false, 'message' => 'SMM catalog URL is unsafe.'];
         }
         if (trim($apiKey) === '') {
@@ -1310,7 +1311,11 @@ final class BluebotProviderCatalogService
         if ($http >= 300 && $http < 400 && $redirectsRemaining > 0 && $redirectUrl !== '') {
             $sourceHost = strtolower((string) parse_url($url, PHP_URL_HOST));
             $redirectHost = strtolower((string) parse_url($redirectUrl, PHP_URL_HOST));
-            if ($sourceHost !== '' && $sourceHost === $redirectHost && self::isSafeHttpsUrl($redirectUrl)) {
+            if (
+                $sourceHost !== ''
+                && $sourceHost === $redirectHost
+                && (self::isSafeHttpsUrl($redirectUrl) || self::isSafeTivaNovinLegacyUrl($redirectUrl))
+            ) {
                 return self::requestSmmServices(
                     $redirectUrl,
                     $apiKey,
@@ -1397,6 +1402,51 @@ final class BluebotProviderCatalogService
         }
 
         $hostSafetyCache[$host] = true;
+        return true;
+    }
+
+    private static function isSafeTivaNovinLegacyUrl(string $url): bool
+    {
+        if (!filter_var($url, FILTER_VALIDATE_URL)) {
+            return false;
+        }
+
+        $parts = parse_url($url);
+        if (!is_array($parts)
+            || strtolower((string) ($parts['scheme'] ?? '')) !== 'http'
+            || isset($parts['user'])
+            || isset($parts['pass'])) {
+            return false;
+        }
+
+        $host = strtolower(trim((string) ($parts['host'] ?? '')));
+        if (!in_array($host, ['tivanovin.ir', 'www.tivanovin.ir'], true)) {
+            return false;
+        }
+
+        if (isset($parts['port']) && (int) $parts['port'] !== 80) {
+            return false;
+        }
+
+        $path = '/' . ltrim((string) ($parts['path'] ?? ''), '/');
+        $path = preg_replace('#/+#', '/', $path) ?: '/';
+        if (rtrim($path, '/') !== '/api') {
+            return false;
+        }
+
+        $ips = gethostbynamel($host);
+        if (is_array($ips) && $ips !== []) {
+            foreach ($ips as $ip) {
+                if (!filter_var(
+                    $ip,
+                    FILTER_VALIDATE_IP,
+                    FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE
+                )) {
+                    return false;
+                }
+            }
+        }
+
         return true;
     }
 
