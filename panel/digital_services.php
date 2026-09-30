@@ -51,6 +51,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         $starsProfit = (float) ($_POST['tgtools_stars_profit_percent'] ?? 0);
         $premiumProfit = (float) ($_POST['tgtools_premium_profit_percent'] ?? 0);
+        $tradeFeePercent = (float) ($_POST['tgtools_nobitex_trade_fee_percent'] ?? 0.25);
+        $networkFeeGram = (float) ($_POST['tgtools_gram_network_fee'] ?? 0.000562);
+        $fundingBatchGram = (float) ($_POST['tgtools_gram_funding_batch'] ?? 1);
 
         if ($starsProfit < 0 || $starsProfit > 1000 || $premiumProfit < 0 || $premiumProfit > 1000) {
             flash('error', 'درصد سود باید بین ۰ تا ۱۰۰۰ باشد.');
@@ -61,6 +64,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         ds_panel_set_setting($pdo, 'tgtools_payment_method', 'ton');
         ds_panel_set_setting($pdo, 'tgtools_stars_profit_percent', (string) $starsProfit);
         ds_panel_set_setting($pdo, 'tgtools_premium_profit_percent', (string) $premiumProfit);
+        ds_panel_set_setting($pdo, 'tgtools_nobitex_trade_fee_percent', (string) max(0, min(20, $tradeFeePercent)));
+        ds_panel_set_setting($pdo, 'tgtools_gram_network_fee', (string) max(0, $networkFeeGram));
+        ds_panel_set_setting($pdo, 'tgtools_gram_funding_batch', (string) max(0.000001, $fundingBatchGram));
         if ($apiKey !== '') {
             ds_panel_set_setting($pdo, 'tgtools_api_key', $apiKey, true);
         }
@@ -327,6 +333,7 @@ $tgPremiumProfit = (float) ds_panel_setting($pdo, 'tgtools_premium_profit_percen
 BluebotDigitalServices::refreshTgToolsTonRateFromNobitex($pdo, false, 60);
 $tgTonRateStatus = BluebotDigitalServices::tgToolsTonRateStatus($pdo);
 $tgTonRateToman = (float) ($tgTonRateStatus['rate_toman'] ?? 0);
+$tgLandedTonRateToman = (float) ($tgTonRateStatus['landed_rate_toman'] ?? 0);
 $tgWalletStatus = $tgApiKey !== ''
     ? BluebotDigitalServices::tgToolsWalletStatus($pdo)
     : ['ok' => false, 'configured' => false, 'balance_ton' => null, 'deposit_address' => '', 'message' => 'API Key تنظیم نشده است.'];
@@ -432,6 +439,28 @@ include __DIR__ . '/inc/layout_head.php';
                         آخرین خطا: <?= htmlspecialchars((string) $tgTonRateStatus['last_error']) ?> · نرخ قبلی حفظ شده است.
                     </small>
                 <?php endif; ?>
+            </div>
+            <div class="notice notice-info">
+                <strong>نرخ تمام‌شده GRAM برای TGTools:</strong>
+                <code><?= $tgLandedTonRateToman > 0 ? htmlspecialchars(number_format($tgLandedTonRateToman)) . ' تومان' : '—' ?></code>
+                <br><small>شامل کارمزد خرید در بازار تومانی نوبیتکس و کارمزد انتقال شبکه تا کیف پول TGTools.</small>
+            </div>
+            <div class="three-col" style="gap:10px">
+                <div class="field">
+                    <label>کارمزد بازار تومانی نوبیتکس (%)</label>
+                    <input class="input" type="number" name="tgtools_nobitex_trade_fee_percent" min="0" max="20" step="0.001"
+                        value="<?= htmlspecialchars((string) ($tgTonRateStatus['trade_fee_percent'] ?? 0.25)) ?>">
+                </div>
+                <div class="field">
+                    <label>کارمزد انتقال شبکه (GRAM)</label>
+                    <input class="input" type="number" name="tgtools_gram_network_fee" min="0" step="0.000001"
+                        value="<?= htmlspecialchars((string) ($tgTonRateStatus['network_fee_gram'] ?? 0.000562)) ?>">
+                </div>
+                <div class="field">
+                    <label>حجم هر شارژ TGTools (GRAM)</label>
+                    <input class="input" type="number" name="tgtools_gram_funding_batch" min="0.000001" step="0.000001"
+                        value="<?= htmlspecialchars((string) ($tgTonRateStatus['funding_batch_gram'] ?? 1)) ?>">
+                </div>
             </div>
             <div class="notice notice-info">
                 BlueBot بسته‌های Stars و Premium را از <code>/api/purchase/prices</code> می‌خواند، قیمت عمده را دریافت می‌کند و قیمت فروش را خودکار می‌سازد.
