@@ -997,6 +997,34 @@ if ($text == "/start" || $datain == "start" || $text == "start") {
         return;
     }
 
+    if (BluebotDigitalServices::categoryUsesServiceGroups($category)) {
+        $groups = BluebotDigitalServices::serviceGroups($pdo, $category);
+        if ($groups !== []) {
+            $categoryTitle = BluebotDigitalServices::categoryLabel($category, $pdo);
+            $categoryText = "<b>" . htmlspecialchars($categoryTitle, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . "</b>\n\n"
+                . "نوع سرویس موردنظر را انتخاب کنید 👇\n"
+                . "🗂 " . number_format(count($groups)) . " زیر‌دسته فعال";
+            $categoryKeyboard = BluebotDigitalServices::serviceGroupKeyboard($pdo, $category);
+
+            step('home', $from_id);
+            update('user', 'Processing_value', '0', 'id', $from_id);
+
+            $editResult = Editmessagetext($from_id, $message_id, $categoryText, $categoryKeyboard);
+            if (!is_array($editResult) || empty($editResult['ok'])) {
+                $description = is_array($editResult) ? trim((string) ($editResult['description'] ?? '')) : '';
+                bluebotLog('warning', 'Digital service subcategory menu edit failed', [
+                    'user_id' => (string) $from_id,
+                    'category' => $category,
+                    'description' => $description,
+                ]);
+                if (!str_contains(strtolower($description), 'message is not modified')) {
+                    sendmessage($from_id, $categoryText, $categoryKeyboard, 'HTML');
+                }
+            }
+            return;
+        }
+    }
+
     $pageInfo = BluebotDigitalServices::catalogPageInfo($pdo, $category, $requestedPage, 8);
     $currentPage = (int) ($pageInfo['page'] ?? 1);
     $categoryKeyboard = BluebotDigitalServices::catalogKeyboard(
@@ -1030,6 +1058,90 @@ if ($text == "/start" || $datain == "start" || $text == "start") {
         ]);
         if (!str_contains(strtolower($description), 'message is not modified')) {
             sendmessage($from_id, $categoryText, $categoryKeyboard, 'HTML');
+        }
+    }
+    return;
+} elseif (preg_match('/^ds_sg:([a-z0-9_-]{1,24}):([a-z0-9_-]{1,32}):(\d{1,4})$/', (string) $datain, $digitalServiceGroupMatch)) {
+    if (!check_active_btn($setting['keyboardmain'], 'text_digital_services')) {
+        sendmessage($from_id, $textbotlang['users']['buttonDisabled'], null, 'HTML');
+        return;
+    }
+
+    if (!empty($callback_query_id)) {
+        telegram('answerCallbackQuery', [
+            'callback_query_id' => $callback_query_id,
+            'cache_time' => 0,
+        ]);
+    }
+
+    $category = (string) $digitalServiceGroupMatch[1];
+    $serviceGroup = (string) $digitalServiceGroupMatch[2];
+    $requestedPage = max(1, (int) $digitalServiceGroupMatch[3]);
+
+    $selectedGroup = null;
+    foreach (BluebotDigitalServices::serviceGroups($pdo, $category) as $group) {
+        if ((string) ($group['key'] ?? '') === $serviceGroup) {
+            $selectedGroup = $group;
+            break;
+        }
+    }
+
+    if (!is_array($selectedGroup)) {
+        if (!empty($callback_query_id)) {
+            telegram('answerCallbackQuery', [
+                'callback_query_id' => $callback_query_id,
+                'text' => 'این زیر‌دسته دیگر فعال نیست.',
+                'show_alert' => true,
+                'cache_time' => 0,
+            ]);
+        }
+        return;
+    }
+
+    $pageInfo = BluebotDigitalServices::catalogPageInfo(
+        $pdo,
+        $category,
+        $requestedPage,
+        8,
+        $serviceGroup
+    );
+    $currentPage = (int) ($pageInfo['page'] ?? 1);
+    $catalogKeyboard = BluebotDigitalServices::catalogKeyboard(
+        $pdo,
+        $textbotlang['users']['backbtn'],
+        $category,
+        $currentPage,
+        8,
+        $serviceGroup
+    );
+
+    $categoryTitle = BluebotDigitalServices::categoryLabel($category, $pdo);
+    $groupTitle = (string) ($selectedGroup['label'] ?? '🗂 سرویس‌ها');
+    $catalogText = "<b>" . htmlspecialchars($categoryTitle, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . "</b>\n"
+        . "<b>" . htmlspecialchars($groupTitle, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . "</b>\n\n"
+        . htmlspecialchars($textbotlang['digitalServices']['select'] ?? 'سرویس موردنظر را انتخاب کنید 👇', ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+
+    if ((int) ($pageInfo['pages'] ?? 1) > 1) {
+        $catalogText .= "\n\n📦 " . number_format((int) ($pageInfo['total'] ?? 0))
+            . " سرویس · صفحه " . number_format($currentPage)
+            . " از " . number_format((int) ($pageInfo['pages'] ?? 1));
+    }
+
+    step('home', $from_id);
+    update('user', 'Processing_value', '0', 'id', $from_id);
+
+    $editResult = Editmessagetext($from_id, $message_id, $catalogText, $catalogKeyboard);
+    if (!is_array($editResult) || empty($editResult['ok'])) {
+        $description = is_array($editResult) ? trim((string) ($editResult['description'] ?? '')) : '';
+        bluebotLog('warning', 'Digital service group catalog edit failed', [
+            'user_id' => (string) $from_id,
+            'category' => $category,
+            'service_group' => $serviceGroup,
+            'page' => $currentPage,
+            'description' => $description,
+        ]);
+        if (!str_contains(strtolower($description), 'message is not modified')) {
+            sendmessage($from_id, $catalogText, $catalogKeyboard, 'HTML');
         }
     }
     return;

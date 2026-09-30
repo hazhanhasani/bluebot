@@ -1844,6 +1844,106 @@ final class BluebotDigitalServices
         return 'other';
     }
 
+    public static function serviceGroupForProduct(array $product): array
+    {
+        $metadata = self::productMetadata($product);
+        $key = strtolower(trim((string) ($metadata['service_group_key'] ?? '')));
+        $label = trim((string) ($metadata['service_group_label'] ?? ''));
+        $sort = (int) ($metadata['service_group_sort'] ?? 500);
+
+        if ($key !== '' && preg_match('/^[a-z0-9_-]{1,32}$/', $key)) {
+            return [
+                'key' => $key,
+                'label' => $label !== '' ? $label : '🗂 ' . str_replace(['-', '_'], ' ', $key),
+                'sort' => $sort,
+            ];
+        }
+
+        $category = self::categoryForProduct($product);
+        $rawCategory = trim((string) ($metadata['provider_category_raw'] ?? ''));
+        $description = trim((string) ($metadata['provider_description'] ?? $product['description'] ?? ''));
+
+        return BluebotProviderCatalogService::normaliseServiceGroup(
+            $category,
+            $rawCategory,
+            (string) ($product['name'] ?? ''),
+            $description
+        );
+    }
+
+    public static function categoryUsesServiceGroups(string $category): bool
+    {
+        $category = strtolower(trim($category));
+        if ($category === '' || strlen($category) > 24) {
+            return false;
+        }
+
+        return !in_array($category, ['premium', 'stars', 'virtual_number'], true);
+    }
+
+    public static function serviceGroups(PDO $pdo, string $category): array
+    {
+        if (!self::categoryUsesServiceGroups($category)) {
+            return [];
+        }
+
+        $groups = [];
+        foreach (self::listActive($pdo) as $product) {
+            if (self::categoryForProduct($product) !== $category) {
+                continue;
+            }
+
+            $group = self::serviceGroupForProduct($product);
+            $key = (string) ($group['key'] ?? 'other');
+            if (!isset($groups[$key])) {
+                $groups[$key] = [
+                    'key' => $key,
+                    'label' => (string) ($group['label'] ?? '🧩 سایر'),
+                    'sort' => (int) ($group['sort'] ?? 500),
+                    'count' => 0,
+                ];
+            }
+            $groups[$key]['count']++;
+        }
+
+        uasort($groups, static function (array $a, array $b): int {
+            $sort = ((int) ($a['sort'] ?? 500)) <=> ((int) ($b['sort'] ?? 500));
+            if ($sort !== 0) {
+                return $sort;
+            }
+            return strnatcasecmp((string) ($a['label'] ?? ''), (string) ($b['label'] ?? ''));
+        });
+
+        return array_values($groups);
+    }
+
+    public static function serviceGroupKeyboard(PDO $pdo, string $category): string
+    {
+        $rows = [];
+        foreach (self::serviceGroups($pdo, $category) as $group) {
+            $groupKey = (string) ($group['key'] ?? 'other');
+            $rows[] = [[
+                'text' => (string) ($group['label'] ?? '🧩 سایر')
+                    . ' · ' . number_format((int) ($group['count'] ?? 0)),
+                'callback_data' => 'ds_sg:' . $category . ':' . $groupKey . ':1',
+            ]];
+        }
+
+        if ($rows === []) {
+            $rows[] = [[
+                'text' => 'فعلاً زیر‌دسته‌ای موجود نیست',
+                'callback_data' => 'ds_home',
+            ]];
+        }
+
+        $rows[] = [[
+            'text' => '↩️ دسته‌بندی‌ها',
+            'callback_data' => 'ds_home',
+        ]];
+
+        return json_encode(['inline_keyboard' => $rows], JSON_UNESCAPED_UNICODE);
+    }
+
     public static function ensureManagedCategorySchema(PDO $pdo): bool
     {
         try {
@@ -1874,6 +1974,8 @@ final class BluebotDigitalServices
                 ['linkedin', 'خدمات لینکدین', '💼', 100],
                 ['facebook', 'خدمات فیسبوک', '📘', 110],
                 ['whatsapp', 'خدمات واتساپ', '🟢', 120],
+                ['rubika', 'خدمات روبیکا', '⭐', 125],
+                ['rubino', 'خدمات روبینو', '⭐', 126],
                 ['giftcards', 'گیفت‌کارت', '🎁', 130],
                 ['games', 'بازی و شارژ', '🎮', 140],
                 ['apple', 'خدمات اپل', '🍎', 150],
@@ -2024,6 +2126,8 @@ final class BluebotDigitalServices
             'linkedin' => '💼 خدمات لینکدین',
             'facebook' => '📘 خدمات فیسبوک',
             'whatsapp' => '🟢 خدمات واتساپ',
+            'rubika' => '⭐ خدمات روبیکا',
+            'rubino' => '⭐ خدمات روبینو',
             'likee' => '💜 خدمات Likee',
             'naver' => '🟩 Naver TV',
             'giftcards' => '🎁 گیفت‌کارت',
@@ -2074,6 +2178,8 @@ final class BluebotDigitalServices
             'linkedin' => 100,
             'facebook' => 110,
             'whatsapp' => 120,
+            'rubika' => 125,
+            'rubino' => 126,
             'other' => 999,
             default => 500,
         };
@@ -2387,7 +2493,8 @@ final class BluebotDigitalServices
         string $backText,
         ?string $category = null,
         int $page = 1,
-        int $perPage = 8
+        int $perPage = 8,
+        ?string $serviceGroup = null
     ): string {
         $rows = [];
         if ($category !== null && !self::categoryEnabled($pdo, $category)) {
@@ -2401,6 +2508,10 @@ final class BluebotDigitalServices
         $products = [];
         foreach (self::listActive($pdo) as $product) {
             if ($category !== null && self::categoryForProduct($product) !== $category) {
+                continue;
+            }
+            if ($serviceGroup !== null
+                && (string) (self::serviceGroupForProduct($product)['key'] ?? '') !== $serviceGroup) {
                 continue;
             }
             $products[] = $product;
@@ -2429,16 +2540,20 @@ final class BluebotDigitalServices
 
         if ($category !== null && $pages > 1) {
             $nav = [];
+            $callbackBase = $serviceGroup !== null
+                ? 'ds_sg:' . $category . ':' . $serviceGroup . ':'
+                : 'ds_category:' . $category . ':';
+
             if ($page > 1) {
                 $nav[] = [
                     'text' => '⬅️ قبلی',
-                    'callback_data' => 'ds_category:' . $category . ':' . ($page - 1),
+                    'callback_data' => $callbackBase . ($page - 1),
                 ];
             }
             if ($page < $pages) {
                 $nav[] = [
                     'text' => 'بعدی ➡️',
-                    'callback_data' => 'ds_category:' . $category . ':' . ($page + 1),
+                    'callback_data' => $callbackBase . ($page + 1),
                 ];
             }
             if ($nav !== []) {
@@ -2446,24 +2561,43 @@ final class BluebotDigitalServices
             }
         }
 
-        $rows[] = [[
-            'text' => $category !== null
-                ? ($pages > 1 ? '↩️ دسته‌بندی‌ها · صفحه ' . $page . ' از ' . $pages : '↩️ دسته‌بندی‌ها')
-                : $backText,
-            'callback_data' => $category !== null ? 'ds_home' : 'backuser',
-        ]];
+        if ($serviceGroup !== null && $category !== null) {
+            $rows[] = [[
+                'text' => $pages > 1
+                    ? '↩️ زیر‌دسته‌ها · صفحه ' . $page . ' از ' . $pages
+                    : '↩️ زیر‌دسته‌ها',
+                'callback_data' => 'ds_category:' . $category,
+            ]];
+        } else {
+            $rows[] = [[
+                'text' => $category !== null
+                    ? ($pages > 1 ? '↩️ دسته‌بندی‌ها · صفحه ' . $page . ' از ' . $pages : '↩️ دسته‌بندی‌ها')
+                    : $backText,
+                'callback_data' => $category !== null ? 'ds_home' : 'backuser',
+            ]];
+        }
 
         return json_encode(['inline_keyboard' => $rows], JSON_UNESCAPED_UNICODE);
     }
 
-    public static function catalogPageInfo(PDO $pdo, string $category, int $page = 1, int $perPage = 8): array
-    {
+    public static function catalogPageInfo(
+        PDO $pdo,
+        string $category,
+        int $page = 1,
+        int $perPage = 8,
+        ?string $serviceGroup = null
+    ): array {
         $perPage = max(4, min(12, $perPage));
         $total = 0;
         foreach (self::listActive($pdo) as $product) {
-            if (self::categoryForProduct($product) === $category) {
-                $total++;
+            if (self::categoryForProduct($product) !== $category) {
+                continue;
             }
+            if ($serviceGroup !== null
+                && (string) (self::serviceGroupForProduct($product)['key'] ?? '') !== $serviceGroup) {
+                continue;
+            }
+            $total++;
         }
 
         $pages = max(1, (int) ceil($total / $perPage));
@@ -2481,10 +2615,15 @@ final class BluebotDigitalServices
     {
         $category = self::categoryForProduct($product);
         $backCallback = 'ds_category:' . $category;
+
         if ((string) ($product['type'] ?? '') === 'virtual_number') {
             $metadata = self::productMetadata($product);
             $applicationId = max(0, (int) ($metadata['application_id'] ?? $metadata['service_id'] ?? 0));
             $backCallback = 'ds_vn_app:' . $applicationId . ':1';
+        } elseif (self::categoryUsesServiceGroups($category)) {
+            $group = self::serviceGroupForProduct($product);
+            $groupKey = (string) ($group['key'] ?? 'other');
+            $backCallback = 'ds_sg:' . $category . ':' . $groupKey . ':1';
         }
 
         return json_encode([

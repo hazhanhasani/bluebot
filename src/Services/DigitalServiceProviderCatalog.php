@@ -485,7 +485,21 @@ final class BluebotProviderCatalogService
             }
             $stats['checked']++;
 
-            $forcePanelBazReprice = strtolower((string) ($provider['provider_key'] ?? '')) === 'panelbaz'
+            $providerKey = strtolower((string) ($provider['provider_key'] ?? ''));
+            $subcategoryMigrationNeeded = false;
+            try {
+                $subcategoryCheck = $pdo->prepare(
+                    "SELECT COUNT(*) FROM digital_service_products
+                     WHERE provider = ? AND active = 1
+                       AND (metadata IS NULL OR metadata NOT LIKE '%\"service_group_key\"%')"
+                );
+                $subcategoryCheck->execute([$providerKey]);
+                $subcategoryMigrationNeeded = (int) $subcategoryCheck->fetchColumn() > 0;
+            } catch (Throwable $e) {
+                $subcategoryMigrationNeeded = false;
+            }
+
+            $forcePanelBazReprice = $providerKey === 'panelbaz'
                 && (
                     strtolower((string) ($provider['currency'] ?? '')) !== 'toman'
                     || abs((float) ($provider['exchange_rate_toman'] ?? 0) - 1.0) > 0.000001
@@ -506,7 +520,9 @@ final class BluebotProviderCatalogService
             $last = trim((string) ($provider['last_sync_at'] ?? ''));
             if ($last !== '') {
                 $lastTs = strtotime($last);
-                if ($lastTs !== false && time() - $lastTs < $interval * 60) {
+                if (!$subcategoryMigrationNeeded
+                    && $lastTs !== false
+                    && time() - $lastTs < $interval * 60) {
                     continue;
                 }
             }
@@ -646,6 +662,12 @@ final class BluebotProviderCatalogService
             }
 
             $category = self::normaliseCategory($categoryRaw, $name);
+            $serviceGroup = self::normaliseServiceGroup(
+                (string) $category['key'],
+                $categoryRaw,
+                $name,
+                $providerDescription
+            );
             $type = self::inferProductType($category['key'], $categoryRaw . ' ' . $name);
             $sellingPrice = self::calculateSellingPrice(
                 $cost,
@@ -668,6 +690,10 @@ final class BluebotProviderCatalogService
                 'provider_name' => (string) $provider['name'],
                 'category_key' => $category['key'],
                 'category_label' => $category['label'],
+                'provider_category_raw' => $categoryRaw,
+                'service_group_key' => $serviceGroup['key'],
+                'service_group_label' => $serviceGroup['label'],
+                'service_group_sort' => $serviceGroup['sort'],
                 'wholesale_cost' => $cost,
                 'wholesale_currency' => (string) $provider['currency'],
                 'exchange_rate_toman' => (float) $provider['exchange_rate_toman'],
@@ -793,7 +819,7 @@ final class BluebotProviderCatalogService
         $known = [
             'premium' => ['label' => '🎁 تلگرام پرمیوم', 'needles' => ['telegram premium', 'تلگرام پرمیوم', 'پرمیوم اکانت']],
             'stars' => ['label' => '⭐ استارز تلگرام', 'needles' => ['telegram stars', 'telegram star', 'استارز', 'استار تلگرام']],
-            'telegram' => ['label' => '✈️ خدمات تلگرام', 'needles' => ['telegram', 'تلگرام', 'member', 'ممبر']],
+            'telegram' => ['label' => '✈️ خدمات تلگرام', 'needles' => ['telegram', 'تلگرام']],
             'instagram' => ['label' => '📸 خدمات اینستاگرام', 'needles' => ['instagram', 'اینستاگرام']],
             'youtube' => ['label' => '▶️ خدمات یوتیوب', 'needles' => ['youtube', 'یوتیوب']],
             'twitter' => ['label' => '𝕏 خدمات X / توییتر', 'needles' => ['twitter', 'توییتر', 'x.com']],
@@ -835,6 +861,159 @@ final class BluebotProviderCatalogService
         $key = substr($ascii, 0, 40);
 
         return ['key' => $key, 'label' => '🗂 ' . mb_substr($label, 0, 40, 'UTF-8')];
+    }
+
+    public static function normaliseServiceGroup(
+        string $categoryKey,
+        string $rawCategory,
+        string $productName = '',
+        string $description = ''
+    ): array {
+        $categoryKey = strtolower(trim($categoryKey));
+        $haystack = mb_strtolower(
+            trim($rawCategory . ' ' . $productName . ' ' . $description),
+            'UTF-8'
+        );
+
+        $groups = [
+            'comment_likes' => [
+                'label' => '❤️ لایک کامنت',
+                'sort' => 55,
+                'needles' => ['comment likes', 'comment like', 'لایک کامنت', 'لایک نظر', 'لایک نظرات'],
+            ],
+            'members' => [
+                'label' => '👥 ممبر / عضو',
+                'sort' => 10,
+                'needles' => ['member', 'members', 'ممبر', 'عضو کانال', 'عضو گروه', 'group member', 'channel member', 'join'],
+            ],
+            'followers' => [
+                'label' => '👥 فالوور',
+                'sort' => 10,
+                'needles' => ['follower', 'followers', 'فالوور', 'دنبال کننده', 'دنبال‌کننده'],
+            ],
+            'subscribers' => [
+                'label' => '👥 سابسکرایب',
+                'sort' => 10,
+                'needles' => ['subscriber', 'subscribers', 'subscribe', 'سابسکرایب', 'مشترک'],
+            ],
+            'views' => [
+                'label' => '👁 بازدید / ویو',
+                'sort' => 20,
+                'needles' => ['view', 'views', 'بازدید', 'ویو', 'watch time', 'watchtime', 'تماشا'],
+            ],
+            'reactions' => [
+                'label' => '🔥 ری‌اکشن',
+                'sort' => 30,
+                'needles' => ['reaction', 'reactions', 'ری اکشن', 'ری‌اکشن', 'ریاکشن'],
+            ],
+            'likes' => [
+                'label' => '❤️ لایک',
+                'sort' => 40,
+                'needles' => ['like', 'likes', 'لایک'],
+            ],
+            'comments' => [
+                'label' => '💬 کامنت / نظر',
+                'sort' => 50,
+                'needles' => ['comment', 'comments', 'custom comments', 'کامنت', 'نظر سفارشی', 'نظرات سفارشی', 'نظر'],
+            ],
+            'forwards' => [
+                'label' => '↪️ فوروارد',
+                'sort' => 60,
+                'needles' => ['forward', 'forwards', 'فوروارد'],
+            ],
+            'shares' => [
+                'label' => '🔁 اشتراک‌گذاری',
+                'sort' => 65,
+                'needles' => ['share', 'shares', 'repost', 'reposts', 'اشتراک گذاری', 'اشتراک‌گذاری', 'بازنشر'],
+            ],
+            'saves' => [
+                'label' => '🔖 ذخیره / سیو',
+                'sort' => 70,
+                'needles' => ['save', 'saves', 'bookmark', 'ذخیره', 'سیو'],
+            ],
+            'story' => [
+                'label' => '📖 استوری',
+                'sort' => 75,
+                'needles' => ['story', 'stories', 'استوری'],
+            ],
+            'mentions' => [
+                'label' => '🏷 منشن / یادکرد',
+                'sort' => 80,
+                'needles' => ['mention', 'mentions', 'منشن', 'یادکرد'],
+            ],
+            'polls' => [
+                'label' => '🗳 نظرسنجی / رأی',
+                'sort' => 85,
+                'needles' => ['poll', 'vote', 'votes', 'نظرسنجی', 'رأی', 'رای'],
+            ],
+            'boosts' => [
+                'label' => '🚀 بوست',
+                'sort' => 90,
+                'needles' => ['boost', 'boosts', 'بوست'],
+            ],
+            'reach' => [
+                'label' => '📊 ریچ / ایمپرشن',
+                'sort' => 95,
+                'needles' => ['reach', 'impression', 'impressions', 'ریچ', 'ایمپرشن', 'آمار'],
+            ],
+            'live' => [
+                'label' => '🔴 لایو',
+                'sort' => 100,
+                'needles' => ['live', 'livestream', 'stream', 'لایو', 'پخش زنده'],
+            ],
+            'invites' => [
+                'label' => '📨 دعوت',
+                'sort' => 105,
+                'needles' => ['invite', 'invites', 'دعوت'],
+            ],
+        ];
+
+        foreach ($groups as $key => $info) {
+            foreach ($info['needles'] as $needle) {
+                if ($needle !== '' && mb_strpos($haystack, $needle, 0, 'UTF-8') !== false) {
+                    $label = (string) $info['label'];
+
+                    if ($key === 'members') {
+                        $label = match ($categoryKey) {
+                            'instagram', 'twitter', 'tiktok', 'rubino', 'facebook', 'likee' => '👥 فالوور',
+                            'youtube' => '👥 سابسکرایب',
+                            default => '👥 ممبر / عضو',
+                        };
+                    } elseif ($key === 'followers' && $categoryKey === 'youtube') {
+                        $label = '👥 سابسکرایب';
+                    } elseif ($key === 'subscribers' && in_array($categoryKey, ['telegram', 'rubika'], true)) {
+                        $label = '👥 ممبر / عضو';
+                    }
+
+                    return [
+                        'key' => $key,
+                        'label' => $label,
+                        'sort' => (int) $info['sort'],
+                    ];
+                }
+            }
+        }
+
+        $rawLabel = trim($rawCategory);
+        if ($rawLabel !== '') {
+            $cleanLabel = preg_replace('/\s+/u', ' ', $rawLabel) ?: $rawLabel;
+            $cleanLabel = trim($cleanLabel);
+            if (mb_strlen($cleanLabel, 'UTF-8') > 44) {
+                $cleanLabel = rtrim(mb_substr($cleanLabel, 0, 43, 'UTF-8')) . '…';
+            }
+
+            return [
+                'key' => 'raw-' . substr(hash('sha256', $categoryKey . '|' . $rawLabel), 0, 12),
+                'label' => '🗂 ' . $cleanLabel,
+                'sort' => 500,
+            ];
+        }
+
+        return [
+            'key' => 'other',
+            'label' => '🧩 سایر',
+            'sort' => 999,
+        ];
     }
 
     private static function inferProductType(string $categoryKey, string $text): string
