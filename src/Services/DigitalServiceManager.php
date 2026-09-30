@@ -243,15 +243,26 @@ final class BluebotDigitalServices
     {
         $marketRate = max(0.0, (float) self::setting($pdo, 'tgtools_ton_toman_rate', '0'));
         $tradeFeePercent = max(0.0, min(20.0, (float) self::setting($pdo, 'tgtools_nobitex_trade_fee_percent', '0.25')));
-        $networkFeeGram = max(0.0, (float) self::setting($pdo, 'tgtools_gram_network_fee', '0.000562'));
+        $nobitexWithdrawFeeGram = max(0.0, (float) self::setting($pdo, 'tgtools_nobitex_withdraw_fee_gram', '0.1'));
+        $walletTransferFeeGram = max(0.0, (float) self::setting($pdo, 'tgtools_gram_network_fee', '0.000562'));
         $fundingBatchGram = max(0.000001, (float) self::setting($pdo, 'tgtools_gram_funding_batch', '1'));
-        $landedRate = self::tgToolsLandedTonRate($marketRate, $tradeFeePercent, $networkFeeGram, $fundingBatchGram);
+        $landedRate = self::tgToolsLandedTonRate(
+            $marketRate,
+            $tradeFeePercent,
+            $nobitexWithdrawFeeGram,
+            $walletTransferFeeGram,
+            $fundingBatchGram
+        );
 
         return [
             'rate_toman' => $marketRate,
             'landed_rate_toman' => $landedRate,
             'trade_fee_percent' => $tradeFeePercent,
-            'network_fee_gram' => $networkFeeGram,
+            'nobitex_withdraw_fee_gram' => $nobitexWithdrawFeeGram,
+            'nobitex_withdraw_min_gram' => max(0.0, (float) self::setting($pdo, 'tgtools_nobitex_withdraw_min_gram', '0.2')),
+            'nobitex_withdraw_fee_last_sync' => (int) self::setting($pdo, 'tgtools_nobitex_withdraw_fee_last_sync', '0'),
+            'nobitex_withdraw_fee_last_error' => self::setting($pdo, 'tgtools_nobitex_withdraw_fee_last_error', ''),
+            'network_fee_gram' => $walletTransferFeeGram,
             'funding_batch_gram' => $fundingBatchGram,
             'overhead_percent' => $marketRate > 0 ? (($landedRate / $marketRate) - 1) * 100 : 0.0,
             'source' => self::setting($pdo, 'tgtools_ton_rate_source', 'nobitex'),
@@ -265,7 +276,8 @@ final class BluebotDigitalServices
     private static function tgToolsLandedTonRate(
         float $marketRateToman,
         float $tradeFeePercent,
-        float $networkFeeGram,
+        float $nobitexWithdrawFeeGram,
+        float $walletTransferFeeGram,
         float $fundingBatchGram
     ): float {
         if ($marketRateToman <= 0 || $fundingBatchGram <= 0) {
@@ -274,9 +286,68 @@ final class BluebotDigitalServices
 
         $tradeFeeFraction = max(0.0, min(0.99, $tradeFeePercent / 100));
         $grossFactor = 1.0 / (1.0 - $tradeFeeFraction);
-        $networkFactor = ($fundingBatchGram + max(0.0, $networkFeeGram)) / $fundingBatchGram;
+        $fixedFeesGram = max(0.0, $nobitexWithdrawFeeGram) + max(0.0, $walletTransferFeeGram);
+        $deliveryFactor = ($fundingBatchGram + $fixedFeesGram) / $fundingBatchGram;
 
-        return $marketRateToman * $grossFactor * $networkFactor;
+        return $marketRateToman * $grossFactor * $deliveryFactor;
+    }
+
+    public static function refreshTgToolsNobitexWithdrawalFee(
+        PDO $pdo,
+        bool $force = false,
+        int $maxAgeSeconds = 900
+    ): array {
+        $maxAgeSeconds = max(60, min(86400, $maxAgeSeconds));
+        $lastSync = (int) self::setting($pdo, 'tgtools_nobitex_withdraw_fee_last_sync', '0');
+        $cachedFee = max(0.0, (float) self::setting($pdo, 'tgtools_nobitex_withdraw_fee_gram', '0.1'));
+        $cachedMin = max(0.0, (float) self::setting($pdo, 'tgtools_nobitex_withdraw_min_gram', '0.2'));
+
+        if (!$force && $lastSync > 0 && (time() - $lastSync) < $maxAgeSeconds) {
+            return [
+                'ok' => true,
+                'skipped' => true,
+                'withdraw_fee_gram' => $cachedFee,
+                'withdraw_min_gram' => $cachedMin,
+                'last_sync' => $lastSync,
+                'message' => '',
+            ];
+        }
+
+        $response = (new NobitexMarketClient())->gramWithdrawalInfo();
+        if (empty($response['ok'])) {
+            $message = trim((string) ($response['message'] ?? '')) ?: 'Nobitex withdrawal-fee request failed.';
+            self::setSetting($pdo, 'tgtools_nobitex_withdraw_fee_last_error', $message, false);
+
+            return [
+                'ok' => false,
+                'skipped' => false,
+                'withdraw_fee_gram' => $cachedFee,
+                'withdraw_min_gram' => $cachedMin,
+                'last_sync' => $lastSync,
+                'message' => $message,
+            ];
+        }
+
+        $fee = max(0.0, (float) ($response['withdraw_fee_gram'] ?? $cachedFee));
+        $minimum = is_numeric($response['withdraw_min_gram'] ?? null)
+            ? max(0.0, (float) $response['withdraw_min_gram'])
+            : $cachedMin;
+        $now = time();
+
+        self::setSetting($pdo, 'tgtools_nobitex_withdraw_fee_gram', self::decimalString($fee), false);
+        self::setSetting($pdo, 'tgtools_nobitex_withdraw_min_gram', self::decimalString($minimum), false);
+        self::setSetting($pdo, 'tgtools_nobitex_withdraw_fee_last_sync', (string) $now, false);
+        self::setSetting($pdo, 'tgtools_nobitex_withdraw_fee_last_error', '', false);
+
+        return [
+            'ok' => true,
+            'skipped' => false,
+            'withdraw_fee_gram' => $fee,
+            'withdraw_min_gram' => $minimum,
+            'last_sync' => $now,
+            'message' => '',
+            'response' => $response,
+        ];
     }
 
     public static function refreshTgToolsTonRateFromNobitex(
@@ -285,6 +356,7 @@ final class BluebotDigitalServices
         int $maxAgeSeconds = 60
     ): array {
         $maxAgeSeconds = max(15, min(3600, $maxAgeSeconds));
+        self::refreshTgToolsNobitexWithdrawalFee($pdo, $force, 900);
         $status = self::tgToolsTonRateStatus($pdo);
 
         if (!$force
@@ -422,6 +494,7 @@ final class BluebotDigitalServices
             $metadata['ton_rate_toman'] = $tonRateToman;
             $metadata['ton_landed_rate_toman'] = $landedRateToman;
             $metadata['nobitex_trade_fee_percent'] = (float) ($status['trade_fee_percent'] ?? 0);
+            $metadata['nobitex_withdraw_fee_gram'] = (float) ($status['nobitex_withdraw_fee_gram'] ?? 0);
             $metadata['gram_network_fee'] = (float) ($status['network_fee_gram'] ?? 0);
             $metadata['gram_funding_batch'] = (float) ($status['funding_batch_gram'] ?? 1);
             $metadata['ton_rate_source'] = 'nobitex';
@@ -586,6 +659,7 @@ final class BluebotDigitalServices
                 'ton_rate_toman' => $tonRateToman,
                 'ton_landed_rate_toman' => $landedTonRateToman,
                 'nobitex_trade_fee_percent' => (float) ($tonRateStatus['trade_fee_percent'] ?? 0),
+                'nobitex_withdraw_fee_gram' => (float) ($tonRateStatus['nobitex_withdraw_fee_gram'] ?? 0),
                 'gram_network_fee' => (float) ($tonRateStatus['network_fee_gram'] ?? 0),
                 'gram_funding_batch' => (float) ($tonRateStatus['funding_batch_gram'] ?? 1),
                 'ton_rate_source' => 'nobitex',
@@ -678,6 +752,7 @@ final class BluebotDigitalServices
             'ton_rate_toman' => $tonRateToman,
             'ton_landed_rate_toman' => $landedTonRateToman,
             'nobitex_trade_fee_percent' => (float) ($tonRateStatus['trade_fee_percent'] ?? 0),
+            'nobitex_withdraw_fee_gram' => (float) ($tonRateStatus['nobitex_withdraw_fee_gram'] ?? 0),
             'gram_network_fee' => (float) ($tonRateStatus['network_fee_gram'] ?? 0),
             'gram_funding_batch' => (float) ($tonRateStatus['funding_batch_gram'] ?? 1),
         ];

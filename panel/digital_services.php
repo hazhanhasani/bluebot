@@ -443,23 +443,44 @@ include __DIR__ . '/inc/layout_head.php';
             <div class="notice notice-info">
                 <strong>نرخ تمام‌شده GRAM برای TGTools:</strong>
                 <code><?= $tgLandedTonRateToman > 0 ? htmlspecialchars(number_format($tgLandedTonRateToman)) . ' تومان' : '—' ?></code>
-                <br><small>شامل کارمزد خرید در بازار تومانی نوبیتکس و کارمزد انتقال شبکه تا کیف پول TGTools.</small>
+                <br><small>شامل کارمزد معامله نوبیتکس + کارمزد برداشت GRAM از نوبیتکس + کارمزد انتقال Tonkeeper تا کیف پول TGTools.</small>
             </div>
             <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px">
                 <div class="field">
                     <label>کارمزد بازار تومانی نوبیتکس (%)</label>
                     <input class="input" type="number" name="tgtools_nobitex_trade_fee_percent" min="0" max="20" step="0.001"
                         value="<?= htmlspecialchars((string) ($tgTonRateStatus['trade_fee_percent'] ?? 0.25)) ?>">
+                    <small class="field-hint">وابسته به سطح کاربری نوبیتکس؛ برای سطح پایه ۰٫۲۵٪ است.</small>
                 </div>
                 <div class="field">
-                    <label>کارمزد انتقال شبکه (GRAM)</label>
+                    <label>کارمزد برداشت GRAM از نوبیتکس</label>
+                    <input class="input" type="text"
+                        value="<?= htmlspecialchars((string) ($tgTonRateStatus['nobitex_withdraw_fee_gram'] ?? 0.1) . ' GRAM') ?>"
+                        readonly dir="ltr">
+                    <small class="field-hint">
+                        دریافت خودکار از <code>/v2/options</code> · حداقل برداشت:
+                        <?= htmlspecialchars((string) ($tgTonRateStatus['nobitex_withdraw_min_gram'] ?? 0.2)) ?> GRAM
+                        <?php if ((int) ($tgTonRateStatus['nobitex_withdraw_fee_last_sync'] ?? 0) > 0): ?>
+                            · آخرین بروزرسانی <?= htmlspecialchars(date('Y/m/d H:i:s', (int) $tgTonRateStatus['nobitex_withdraw_fee_last_sync'])) ?>
+                        <?php endif; ?>
+                    </small>
+                    <?php if (!empty($tgTonRateStatus['nobitex_withdraw_fee_last_error'])): ?>
+                        <small class="field-hint" style="color:var(--danger)">
+                            آخرین خطا: <?= htmlspecialchars((string) $tgTonRateStatus['nobitex_withdraw_fee_last_error']) ?> · مقدار قبلی حفظ شده است.
+                        </small>
+                    <?php endif; ?>
+                </div>
+                <div class="field">
+                    <label>کارمزد انتقال Tonkeeper → TGTools (GRAM)</label>
                     <input class="input" type="number" name="tgtools_gram_network_fee" min="0" step="0.000001"
                         value="<?= htmlspecialchars((string) ($tgTonRateStatus['network_fee_gram'] ?? 0.000562)) ?>">
+                    <small class="field-hint">کارمزد شبکه‌ای که در انتقال نهایی کیف پول پرداخت می‌شود.</small>
                 </div>
                 <div class="field">
                     <label>حجم هر شارژ TGTools (GRAM)</label>
                     <input class="input" type="number" name="tgtools_gram_funding_batch" min="0.000001" step="0.000001"
                         value="<?= htmlspecialchars((string) ($tgTonRateStatus['funding_batch_gram'] ?? 1)) ?>">
+                    <small class="field-hint">کارمزدهای ثابت برداشت و انتقال روی این مقدار سرشکن می‌شوند.</small>
                 </div>
             </div>
             <div class="notice notice-info">

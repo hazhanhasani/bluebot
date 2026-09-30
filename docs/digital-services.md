@@ -95,6 +95,24 @@ of treating the catalog as Telegram-only:
 The V2 Telegram-number endpoint remains only as a fallback when the Callinoo
 application catalog is temporarily unavailable.
 
+### Nobitex GRAM withdrawal cost
+
+BlueBot also includes the exchange withdrawal cost between Nobitex and the
+operator wallet. The current public Nobitex pricing page lists GRAM on the TON
+network with a `0.1 GRAM` withdrawal fee and a `0.2 GRAM` minimum withdrawal.
+
+BlueBot reads the current GRAM/TON withdrawal terms from the public
+`GET /v2/options` system-options endpoint and caches them. If that endpoint is
+temporarily unavailable, the last successful value is retained. The initial
+safe defaults are `0.1 GRAM` withdrawal fee and `0.2 GRAM` minimum.
+
+The landed-cost path is therefore:
+
+`Nobitex market purchase + trading fee + Nobitex withdrawal fee + wallet→TGTools network fee`.
+
+The separate wallet-to-TGTools network fee remains configurable because it is
+the fee observed on the final wallet transfer rather than a Nobitex fee.
+
 ### TGTools landed GRAM cost
 
 BlueBot prices TGTools products from the **landed** GRAM cost instead of the raw
