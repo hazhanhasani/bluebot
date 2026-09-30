@@ -59,6 +59,14 @@ try {
         bluebotLog('info', 'Digital service provider catalogs synchronized', $providerStats);
     }
 
+    $genericSmmStats = BluebotDigitalServices::reconcileRegisteredSmmProcessing($pdo, 50);
+    if (($genericSmmStats['completed'] ?? 0) > 0
+        || ($genericSmmStats['failed'] ?? 0) > 0
+        || ($genericSmmStats['partial'] ?? 0) > 0
+        || ($genericSmmStats['errors'] ?? 0) > 0) {
+        bluebotLog('info', 'Generic SMM digital service reconciliation completed', $genericSmmStats);
+    }
+
     $tivaStats = BluebotDigitalServices::reconcileTivaNovinProcessing($pdo, 25);
     if (($tivaStats['completed'] ?? 0) > 0
         || ($tivaStats['failed'] ?? 0) > 0

@@ -1252,6 +1252,30 @@ if ($text == "/start" || $datain == "start" || $text == "start") {
         return;
     }
 
+    $automaticHandled = false;
+    try {
+        $automaticResult = BluebotDigitalServices::maybeAutoApproveOrder($pdo, $order);
+        $automaticHandled = !empty($automaticResult['automatic']);
+    } catch (Throwable $autoError) {
+        bluebotLog('warning', 'Automatic digital service delivery failed before completion', [
+            'order_id' => (int) ($order['id'] ?? 0),
+            'order_code' => (string) ($order['order_code'] ?? ''),
+            'provider' => (string) ($order['provider'] ?? ''),
+            'error' => $autoError->getMessage(),
+        ]);
+
+        $freshOrder = BluebotDigitalServices::findOrder($pdo, (int) ($order['id'] ?? 0));
+        $automaticHandled = is_array($freshOrder)
+            && (string) ($freshOrder['status'] ?? '') !== 'pending_approval';
+        if (is_array($freshOrder)) {
+            $order = $freshOrder;
+        }
+    }
+
+    if ($automaticHandled) {
+        return;
+    }
+
     try {
         BluebotDigitalServices::notifyAdmins($pdo, $order);
     } catch (Throwable $notifyError) {

@@ -32,6 +32,23 @@ $buyRoute = ($buyStart !== false && $buyEnd !== false)
     : '';
 
 $checks = [
+    [str_contains($manager, "providerSupportsAutomaticDelivery"), 'provider automatic-delivery capability check missing'],
+    [str_contains($manager, "providerApprovalMode"), 'per-provider approval mode reader missing'],
+    [str_contains($manager, "setProviderApprovalMode"), 'per-provider approval mode writer missing'],
+    [str_contains($manager, "provider_approval_"), 'provider approval mode storage key missing'],
+    [str_contains($manager, "maybeAutoApproveOrder"), 'automatic order approval dispatcher missing'],
+    [str_contains($manager, "admin_id = ?"), 'automatic delivery must reuse atomic approval claim'],
+    [str_contains($manager, "deliverRegisteredSmmProvider"), 'generic SMM provider delivery adapter missing'],
+    [str_contains($manager, "reconcileRegisteredSmmProcessing"), 'generic SMM provider reconciliation missing'],
+    [str_contains($index, "maybeAutoApproveOrder"), 'bot checkout must attempt automatic provider delivery'],
+    [str_contains($index, "$automaticHandled"), 'bot checkout automatic-delivery guard missing'],
+    [str_contains($digitalServicesCron, "reconcileRegisteredSmmProcessing"), 'generic SMM reconciliation cron missing'],
+    [str_contains($panel, 'name="tgtools_approval_mode"'), 'TGTools approval-mode selector missing'],
+    [str_contains($panel, 'name="ozvinoo_approval_mode"'), 'OZVinoo approval-mode selector missing'],
+    [str_contains($panel, 'name="tivanovin_approval_mode"'), 'TivaNovin approval-mode selector missing'],
+    [str_contains($panel, 'name="provider_approval_mode"'), 'generic provider approval-mode selector missing'],
+    [str_contains($panel, "set_provider_approval_mode"), 'generic provider approval-mode action missing'],
+    [str_contains($providerCatalog, "DELETE FROM digital_service_settings WHERE setting_key = ?"), 'provider approval mode cleanup missing'],
     [str_contains($smmClient, "final class SmmPanelClient"), 'generic SMM panel client missing'],
     [str_contains($smmClient, "['action' => 'services']"), 'SMM services request missing'],
     [str_contains($smmClient, "'action' => 'add'"), 'SMM add-order request missing'],

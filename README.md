@@ -138,6 +138,7 @@ BlueBot می‌تواند کاتالوگ JSON ارائه‌دهندگان خدم
 - قیمت فروش با فرمول <code>wholesale × exchange rate × (1 + profit%)</code> محاسبه و به هزار تومان رو به بالا گرد می‌شود.
 - دسته‌ها از فیلد category یا نام محصول تشخیص داده می‌شوند و به‌صورت داینامیک در «فروش خدمات» ظاهر می‌شوند.
 - Sync دستی از پنل و Sync زمان‌بندی‌شده از Cron پشتیبانی می‌شود.
+- نوع تأیید سفارش برای هر Provider مستقل است: <strong>دستی</strong> (ارسال پس از تأیید ادمین) یا <strong>خودکار</strong> (ارسال مستقیم بعد از پرداخت). حالت خودکار فقط برای Providerهایی فعال می‌شود که delivery adapter یا قرارداد SMM سازگار با <code>add/status</code> دارند.
 - برای TGTools، حاشیه سود <strong>Stars</strong> و <strong>Premium</strong> مستقل است و قیمت عمده از <code>/api/purchase/prices</code> خوانده می‌شود.
 - Providerهای عمومی تا زمانی که delivery adapter اختصاصی نداشته باشند، پس از تأیید ادمین با حالت تحویل دستی ثبت می‌شوند؛ Providerهای یکپارچه مثل TGTools، OZVinoo و TivaNovin از مسیر اختصاصی خودشان استفاده می‌کنند.
 - TivaNovin از قرارداد SMM با درخواست‌های POST پشتیبانی می‌شود: `services`، `add`، `status` و `balance`. نرخ‌های IRR به تومان تبدیل، درصد سود Provider اعمال و وضعیت سفارش‌ها با Cron پیگیری می‌شود.
