@@ -29,19 +29,14 @@ Options -Indexes
         Header always set Cloudflare-CDN-Cache-Control "no-store"
     </FilesMatch>
 
-    # Vite-style hashed bundles are immutable and safe to cache aggressively.
-    <FilesMatch "^[A-Za-z0-9._-]+-[A-Za-z0-9_-]{6,}\.(?:js|css)$">
-        Header always set Cache-Control "public, max-age=31536000, immutable"
-        Header always set CDN-Cache-Control "public, max-age=31536000, immutable"
-        Header always set Cloudflare-CDN-Cache-Control "public, max-age=31536000, immutable"
-    </FilesMatch>
-
-    # Non-hashed scripts/styles must revalidate to avoid stale Telegram WebViews.
-    <FilesMatch "^(?![A-Za-z0-9._-]+-[A-Za-z0-9_-]{6,}\.(?:js|css)$).+\.(?:js|css)$">
-        Header always set Cache-Control "no-cache, must-revalidate"
+    # The current Mini App repository ships compiled bundles without the original
+    # source build pipeline, so bundle filenames can remain unchanged across hotfixes.
+    # Revalidate all JS/CSS to prevent Telegram/Cloudflare serving stale code.
+    <FilesMatch "\.(?:js|css)$">
+        Header always set Cache-Control "no-cache, no-store, must-revalidate"
         Header always set Pragma "no-cache"
-        Header always set CDN-Cache-Control "no-cache"
-        Header always set Cloudflare-CDN-Cache-Control "no-cache"
+        Header always set CDN-Cache-Control "no-store"
+        Header always set Cloudflare-CDN-Cache-Control "no-store"
     </FilesMatch>
 
     <FilesMatch "\.(?:woff2?|png|jpe?g|webp|svg|ico)$">
@@ -52,7 +47,7 @@ Options -Indexes
 
     # Runtime bootstrap scripts are stable filenames, not content-hashed assets.
     # Never pin them for a year: Telegram WebView/CDN must receive bootstrap fixes.
-    <FilesMatch "^(?:app-loader|telegram-bootstrap|telegram-web-app)\.js$">
+    <FilesMatch "^(?:app-loader|telegram-bootstrap|telegram-web-app|full-store)\.js$">
         Header always set Cache-Control "no-cache, no-store, must-revalidate"
         Header always set Pragma "no-cache"
         Header always set CDN-Cache-Control "no-store"
