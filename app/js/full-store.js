@@ -1,5 +1,17 @@
 (()=>{"use strict";
 const API="../api/miniapp.php",rootId="bluebot-full-store";
+(function captureAppSession(){
+ if(window.__BLUEBOT_XHR_SESSION_BRIDGE__)return;window.__BLUEBOT_XHR_SESSION_BRIDGE__=true;
+ const originalOpen=XMLHttpRequest.prototype.open,originalSet=XMLHttpRequest.prototype.setRequestHeader;
+ XMLHttpRequest.prototype.open=function(method,url){this.__bluebotUrl=String(url||"");return originalOpen.apply(this,arguments)};
+ XMLHttpRequest.prototype.setRequestHeader=function(name,value){
+  if(String(name).toLowerCase()==="authorization"&&/^Bearer\s+\S+/i.test(String(value))){
+   const valueToken=String(value).replace(/^Bearer\s+/i,"").trim();
+   if(valueToken){window.__BLUEBOT_SESSION_TOKEN__=valueToken;window.dispatchEvent(new CustomEvent("bluebot:session-ready",{detail:{token:valueToken}}))}
+  }
+  return originalSet.apply(this,arguments);
+ };
+})();
 const esc=s=>String(s??"").replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[m]));
 const token=()=>localStorage.getItem("token")||sessionStorage.getItem("token")||window.__BLUEBOT_SESSION_TOKEN__||"";
 async function waitForToken(timeout=12000){
