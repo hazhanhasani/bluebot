@@ -1973,6 +1973,19 @@ if ($text == "/start" || $datain == "start" || $text == "start") {
             );
             return;
         }
+        if ($e->getMessage() === 'ORDER_RATE_LIMITED') {
+            step('home', $from_id);
+            update('user', 'Processing_value', '0', 'id', $from_id);
+            sendmessage(
+                $from_id,
+                "⏳ <b>تعداد درخواست‌ها خیلی سریع بوده است</b>\n\n"
+                    . "برای جلوگیری از ثبت ناخواسته یا چندباره، این سفارش ساخته نشد و مبلغی از کیف پول کم نشده است. "
+                    . "حدود یک دقیقه بعد دوباره تلاش کنید.",
+                $keyboard,
+                'HTML'
+            );
+            return;
+        }
         if (str_starts_with($e->getMessage(), 'DUPLICATE_ACTIVE_ORDER:')) {
             step('home', $from_id);
             update('user', 'Processing_value', '0', 'id', $from_id);
