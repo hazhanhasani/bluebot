@@ -7,6 +7,7 @@ require_once __DIR__ . '/../botapi.php';
 require_once __DIR__ . '/../panels.php';
 require_once __DIR__ . '/../src/Support/JalaliDate.php';
 require_once __DIR__ . '/../keyboard.php';
+require_once __DIR__ . '/../src/Services/DigitalServiceManager.php';
 
 header('Content-Type: application/json; charset=utf-8');
 header('Cache-Control: private, no-store, no-cache, must-revalidate');
@@ -1254,6 +1255,114 @@ function mini_purchase(array $data, string $method): void
     ));
 }
 
+function mini_digital_catalog(array $data, string $method): void
+{
+    global $pdo;
+    if ($method !== 'GET') sendJsonResponse(false, 'Method invalid; must be GET', [], 405);
+
+    $products = DigitalServiceManager::listActive($pdo);
+    $items = [];
+    $categories = [];
+    foreach ($products as $product) {
+        $category = DigitalServiceManager::categoryForProduct($product);
+        $scope = DigitalServiceManager::serviceScopeForProduct($product);
+        $group = DigitalServiceManager::serviceGroupForProduct($product);
+        $rules = DigitalServiceManager::quantityRules($product);
+        $items[] = [
+            'id' => (int) $product['id'],
+            'code' => (string) ($product['code'] ?? ''),
+            'name' => (string) ($product['name'] ?? ''),
+            'description' => (string) ($product['description'] ?? ''),
+            'type' => (string) ($product['type'] ?? ''),
+            'provider' => (string) ($product['provider'] ?? 'manual'),
+            'price' => (int) ($product['price'] ?? 0),
+            'category' => $category,
+            'scope' => $scope,
+            'group' => $group,
+            'quantity' => $rules,
+            'target_prompt' => strip_tags(DigitalServiceManager::targetPrompt($product)),
+        ];
+        $categories[$category] = ($categories[$category] ?? 0) + 1;
+    }
+    sendJsonResponse(true, 'Successful', [
+        'products' => $items,
+        'categories' => array_map(
+            static fn($key, $count) => ['key' => $key, 'count' => $count],
+            array_keys($categories),
+            array_values($categories)
+        ),
+    ]);
+}
+
+function mini_digital_orders(array $data, string $method): void
+{
+    global $pdo;
+    if ($method !== 'GET') sendJsonResponse(false, 'Method invalid; must be GET', [], 405);
+    $page = max(1, (int) ($data['page'] ?? 1));
+    $result = DigitalServiceManager::userOrdersPage($pdo, (string) $data['user_id'], $page, 10);
+    sendJsonResponse(true, 'Successful', $result);
+}
+
+function mini_digital_quote(array $data, string $method): void
+{
+    global $pdo;
+    if ($method !== 'POST') sendJsonResponse(false, 'Method invalid; must be POST', [], 405);
+    $product = DigitalServiceManager::findProduct($pdo, (int) ($data['product_id'] ?? 0), true);
+    if (!$product) sendJsonResponse(false, 'Service unavailable', [], 404);
+    $quantity = isset($data['quantity']) ? (int) $data['quantity'] : null;
+    [$quantityOk, $normalizedQuantity] = DigitalServiceManager::validateQuantity($product, $quantity);
+    if (!$quantityOk || !is_int($normalizedQuantity)) sendJsonResponse(false, (string) $normalizedQuantity, [], 422);
+    [$targetOk, $target] = DigitalServiceManager::validateTarget($product, (string) ($data['target'] ?? ''));
+    if (!$targetOk) sendJsonResponse(false, (string) $target, [], 422);
+    $amount = DigitalServiceManager::priceForQuantity($product, $normalizedQuantity);
+    if ($amount <= 0) sendJsonResponse(false, 'Service price invalid', [], 422);
+    $flow = json_encode([
+        'digital_service_id' => (int) $product['id'],
+        'digital_service_target' => (string) $target,
+        'digital_service_quantity' => $normalizedQuantity,
+        'digital_service_amount' => $amount,
+    ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+    $stmt = $pdo->prepare("UPDATE user SET step='digital_service_confirm', Processing_value=? WHERE id=?");
+    $stmt->execute([$flow, (string) $data['user_id']]);
+    clearSelectCache('user');
+    sendJsonResponse(true, 'Successful', [
+        'product_id' => (int) $product['id'],
+        'name' => (string) ($product['name'] ?? ''),
+        'target' => (string) $target,
+        'quantity' => $normalizedQuantity,
+        'amount' => $amount,
+        'balance' => (int) selectValue('user', 'Balance', 'id', (string) $data['user_id'], 0),
+    ]);
+}
+
+function mini_digital_purchase(array $data, string $method): void
+{
+    global $pdo;
+    if ($method !== 'POST') sendJsonResponse(false, 'Method invalid; must be POST', [], 405);
+    $user = select('user', '*', 'id', (string) $data['user_id'], 'select');
+    $product = DigitalServiceManager::findProduct($pdo, (int) ($data['product_id'] ?? 0), true);
+    if (!$user || !$product) sendJsonResponse(false, 'Service unavailable', [], 404);
+    try {
+        $order = DigitalServiceManager::createWalletOrder(
+            $pdo,
+            $user,
+            $product,
+            (string) ($data['target'] ?? ''),
+            isset($data['quantity']) ? (int) $data['quantity'] : null
+        );
+        $delivery = DigitalServiceManager::maybeAutoApproveOrder($pdo, $order);
+        $finalOrder = is_array($delivery['order'] ?? null) ? $delivery['order'] : $order;
+        sendJsonResponse(true, 'Successful', ['order' => $finalOrder, 'automatic' => !empty($delivery['automatic'])]);
+    } catch (DomainException $e) {
+        sendJsonResponse(false, $e->getMessage(), [], 409);
+    } catch (InvalidArgumentException $e) {
+        sendJsonResponse(false, $e->getMessage(), [], 422);
+    } catch (Throwable $e) {
+        bluebotLog('error', 'Mini App digital purchase failed', ['reason' => $e->getMessage()]);
+        sendJsonResponse(false, 'Order could not be created', [], 500);
+    }
+}
+
 match ($action) {
     'invoices' => mini_invoices($data, $method),
     'service' => mini_service($data, $method),
@@ -1264,6 +1373,10 @@ match ($action) {
     'services' => mini_services($data, $method),
     'custom_price' => mini_custom_price($data, $method),
     'purchase' => mini_purchase($data, $method),
+    'digital_catalog' => mini_digital_catalog($data, $method),
+    'digital_orders' => mini_digital_orders($data, $method),
+    'digital_quote' => mini_digital_quote($data, $method),
+    'digital_purchase' => mini_digital_purchase($data, $method),
     default => sendJsonResponse(false, "Action Invalid", []),
 };
 
