@@ -3601,6 +3601,39 @@ final class BluebotDigitalServices
         return [true, $target];
     }
 
+    private static function activeDuplicateOrder(
+        PDO $pdo,
+        string $userId,
+        int $productId,
+        string $target,
+        int $quantity
+    ): ?array {
+        $stmt = $pdo->prepare(
+            "SELECT * FROM digital_service_orders
+             WHERE user_id = ?
+               AND service_id = ?
+               AND target = ?
+               AND quantity = ?
+               AND refunded = 0
+               AND status IN (?, ?, ?, ?)
+             ORDER BY id DESC
+             LIMIT 1
+             FOR UPDATE"
+        );
+        $stmt->execute([
+            $userId,
+            $productId,
+            $target,
+            $quantity,
+            self::STATUS_PENDING,
+            self::STATUS_PROCESSING,
+            self::STATUS_FAILED,
+            self::STATUS_PARTIAL_REVIEW,
+        ]);
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+        return is_array($row) ? $row : null;
+    }
+
     public static function createWalletOrder(
         PDO $pdo,
         array $user,
@@ -3686,6 +3719,19 @@ final class BluebotDigitalServices
             }
             if ($flowAmount <= 0 || $flowAmount !== $freshPrice) {
                 throw new DomainException('PRICE_CHANGED');
+            }
+
+            $duplicate = self::activeDuplicateOrder(
+                $pdo,
+                $userId,
+                $productId,
+                $target,
+                $quantity
+            );
+            if (is_array($duplicate)) {
+                throw new DomainException(
+                    'DUPLICATE_ACTIVE_ORDER:' . (int) ($duplicate['id'] ?? 0)
+                );
             }
 
             $minBalance = ($freshUser['agent'] ?? 'f') === 'n2' && (int) ($freshUser['maxbuyagent'] ?? 0) !== 0
