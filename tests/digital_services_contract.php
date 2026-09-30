@@ -238,6 +238,7 @@ $checks = [
     [str_contains($panel, "موجودی TGTools"), 'TGTools wallet balance field missing'],
     [str_contains($panel, "آدرس کیف پول / واریز TGTools"), 'TGTools wallet address field missing'],
     [str_contains($panel, "data-copy-tgtools-wallet"), 'TGTools wallet copy control missing'],
+    [str_contains($panel, "data-persistent-tgtools-wallet"), 'TGTools wallet display must be persistent'],
     [str_contains($panel, "محصولات فعال عضوینو در ربات"), 'OZVinoo product-sync diagnostics missing'],
     [str_contains($panel, "sync_ozvinoo_catalog"), 'OZVinoo catalog sync action missing'],
     [str_contains($panel, "syncOZVinooCatalog"), 'OZVinoo panel must use official catalog sync'],
