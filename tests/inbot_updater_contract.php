@@ -44,6 +44,8 @@ foreach ([
     'bluebotUpdateMarkSourceFailureNotified',
     'bluebotUpdateLatestBeta',
     'bluebotQueueUpdate',
+    'bluebotUpdateAutoInstallEnabled',
+    'bluebotUpdateQueueBusy',
     '/var/lib/bluebot',
     'bluebot_update_run',
     "strtolower((string) (\$parts['host'] ?? '')) !== 'api.github.com'",
@@ -212,6 +214,7 @@ if ($installerVersioning === false || !str_contains($installerVersioning, 'archi
 $setting = @file_get_contents($root . '/db/tables/setting.php');
 foreach ([
     'update_channel',
+    'update_auto_install',
     'update_last_notified',
     'update_installed_channel',
     'update_installed_ref',
@@ -253,6 +256,9 @@ foreach ([
     'bluebotUpdateSourceFailureShouldNotify',
     'bluebotUpdateMarkSourceFailureNotified',
     'بررسی بروزرسانی بلو پنل ناموفق است',
+    'bluebotUpdateAutoInstallEnabled',
+    'bluebotQueueUpdate',
+    'بروزرسانی خودکار در صف نصب قرار گرفت',
 ] as $needle) {
     if ($notifier === false || !str_contains($notifier, $needle)) {
         $failures[] = "UpdateNotifier source-health contract missing: {$needle}";
