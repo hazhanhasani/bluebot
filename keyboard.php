@@ -564,6 +564,7 @@ function affiliateSettingsMenu()
         [['text' => $commissionText, 'callback_data' => "affiliate-commission"], ['text' => $textbotlang['keyboard']['purchaseCommission'], 'callback_data' => "affiliate-commission"]],
         [['text' => $firstBuyText, 'callback_data' => "affiliate-firstbuy"], ['text' => $textbotlang['keyboard']['firstPurchaseCommission'], 'callback_data' => "affiliate-firstbuy"]],
         [['text' => $percentText, 'callback_data' => "affiliate-percent"], ['text' => $textbotlang['keyboard']['setAffiliatePercent'], 'callback_data' => "affiliate-percent"]],
+        [['text' => '🏅 سطوح پورسانت', 'callback_data' => "affiliate-tiers"]],
         [['text' => $startGiftText, 'callback_data' => "affiliate-startgift"], ['text' => $textbotlang['keyboard']['startGift'], 'callback_data' => "affiliate-startgift"]],
         [['text' => $giftAmountText, 'callback_data' => "affiliate-giftamount"], ['text' => $textbotlang['keyboard']['startGiftAmount'], 'callback_data' => "affiliate-giftamount"]],
         [
