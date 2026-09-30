@@ -8210,6 +8210,57 @@ elseif ($text == $textbotlang['keyboard']['hidePanelForUser'] && $adminrulecheck
     step("home", $from_id);
     [$affiliateText, $affiliateKeyboard] = affiliateSettingsMenu();
     Editmessagetext($from_id, $message_id, $affiliateText, $affiliateKeyboard);
+} elseif ($datain === "affiliate-tiers" && $adminrulecheck['rule'] == "administrator") {
+    $settingRow = select("setting", "*");
+    $tierConfig = json_decode((string) ($settingRow['affiliate_tiers'] ?? ''), true);
+    $tierConfig = is_array($tierConfig) ? $tierConfig : ['enabled' => false, 'silver_orders' => 5, 'silver_bonus' => 2, 'gold_orders' => 20, 'gold_bonus' => 5];
+    $tierStatus = !empty($tierConfig['enabled']) ? '✅ روشن' : '❌ خاموش';
+    $tierText = "🏅 <b>سطوح پورسانت</b>\n\n"
+        . "🥉 برنزی: درصد پایه (" . ($settingRow['affiliatespercentage'] ?? 0) . "%)\n"
+        . "🥈 نقره‌ای: از <b>" . (int) $tierConfig['silver_orders'] . "</b> خرید · +" . (float) $tierConfig['silver_bonus'] . "%\n"
+        . "🥇 طلایی: از <b>" . (int) $tierConfig['gold_orders'] . "</b> خرید · +" . (float) $tierConfig['gold_bonus'] . "%\n\n"
+        . "وضعیت: <b>" . $tierStatus . "</b>";
+    $tierKeyboard = json_encode(['inline_keyboard' => [
+        [['text' => $tierStatus, 'callback_data' => 'affiliate-tiers-toggle']],
+        [['text' => '✏️ تنظیم سطوح', 'callback_data' => 'affiliate-tiers-edit']],
+        [['text' => '↩️ تنظیمات زیرمجموعه', 'callback_data' => 'affiliatesettings']],
+    ]], JSON_UNESCAPED_UNICODE);
+    Editmessagetext($from_id, $message_id, $tierText, $tierKeyboard);
+} elseif ($datain === "affiliate-tiers-toggle" && $adminrulecheck['rule'] == "administrator") {
+    $settingRow = select("setting", "*");
+    $tierConfig = json_decode((string) ($settingRow['affiliate_tiers'] ?? ''), true);
+    $tierConfig = is_array($tierConfig) ? $tierConfig : ['enabled' => false, 'silver_orders' => 5, 'silver_bonus' => 2, 'gold_orders' => 20, 'gold_bonus' => 5];
+    $tierConfig['enabled'] = empty($tierConfig['enabled']);
+    update("setting", "affiliate_tiers", json_encode($tierConfig, JSON_UNESCAPED_UNICODE));
+    Editmessagetext($from_id, $message_id, "✅ وضعیت سطوح پورسانت بروزرسانی شد.", json_encode(['inline_keyboard' => [[['text' => '🏅 بازگشت به سطوح', 'callback_data' => 'affiliate-tiers']]]], JSON_UNESCAPED_UNICODE));
+} elseif ($datain === "affiliate-tiers-edit" && $adminrulecheck['rule'] == "administrator") {
+    savedata("clear", "message_id", $message_id);
+    step("affiliate_tiers_edit", $from_id);
+    Editmessagetext($from_id, $message_id, "✏️ <b>تنظیم سطوح</b>\n\nچهار عدد را با فاصله ارسال کنید:\n<code>خرید نقره‌ای  پاداش٪  خرید طلایی  پاداش٪</code>\n\nمثال:\n<code>5 2 20 5</code>", $affiliateFlowKeyboard);
+} elseif ($user['step'] === "affiliate_tiers_edit" && $adminrulecheck['rule'] == "administrator") {
+    $parts = preg_split('/\\s+/', trim((string) $text));
+    if (count($parts) !== 4 || array_filter($parts, fn($v) => !is_numeric($v))) {
+        editFlowMessage("⚠️ فرمت نامعتبر است. مثال: <code>5 2 20 5</code>", $affiliateFlowKeyboard);
+        return;
+    }
+    [$silverOrders, $silverBonus, $goldOrders, $goldBonus] = array_map('floatval', $parts);
+    if ($silverOrders < 1 || $goldOrders <= $silverOrders || $silverBonus < 0 || $goldBonus < $silverBonus || $goldBonus > 100) {
+        editFlowMessage("⚠️ مقادیر نامعتبرند. حد طلایی باید بیشتر از نقره‌ای و پاداش طلایی حداقل برابر نقره‌ای باشد.", $affiliateFlowKeyboard);
+        return;
+    }
+    $settingRow = select("setting", "*");
+    $tierConfig = json_decode((string) ($settingRow['affiliate_tiers'] ?? ''), true);
+    $tierConfig = is_array($tierConfig) ? $tierConfig : [];
+    $tierConfig = [
+        'enabled' => !empty($tierConfig['enabled']),
+        'silver_orders' => (int) $silverOrders,
+        'silver_bonus' => $silverBonus,
+        'gold_orders' => (int) $goldOrders,
+        'gold_bonus' => $goldBonus,
+    ];
+    update("setting", "affiliate_tiers", json_encode($tierConfig, JSON_UNESCAPED_UNICODE));
+    step("home", $from_id);
+    editFlowMessage("✅ سطوح پورسانت ذخیره شد.", json_encode(['inline_keyboard' => [[['text' => '🏅 مشاهده سطوح', 'callback_data' => 'affiliate-tiers']]]], JSON_UNESCAPED_UNICODE));
 } elseif ($datain === "affiliate-analytics" && $adminrulecheck['rule'] == "administrator") {
     $stats = $pdo->query(
         "SELECT

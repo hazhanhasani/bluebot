@@ -1321,6 +1321,42 @@ function addBalance($userId, $amount)
  * $sourceType/$sourceId form a stable idempotency key, so retries, webhook
  * replays and provider reconciliation cannot pay the same commission twice.
  */
+function referralTierForUser(string $referrerId, ?array $settingRow = null): array
+{
+    global $pdo;
+    $settingRow = is_array($settingRow) ? $settingRow : select("setting", "*", null, null, "select");
+    $base = is_numeric($settingRow['affiliatespercentage'] ?? null)
+        ? max(0.0, min(100.0, (float) $settingRow['affiliatespercentage']))
+        : 0.0;
+    $config = json_decode((string) ($settingRow['affiliate_tiers'] ?? ''), true);
+    $config = is_array($config) ? $config : [];
+    $stmt = $pdo->prepare("SELECT COUNT(*) FROM referral_commissions WHERE referrer_id = ?");
+    $stmt->execute([$referrerId]);
+    $orders = (int) $stmt->fetchColumn();
+
+    $tier = 'bronze';
+    $label = '🥉 برنزی';
+    $bonus = 0.0;
+    if (!empty($config['enabled'])) {
+        $silverOrders = max(1, (int) ($config['silver_orders'] ?? 5));
+        $goldOrders = max($silverOrders + 1, (int) ($config['gold_orders'] ?? 20));
+        if ($orders >= $goldOrders) {
+            $tier = 'gold'; $label = '🥇 طلایی'; $bonus = max(0.0, (float) ($config['gold_bonus'] ?? 5));
+        } elseif ($orders >= $silverOrders) {
+            $tier = 'silver'; $label = '🥈 نقره‌ای'; $bonus = max(0.0, (float) ($config['silver_bonus'] ?? 2));
+        }
+    }
+    return [
+        'key' => $tier,
+        'label' => $label,
+        'orders' => $orders,
+        'base_percent' => $base,
+        'bonus_percent' => $bonus,
+        'percent' => min(100.0, $base + $bonus),
+        'config' => $config,
+    ];
+}
+
 function creditReferralCommission(string $buyerId, int $sourceAmount, string $sourceType, string $sourceId): array
 {
     global $pdo;
@@ -1355,9 +1391,8 @@ function creditReferralCommission(string $buyerId, int $sourceAmount, string $so
     }
 
     $settingRow = select("setting", "*", null, null, "select");
-    $percent = is_numeric($settingRow['affiliatespercentage'] ?? null)
-        ? max(0.0, min(100.0, (float) $settingRow['affiliatespercentage']))
-        : 0.0;
+    $tier = referralTierForUser($referrerId, $settingRow);
+    $percent = (float) $tier['percent'];
     if ($percent <= 0) {
         return ['credited' => false, 'reason' => 'zero_percent'];
     }
@@ -1426,6 +1461,8 @@ function creditReferralCommission(string $buyerId, int $sourceAmount, string $so
             'buyer_id' => $buyerId,
             'source_type' => $sourceType,
             'source_id' => $sourceId,
+            'tier' => $tier['key'],
+            'tier_label' => $tier['label'],
         ];
     } catch (Throwable $e) {
         if ($started && $pdo->inTransaction()) {
