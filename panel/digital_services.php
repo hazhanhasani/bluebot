@@ -41,6 +41,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     csrf_check_post();
     $action = trim((string) ($_POST['action'] ?? ''));
 
+    if ($action === 'save_digital_safety') {
+        $ordersPerMinute = max(0, min(100, (int) ($_POST['digital_order_rate_limit_per_minute'] ?? 10)));
+        $availabilityThreshold = max(1, min(100, (int) ($_POST['provider_health_availability_threshold'] ?? 10)));
+        $availabilitySuspend = max(1, min(1440, (int) ($_POST['provider_health_availability_suspend_minutes'] ?? 30)));
+        $timeoutThreshold = max(1, min(100, (int) ($_POST['provider_health_timeout_threshold'] ?? 3)));
+        $timeoutSuspend = max(1, min(10080, (int) ($_POST['provider_health_timeout_suspend_minutes'] ?? 120)));
+
+        ds_panel_set_setting($pdo, 'digital_order_rate_limit_per_minute', (string) $ordersPerMinute);
+        ds_panel_set_setting($pdo, 'provider_health_availability_threshold', (string) $availabilityThreshold);
+        ds_panel_set_setting($pdo, 'provider_health_availability_suspend_minutes', (string) $availabilitySuspend);
+        ds_panel_set_setting($pdo, 'provider_health_timeout_threshold', (string) $timeoutThreshold);
+        ds_panel_set_setting($pdo, 'provider_health_timeout_suspend_minutes', (string) $timeoutSuspend);
+
+        flash(
+            'success',
+            'محافظ فروش خدمات ذخیره شد؛ محدودیت ثبت سفارش و توقف موقت Providerهای خطادار بروزرسانی شد.'
+        );
+        header('Location: digital_services.php#safety');
+        exit;
+    }
+
     if ($action === 'save_tgtools') {
         $apiKey = trim((string) ($_POST['tgtools_api_key'] ?? ''));
         $nobitexPublicKey = trim((string) ($_POST['nobitex_api_public_key'] ?? ''));
@@ -623,6 +644,12 @@ $ozProvider = BluebotProviderCatalogService::findProvider($pdo, 'ozvinoo');
 $ozProductCountStmt = $pdo->query("SELECT COUNT(*) FROM digital_service_products WHERE provider = 'ozvinoo' AND active = 1");
 $ozProductCount = (int) $ozProductCountStmt->fetchColumn();
 $digitalServicesMenuEnabled = BluebotDigitalServices::mainKeyboardHasDigitalServices($pdo);
+$digitalOrderRateLimit = max(0, (int) ds_panel_setting($pdo, 'digital_order_rate_limit_per_minute', '10'));
+$providerAvailabilityThreshold = max(1, (int) ds_panel_setting($pdo, 'provider_health_availability_threshold', '10'));
+$providerAvailabilitySuspendMinutes = max(1, (int) ds_panel_setting($pdo, 'provider_health_availability_suspend_minutes', '30'));
+$providerTimeoutThreshold = max(1, (int) ds_panel_setting($pdo, 'provider_health_timeout_threshold', '3'));
+$providerTimeoutSuspendMinutes = max(1, (int) ds_panel_setting($pdo, 'provider_health_timeout_suspend_minutes', '120'));
+$providerHealthSuspensions = BluebotDigitalServices::activeProviderHealthSuspensions($pdo, 50);
 $ozWalletStatus = $ozApiKey !== ''
     ? BluebotDigitalServices::ozvinooWalletStatus($pdo)
     : ['ok' => false, 'configured' => false, 'balance' => null, 'message' => 'API Key تنظیم نشده است.'];
@@ -644,6 +671,73 @@ include __DIR__ . '/inc/layout_head.php';
         <a href="invoice.php?scope=digital" class="btn btn-ghost" style="justify-content:center;padding:14px">🧾 مدیریت سفارش‌ها</a>
         <a href="category.php?scope=digital" class="btn btn-ghost" style="justify-content:center;padding:14px">🗂 مدیریت دسته‌بندی‌ها</a>
     </div>
+</div>
+
+<div class="card fade-up d1" id="safety" style="margin-bottom:16px">
+    <div class="card-head">
+        <div>
+            <div class="card-title">🛡️ محافظ فروش خدمات</div>
+            <div class="card-subtitle">کنترل سفارش‌های خیلی سریع و توقف موقت ارسال خودکار برای سرویس‌هایی که چند بار پشت‌سرهم ناموجود یا Timeout می‌شوند.</div>
+        </div>
+        <span class="tag <?= $providerHealthSuspensions === [] ? 'tag-ok' : 'tag-warn' ?>">
+            <?= $providerHealthSuspensions === [] ? 'Providerها سالم' : number_format(count($providerHealthSuspensions)) . ' توقف موقت' ?>
+        </span>
+    </div>
+    <form method="post" class="card-body" style="display:grid;gap:12px">
+        <input type="hidden" name="_csrf" value="<?= htmlspecialchars(csrf_token()) ?>">
+        <input type="hidden" name="action" value="save_digital_safety">
+
+        <div class="two-col" style="gap:10px">
+            <div class="field">
+                <label>حداکثر سفارش هر کاربر در یک دقیقه</label>
+                <input class="input" type="number" name="digital_order_rate_limit_per_minute" min="0" max="100"
+                    value="<?= (int) $digitalOrderRateLimit ?>">
+                <small class="field-hint">۰ یعنی خاموش. سفارش تکراری مشابه همچنان جداگانه مسدود می‌شود.</small>
+            </div>
+            <div class="field">
+                <label>خطای ناموجودی تا توقف خودکار</label>
+                <input class="input" type="number" name="provider_health_availability_threshold" min="1" max="100"
+                    value="<?= (int) $providerAvailabilityThreshold ?>">
+                <small class="field-hint">پیش‌فرض ۱۰ خطای متوالی؛ مناسب Provider شماره مجازی.</small>
+            </div>
+        </div>
+
+        <div class="two-col" style="gap:10px">
+            <div class="field">
+                <label>مدت توقف بعد از ناموجودی (دقیقه)</label>
+                <input class="input" type="number" name="provider_health_availability_suspend_minutes" min="1" max="1440"
+                    value="<?= (int) $providerAvailabilitySuspendMinutes ?>">
+            </div>
+            <div class="field">
+                <label>Timeout تا توقف خودکار</label>
+                <input class="input" type="number" name="provider_health_timeout_threshold" min="1" max="100"
+                    value="<?= (int) $providerTimeoutThreshold ?>">
+            </div>
+        </div>
+
+        <div class="field">
+            <label>مدت توقف بعد از Timeout (دقیقه)</label>
+            <input class="input" type="number" name="provider_health_timeout_suspend_minutes" min="1" max="10080"
+                value="<?= (int) $providerTimeoutSuspendMinutes ?>">
+            <small class="field-hint">در زمان توقف، سفارش مشتری ثبت می‌شود اما ارسال خودکار انجام نمی‌شود و سفارش برای بررسی مدیر باقی می‌ماند؛ جزئیات Provider به کاربر نمایش داده نمی‌شود.</small>
+        </div>
+
+        <?php if ($providerHealthSuspensions !== []): ?>
+            <div class="notice notice-warn">
+                <strong>توقف‌های فعال:</strong>
+                <?php foreach ($providerHealthSuspensions as $health): ?>
+                    <div style="margin-top:6px">
+                        <code><?= htmlspecialchars((string) ($health['provider'] ?? '')) ?></code>
+                        · <?= htmlspecialchars((string) ($health['service_name'] ?? ('سرویس #' . (int) ($health['service_id'] ?? 0)))) ?>
+                        · دلیل: <?= htmlspecialchars((string) ($health['suspend_reason'] ?? '—')) ?>
+                        · تا <?= htmlspecialchars((string) ($health['suspended_until'] ?? '—')) ?>
+                    </div>
+                <?php endforeach; ?>
+            </div>
+        <?php endif; ?>
+
+        <button class="btn btn-primary" type="submit">ذخیره محافظ فروش خدمات</button>
+    </form>
 </div>
 
 <div class="two-col">
