@@ -1406,6 +1406,152 @@ if ($text == "/start" || $datain == "start" || $text == "start") {
     step('home', $from_id);
     update('user', 'Processing_value', '0', 'id', $from_id);
     return;
+} elseif (preg_match('/^ds_order:(\d+)$/', (string) $datain, $digitalOrderMatch)) {
+    if (!check_active_btn($setting['keyboardmain'], 'text_digital_services')) {
+        sendmessage($from_id, $textbotlang['users']['buttonDisabled'], null, 'HTML');
+        return;
+    }
+
+    if (!empty($callback_query_id)) {
+        telegram('answerCallbackQuery', [
+            'callback_query_id' => $callback_query_id,
+            'cache_time' => 0,
+        ]);
+    }
+
+    $order = BluebotDigitalServices::findUserOrder(
+        $pdo,
+        (string) $from_id,
+        (int) $digitalOrderMatch[1]
+    );
+    if (!is_array($order)) {
+        telegram('answerCallbackQuery', [
+            'callback_query_id' => $callback_query_id,
+            'text' => 'سفارش پیدا نشد.',
+            'show_alert' => true,
+            'cache_time' => 0,
+        ]);
+        return;
+    }
+
+    $orderText = BluebotDigitalServices::userOrderText($order);
+    $orderKeyboard = BluebotDigitalServices::userOrderKeyboard($order);
+    $editResult = Editmessagetext($from_id, $message_id, $orderText, $orderKeyboard, 'HTML');
+    if (!is_array($editResult) || empty($editResult['ok'])) {
+        $description = is_array($editResult) ? strtolower(trim((string) ($editResult['description'] ?? ''))) : '';
+        if (!str_contains($description, 'message is not modified')) {
+            sendmessage($from_id, $orderText, $orderKeyboard, 'HTML');
+        }
+    }
+    return;
+} elseif (preg_match('/^ds_cancel:(\d+)$/', (string) $datain, $digitalCancelMatch)) {
+    $order = BluebotDigitalServices::findUserOrder(
+        $pdo,
+        (string) $from_id,
+        (int) $digitalCancelMatch[1]
+    );
+    if (!is_array($order)) {
+        telegram('answerCallbackQuery', [
+            'callback_query_id' => $callback_query_id,
+            'text' => 'سفارش پیدا نشد.',
+            'show_alert' => true,
+            'cache_time' => 0,
+        ]);
+        return;
+    }
+
+    if ((string) ($order['status'] ?? '') !== 'pending_approval'
+        || (int) ($order['refunded'] ?? 0) === 1) {
+        telegram('answerCallbackQuery', [
+            'callback_query_id' => $callback_query_id,
+            'text' => 'این سفارش وارد مرحله پردازش شده و دیگر از این بخش قابل لغو نیست.',
+            'show_alert' => true,
+            'cache_time' => 0,
+        ]);
+        return;
+    }
+
+    telegram('answerCallbackQuery', [
+        'callback_query_id' => $callback_query_id,
+        'cache_time' => 0,
+    ]);
+    Editmessagetext(
+        $from_id,
+        $message_id,
+        "⚠️ <b>لغو سفارش</b>\n\n"
+            . "🧾 <code>" . htmlspecialchars((string) ($order['order_code'] ?? ''), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . "</code>\n"
+            . "📦 " . htmlspecialchars((string) ($order['service_name'] ?? ''), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . "\n"
+            . "💳 مبلغ برگشتی: <b>" . number_format((float) ($order['amount'] ?? 0)) . " تومان</b>\n\n"
+            . "اگر ادامه دهید، سفارش لغو و مبلغ به کیف پول شما برمی‌گردد.",
+        BluebotDigitalServices::userCancelConfirmKeyboard($order),
+        'HTML'
+    );
+    return;
+} elseif (preg_match('/^ds_cancel_confirm:(\d+)$/', (string) $datain, $digitalCancelConfirmMatch)) {
+    if (!empty($callback_query_id)) {
+        telegram('answerCallbackQuery', [
+            'callback_query_id' => $callback_query_id,
+            'text' => 'در حال لغو سفارش…',
+            'cache_time' => 0,
+        ]);
+    }
+
+    try {
+        $result = BluebotDigitalServices::cancelPendingOrderByUser(
+            $pdo,
+            (int) $digitalCancelConfirmMatch[1],
+            (string) $from_id
+        );
+        $order = is_array($result['order'] ?? null) ? $result['order'] : null;
+        if (!is_array($order)) {
+            throw new RuntimeException('Order disappeared after cancellation.');
+        }
+
+        Editmessagetext(
+            $from_id,
+            $message_id,
+            "↩️ <b>سفارش لغو شد</b>\n\n"
+                . "🧾 کد سفارش: <code>" . htmlspecialchars((string) ($order['order_code'] ?? ''), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . "</code>\n"
+                . "💰 مبلغ <b>" . number_format((float) ($order['amount'] ?? 0)) . " تومان</b> به کیف پول شما برگشت.",
+            BluebotDigitalServices::userOrderKeyboard($order),
+            'HTML'
+        );
+    } catch (DomainException $e) {
+        if ($e->getMessage() === 'ORDER_CANCEL_UNAVAILABLE') {
+            $order = BluebotDigitalServices::findUserOrder(
+                $pdo,
+                (string) $from_id,
+                (int) $digitalCancelConfirmMatch[1]
+            );
+            $message = "⚠️ این سفارش وارد مرحله پردازش شده و دیگر قابل لغو خودکار نیست.";
+            if (is_array($order)) {
+                Editmessagetext(
+                    $from_id,
+                    $message_id,
+                    BluebotDigitalServices::userOrderText($order) . "\n\n" . $message,
+                    BluebotDigitalServices::userOrderKeyboard($order),
+                    'HTML'
+                );
+            } else {
+                sendmessage($from_id, $message, $keyboard, 'HTML');
+            }
+            return;
+        }
+        throw $e;
+    } catch (Throwable $e) {
+        bluebotLog('error', 'Digital service customer cancellation failed', [
+            'user_id' => (string) $from_id,
+            'order_id' => (int) $digitalCancelConfirmMatch[1],
+            'error' => $e->getMessage(),
+        ]);
+        sendmessage(
+            $from_id,
+            '❌ لغو سفارش انجام نشد. وضعیت سفارش و کیف پول شما بدون تغییر باقی ماند.',
+            $keyboard,
+            'HTML'
+        );
+    }
+    return;
 } elseif (preg_match('/^ds_product:(\d+)$/', (string) $datain, $digitalProductMatch)) {
     if (!check_active_btn($setting['keyboardmain'], 'text_digital_services')) {
         sendmessage($from_id, $textbotlang['users']['buttonDisabled'], null, 'HTML');
@@ -1453,8 +1599,8 @@ if ($text == "/start" || $datain == "start" || $text == "start") {
             . "💳 قیمت: <b>" . number_format((float) $product['price']) . " تومان</b>";
     }
 
-    $description = trim((string) ($product['description'] ?? ''));
-    if ($description !== '' && !str_starts_with($description, 'محصول همگام‌شده از ')) {
+    $description = BluebotDigitalServices::customerProductDescription($product);
+    if ($description !== '') {
         $productText .= "\n\n📝 " . nl2br(htmlspecialchars(
             mb_substr($description, 0, 600, 'UTF-8'),
             ENT_QUOTES | ENT_SUBSTITUTE,
