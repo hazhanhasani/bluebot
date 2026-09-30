@@ -120,11 +120,17 @@ final class BluebotDigitalServices
                 : self::findOrder($pdo, (int) ($order['id'] ?? 0));
 
             if (is_array($failedOrder)) {
+                $customerMessage = $provider === 'tgtools'
+                    ? "✅ <b>سفارش شما با موفقیت ثبت شد</b>\n\n"
+                        . "🧾 کد سفارش: <code>" . self::escape((string) ($failedOrder['order_code'] ?? '')) . "</code>\n"
+                        . "نتیجه پس از پردازش اطلاع داده می‌شود."
+                    : "⚠️ <b>ارسال خودکار موقتاً انجام نشد</b>\n\n"
+                        . "🧾 کد: <code>" . self::escape((string) ($failedOrder['order_code'] ?? '')) . "</code>\n"
+                        . "سفارش برای بررسی مدیر نگه داشته شد و مبلغ از بین نرفته است.";
+
                 sendmessage(
                     (string) ($failedOrder['user_id'] ?? ''),
-                    "✅ <b>سفارش شما با موفقیت ثبت شد</b>\n\n"
-                        . "🧾 کد سفارش: <code>" . self::escape((string) ($failedOrder['order_code'] ?? '')) . "</code>\n"
-                        . "نتیجه پس از پردازش اطلاع داده می‌شود.",
+                    $customerMessage,
                     null,
                     'HTML'
                 );
