@@ -4570,6 +4570,7 @@ final class BluebotDigitalServices
         );
         $orders = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
         $client = new OZVinooClient($apiKey);
+        $numberProvider = new OZVinooVirtualNumberProvider($client);
 
         foreach ($orders as $order) {
             $stats['checked']++;
@@ -4597,8 +4598,10 @@ final class BluebotDigitalServices
 
                     $body = self::ozvinooResponseBody($response);
                     $data = is_array($body['data'] ?? null) ? $body['data'] : [];
-                    $state = $data['status'] ?? null;
-                    if ($state === true || in_array(strtolower((string) $state), ['ok', 'done', 'success', 'completed', 'delivered'], true)) {
+                    $state = strtolower(trim((string) ($data['status'] ?? '')));
+
+                    if (($data['status'] ?? null) === true
+                        || in_array($state, ['ok', 'done', 'success', 'completed', 'delivered'], true)) {
                         self::finalizeDeliveredOrder($pdo, (int) $order['id'], [
                             'ok' => true,
                             'reference' => $reference,
@@ -4608,7 +4611,7 @@ final class BluebotDigitalServices
                         continue;
                     }
 
-                    if (in_array(strtolower((string) $state), ['failed', 'error', 'cancel', 'cancelled', 'canceled', 'rejected'], true)) {
+                    if (in_array($state, ['failed', 'error', 'cancel', 'cancelled', 'canceled', 'rejected'], true)) {
                         self::failAndRefundProviderOrder(
                             $pdo,
                             (int) $order['id'],
@@ -4619,7 +4622,7 @@ final class BluebotDigitalServices
                         continue;
                     }
 
-                    if (in_array(strtolower((string) $state), ['partial', 'partially_completed', 'partially-completed'], true)) {
+                    if (in_array($state, ['partial', 'partially_completed', 'partially-completed'], true)) {
                         self::markPartialReview(
                             $pdo,
                             (int) $order['id'],
@@ -4635,8 +4638,7 @@ final class BluebotDigitalServices
                 }
 
                 if ($type === 'virtual_number') {
-                    $provider = new OZVinooVirtualNumberProvider($client);
-                    $numberStatus = $provider->status($reference, $product);
+                    $numberStatus = $numberProvider->status($reference, $product);
                     if (empty($numberStatus['ok'])) {
                         $stats['errors']++;
                         continue;
@@ -4667,48 +4669,6 @@ final class BluebotDigitalServices
                             (int) $order['id'],
                             'OZVinoo virtual-number order was cancelled or expired.',
                             $numberStatus['response'] ?? $numberStatus
-                        );
-                        $stats['failed']++;
-                        continue;
-                    }
-
-                    $stats['pending']++;
-                    continue;
-                }
-
-                $stats['errors']++;
-                        continue;
-                    }
-
-                    $body = self::ozvinooResponseBody($response);
-                    $data = is_array($body['data'] ?? null) ? $body['data'] : $body;
-                    $code = trim((string) ($data['code'] ?? ''));
-                    $number = trim((string) ($data['number'] ?? ''));
-                    $state = strtolower(trim((string) ($data['status'] ?? '')));
-
-                    if ($code !== '') {
-                        $message = "✅ <b>شماره مجازی شما آماده است</b>\n\n"
-                            . "📱 شماره: <code>" . self::escape($number !== '' ? $number : '—') . "</code>\n"
-                            . "🔐 کد ورود: <code>" . self::escape($code) . "</code>\n"
-                            . "🧾 سفارش: <code>" . self::escape((string) $order['order_code']) . "</code>";
-
-                        self::finalizeDeliveredOrder($pdo, (int) $order['id'], [
-                            'ok' => true,
-                            'reference' => $reference,
-                            'response' => $response,
-                            'customer_message' => $message,
-                        ]);
-                        $stats['completed']++;
-                        continue;
-                    }
-
-                    if (in_array($state, ['cancel', 'cancelled', 'canceled', 'failed', 'error'], true)
-                        || str_contains(strtolower((string) ($body['message'] ?? '')), 'cancel')) {
-                        self::failAndRefundProviderOrder(
-                            $pdo,
-                            (int) $order['id'],
-                            'OZVinoo virtual-number order was cancelled.',
-                            $response
                         );
                         $stats['failed']++;
                         continue;
