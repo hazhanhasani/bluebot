@@ -4613,23 +4613,64 @@ final class BluebotDigitalServices
                         continue;
                     }
 
+                    if (in_array(strtolower((string) $state), ['partial', 'partially_completed', 'partially-completed'], true)) {
+                        self::markPartialReview(
+                            $pdo,
+                            (int) $order['id'],
+                            $response,
+                            'OZVinoo reported partial delivery.'
+                        );
+                        $stats['failed']++;
+                        continue;
+                    }
+
                     $stats['pending']++;
                     continue;
                 }
 
                 if ($type === 'virtual_number') {
-                    $metadata = self::productMetadata($product);
-                    $apiFamily = (string) ($metadata['api_family'] ?? 'telegram-numbers-v2');
-                    $response = $apiFamily === 'web-v1'
-                        ? $client->getCodeV1($reference)
-                        : $client->numberStatus($reference);
-                    $http = (int) ($response['http_status'] ?? 0);
-                    if ($http === 202) {
-                        $stats['pending']++;
+                    $provider = new OZVinooVirtualNumberProvider($client);
+                    $numberStatus = $provider->status($reference, $product);
+                    if (empty($numberStatus['ok'])) {
+                        $stats['errors']++;
                         continue;
                     }
-                    if (empty($response['ok'])) {
-                        $stats['errors']++;
+
+                    $numberState = (string) ($numberStatus['status'] ?? 'pending');
+                    if ($numberState === 'completed') {
+                        $number = trim((string) ($numberStatus['number'] ?? ''));
+                        $code = trim((string) ($numberStatus['code'] ?? ''));
+                        $message = "✅ <b>شماره مجازی شما آماده است</b>\n\n"
+                            . "📱 شماره: <code>" . self::escape($number !== '' ? $number : '—') . "</code>\n"
+                            . "🔐 کد ورود: <code>" . self::escape($code) . "</code>\n"
+                            . "🧾 سفارش: <code>" . self::escape((string) $order['order_code']) . "</code>";
+
+                        self::finalizeDeliveredOrder($pdo, (int) $order['id'], [
+                            'ok' => true,
+                            'reference' => $reference,
+                            'response' => $numberStatus['response'] ?? $numberStatus,
+                            'customer_message' => $message,
+                        ]);
+                        $stats['completed']++;
+                        continue;
+                    }
+
+                    if ($numberState === 'failed') {
+                        self::failAndRefundProviderOrder(
+                            $pdo,
+                            (int) $order['id'],
+                            'OZVinoo virtual-number order was cancelled or expired.',
+                            $numberStatus['response'] ?? $numberStatus
+                        );
+                        $stats['failed']++;
+                        continue;
+                    }
+
+                    $stats['pending']++;
+                    continue;
+                }
+
+                $stats['errors']++;
                         continue;
                     }
 
@@ -4694,13 +4735,54 @@ final class BluebotDigitalServices
         $type = (string) ($product['type'] ?? '');
         $client = new OZVinooClient($apiKey);
 
+        if ($type === 'virtual_number') {
+            $provider = new OZVinooVirtualNumberProvider($client);
+            $numberOrder = $provider->requestNumber($product);
+            if (empty($numberOrder['ok'])) {
+                return [
+                    'ok' => false,
+                    'retryable' => !empty($numberOrder['retryable']),
+                    'error' => trim((string) ($numberOrder['message'] ?? '')) ?: 'درخواست شماره مجازی عضوینو ناموفق بود.',
+                    'response' => $numberOrder['response'] ?? $numberOrder,
+                ];
+            }
+
+            $reference = trim((string) ($numberOrder['reference'] ?? ''));
+            if ($reference === '') {
+                return [
+                    'ok' => false,
+                    'retryable' => true,
+                    'error' => 'عضوینو شناسه پیگیری شماره مجازی برنگرداند.',
+                    'response' => $numberOrder,
+                ];
+            }
+
+            $result = [
+                'ok' => true,
+                'pending' => true,
+                'reference' => $reference,
+                'response' => $numberOrder['response'] ?? $numberOrder,
+            ];
+            $number = trim((string) ($numberOrder['number'] ?? ''));
+            if ($number !== '') {
+                $result['customer_message_pending'] = "📱 <b>شماره برای شما رزرو شد</b>\n\n"
+                    . "شماره: <code>" . self::escape($number) . "</code>\n"
+                    . "⏳ در انتظار دریافت کد ورود هستیم. به‌محض آماده‌شدن، کد خودکار برای شما ارسال می‌شود.";
+            }
+
+            return $result;
+        }
+
         try {
             if ($type === 'telegram_stars') {
                 $username = ltrim(trim((string) ($order['target'] ?? '')), '@');
                 if (!preg_match('/^[A-Za-z0-9_]{5,32}$/', $username)) {
                     return ['ok' => false, 'error' => 'یوزرنیم تلگرام مقصد معتبر نیست.'];
                 }
-                $response = $client->buyStars(max(50, (int) ($product['service_value'] ?? 50)), $username);
+                $response = $client->buyStars(
+                    max(50, (int) ($order['quantity'] ?? $product['service_value'] ?? 50)),
+                    $username
+                );
             } elseif ($type === 'telegram_premium') {
                 $username = ltrim(trim((string) ($order['target'] ?? '')), '@');
                 if (!preg_match('/^[A-Za-z0-9_]{5,32}$/', $username)) {
@@ -4711,23 +4793,6 @@ final class BluebotDigitalServices
                     return ['ok' => false, 'retryable' => true, 'error' => 'شناسه بسته Premium عضوینو پیدا نشد.'];
                 }
                 $response = $client->buyPremium($packageId, $username);
-            } elseif ($type === 'virtual_number') {
-                $metadata = self::productMetadata($product);
-                $apiFamily = (string) ($metadata['api_family'] ?? 'telegram-numbers-v2');
-                if ($apiFamily === 'web-v1') {
-                    $serviceId = max(0, (int) ($metadata['service_id'] ?? 0));
-                    $range = trim((string) ($metadata['range'] ?? ''));
-                    if ($serviceId <= 0 || $range === '') {
-                        return ['ok' => false, 'retryable' => true, 'error' => 'اطلاعات سرویس/کشور شماره مجازی عضوینو کامل نیست.'];
-                    }
-                    $response = $client->getNumberV1($serviceId, $range);
-                } else {
-                    $countryId = trim((string) ($metadata['country_id'] ?? $product['provider_service_code'] ?? ''));
-                    if ($countryId === '') {
-                        return ['ok' => false, 'retryable' => true, 'error' => 'شناسه کشور شماره مجازی عضوینو پیدا نشد.'];
-                    }
-                    $response = $client->buyNumber($countryId, true);
-                }
             } else {
                 return ['ok' => false, 'error' => 'Unsupported OZVinoo official service type.'];
             }
@@ -4747,14 +4812,7 @@ final class BluebotDigitalServices
 
         $body = self::ozvinooResponseBody($response);
         $data = is_array($body['data'] ?? null) ? $body['data'] : $body;
-        $reference = '';
-
-        if ($type === 'virtual_number') {
-            $reference = trim((string) ($data['order_id'] ?? $data['request_id'] ?? $data['id'] ?? ''));
-        } else {
-            $reference = trim((string) ($data['code'] ?? $data['order_id'] ?? $data['id'] ?? ''));
-        }
-
+        $reference = trim((string) ($data['code'] ?? $data['order_id'] ?? $data['id'] ?? ''));
         if ($reference === '') {
             return [
                 'ok' => false,
@@ -4764,23 +4822,12 @@ final class BluebotDigitalServices
             ];
         }
 
-        $result = [
+        return [
             'ok' => true,
             'pending' => true,
             'reference' => $reference,
             'response' => $response,
         ];
-
-        if ($type === 'virtual_number') {
-            $number = trim((string) ($data['number'] ?? ''));
-            if ($number !== '') {
-                $result['customer_message_pending'] = "📱 <b>شماره برای شما رزرو شد</b>\n\n"
-                    . "شماره: <code>" . self::escape($number) . "</code>\n"
-                    . "⏳ در انتظار دریافت کد ورود هستیم. به‌محض آماده‌شدن، کد خودکار برای شما ارسال می‌شود.";
-            }
-        }
-
-        return $result;
     }
 
     private static function ozvinooRetryableHttp(int $http): bool
