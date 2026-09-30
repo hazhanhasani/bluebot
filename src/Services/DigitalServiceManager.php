@@ -241,14 +241,42 @@ final class BluebotDigitalServices
 
     public static function tgToolsTonRateStatus(PDO $pdo): array
     {
+        $marketRate = max(0.0, (float) self::setting($pdo, 'tgtools_ton_toman_rate', '0'));
+        $tradeFeePercent = max(0.0, min(20.0, (float) self::setting($pdo, 'tgtools_nobitex_trade_fee_percent', '0.25')));
+        $networkFeeGram = max(0.0, (float) self::setting($pdo, 'tgtools_gram_network_fee', '0.000562'));
+        $fundingBatchGram = max(0.000001, (float) self::setting($pdo, 'tgtools_gram_funding_batch', '1'));
+        $landedRate = self::tgToolsLandedTonRate($marketRate, $tradeFeePercent, $networkFeeGram, $fundingBatchGram);
+
         return [
-            'rate_toman' => max(0.0, (float) self::setting($pdo, 'tgtools_ton_toman_rate', '0')),
+            'rate_toman' => $marketRate,
+            'landed_rate_toman' => $landedRate,
+            'trade_fee_percent' => $tradeFeePercent,
+            'network_fee_gram' => $networkFeeGram,
+            'funding_batch_gram' => $fundingBatchGram,
+            'overhead_percent' => $marketRate > 0 ? (($landedRate / $marketRate) - 1) * 100 : 0.0,
             'source' => self::setting($pdo, 'tgtools_ton_rate_source', 'nobitex'),
             'market' => self::setting($pdo, 'tgtools_ton_rate_market', 'GRAMIRT'),
             'last_sync' => (int) self::setting($pdo, 'tgtools_ton_rate_last_sync', '0'),
             'last_market_update' => (int) self::setting($pdo, 'tgtools_ton_rate_market_update', '0'),
             'last_error' => self::setting($pdo, 'tgtools_ton_rate_last_error', ''),
         ];
+    }
+
+    private static function tgToolsLandedTonRate(
+        float $marketRateToman,
+        float $tradeFeePercent,
+        float $networkFeeGram,
+        float $fundingBatchGram
+    ): float {
+        if ($marketRateToman <= 0 || $fundingBatchGram <= 0) {
+            return 0.0;
+        }
+
+        $tradeFeeFraction = max(0.0, min(0.99, $tradeFeePercent / 100));
+        $grossFactor = 1.0 / (1.0 - $tradeFeeFraction);
+        $networkFactor = ($fundingBatchGram + max(0.0, $networkFeeGram)) / $fundingBatchGram;
+
+        return $marketRateToman * $grossFactor * $networkFactor;
     }
 
     public static function refreshTgToolsTonRateFromNobitex(
@@ -343,7 +371,9 @@ final class BluebotDigitalServices
 
     private static function repriceTgToolsCatalogFromTonRate(PDO $pdo, float $tonRateToman): int
     {
-        if ($tonRateToman <= 0 || !self::isAvailable($pdo)) {
+        $status = self::tgToolsTonRateStatus($pdo);
+        $landedRateToman = (float) ($status['landed_rate_toman'] ?? 0);
+        if ($tonRateToman <= 0 || $landedRateToman <= 0 || !self::isAvailable($pdo)) {
             return 0;
         }
 
@@ -382,7 +412,7 @@ final class BluebotDigitalServices
             $price = BluebotProviderCatalogService::calculateSellingPrice(
                 (float) $wholesaleTon,
                 'ton',
-                $tonRateToman,
+                $landedRateToman,
                 max(0.0, min(1000.0, $profitPercent))
             );
             if ($price <= 0) {
@@ -390,6 +420,10 @@ final class BluebotDigitalServices
             }
 
             $metadata['ton_rate_toman'] = $tonRateToman;
+            $metadata['ton_landed_rate_toman'] = $landedRateToman;
+            $metadata['nobitex_trade_fee_percent'] = (float) ($status['trade_fee_percent'] ?? 0);
+            $metadata['gram_network_fee'] = (float) ($status['network_fee_gram'] ?? 0);
+            $metadata['gram_funding_batch'] = (float) ($status['funding_batch_gram'] ?? 1);
             $metadata['ton_rate_source'] = 'nobitex';
             $metadata['ton_rate_market'] = 'GRAMIRT';
             $metadata['ton_rate_synced_at'] = gmdate(DATE_ATOM);
@@ -439,6 +473,8 @@ final class BluebotDigitalServices
         $premiumProfit = max(0.0, min(1000.0, (float) self::setting($pdo, 'tgtools_premium_profit_percent', '0')));
         self::refreshTgToolsTonRateFromNobitex($pdo, false, 60);
         $tonRateToman = max(0.0, (float) self::setting($pdo, 'tgtools_ton_toman_rate', '0'));
+        $tonRateStatus = self::tgToolsTonRateStatus($pdo);
+        $landedTonRateToman = (float) ($tonRateStatus['landed_rate_toman'] ?? 0);
 
         $definitions = [];
         $seenStars = [];
@@ -532,11 +568,11 @@ final class BluebotDigitalServices
             $profitPercent = (float) ($definition['profit_percent'] ?? 0);
 
             $autoPrice = 0;
-            if ($wholesaleTon !== null && $wholesaleTon > 0 && $tonRateToman > 0) {
+            if ($wholesaleTon !== null && $wholesaleTon > 0 && $landedTonRateToman > 0) {
                 $autoPrice = BluebotProviderCatalogService::calculateSellingPrice(
                     $wholesaleTon,
                     'ton',
-                    $tonRateToman,
+                    $landedTonRateToman,
                     $profitPercent
                 );
             }
@@ -548,6 +584,10 @@ final class BluebotDigitalServices
                 'price_mode' => 'margin',
                 'profit_percent' => $profitPercent,
                 'ton_rate_toman' => $tonRateToman,
+                'ton_landed_rate_toman' => $landedTonRateToman,
+                'nobitex_trade_fee_percent' => (float) ($tonRateStatus['trade_fee_percent'] ?? 0),
+                'gram_network_fee' => (float) ($tonRateStatus['network_fee_gram'] ?? 0),
+                'gram_funding_batch' => (float) ($tonRateStatus['funding_batch_gram'] ?? 1),
                 'ton_rate_source' => 'nobitex',
                 'ton_rate_market' => 'GRAMIRT',
                 'category_key' => (string) $definition['type'] === 'telegram_stars' ? 'stars' : 'premium',
@@ -636,6 +676,10 @@ final class BluebotDigitalServices
             'stars_profit_percent' => $starsProfit,
             'premium_profit_percent' => $premiumProfit,
             'ton_rate_toman' => $tonRateToman,
+            'ton_landed_rate_toman' => $landedTonRateToman,
+            'nobitex_trade_fee_percent' => (float) ($tonRateStatus['trade_fee_percent'] ?? 0),
+            'gram_network_fee' => (float) ($tonRateStatus['network_fee_gram'] ?? 0),
+            'gram_funding_batch' => (float) ($tonRateStatus['funding_batch_gram'] ?? 1),
         ];
     }
 
