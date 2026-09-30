@@ -141,7 +141,7 @@ if (preg_match('/^ds_approve:(\d+)$/', (string) $datain, $digitalApproveMatch)
                     'callback_query_id' => $callback_query_id,
                     'text' => !empty($result['already_done'])
                         ? 'قبلاً ارسال شده است.'
-                        : ($isPendingProvider ? 'در صف TGTools قرار گرفت.' : 'ارسال انجام شد.'),
+                        : ($isPendingProvider ? 'برای Provider ارسال شد و در حال پردازش است.' : 'ارسال انجام شد.'),
                     'show_alert' => false,
                 ]);
             }
@@ -151,11 +151,11 @@ if (preg_match('/^ds_approve:(\d+)$/', (string) $datain, $digitalApproveMatch)
             $refunded = !empty($result['refunded']);
 
             if ($retryable) {
-                $failedText = "⚠️ <b>ارسال انجام نشد؛ قابل تلاش مجدد است</b>\n\n"
+                $failedText = "🛠 <b>سفارش نیاز به بررسی و تلاش مجدد دارد</b>\n\n"
                     . BluebotDigitalServices::adminOrderText(is_array($order) ? $order : ['id' => $orderId])
                     . "\n\n"
                     . nl2br(htmlspecialchars($error, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'))
-                    . "\n\nبعد از رفع مشکل Provider دوباره «تأیید و ارسال» را بزنید.";
+                    . "\n\nپس از بررسی خطای Provider، در صورت اطمینان «تأیید و ارسال» را دوباره بزنید؛ در غیر این صورت «رد و برگشت وجه» را انتخاب کنید.";
                 $failureKeyboard = BluebotDigitalServices::adminKeyboard($orderId);
                 $callbackText = 'ارسال انجام نشد؛ بعد از رفع مشکل دوباره تلاش کنید.';
             } elseif ($refunded) {
