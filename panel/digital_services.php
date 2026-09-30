@@ -544,7 +544,7 @@ include __DIR__ . '/inc/layout_head.php';
         <div class="card-head">
             <div>
                 <div class="card-title">TGTools API</div>
-                <div class="card-subtitle">ارسال Stars و Premium پس از تأیید دستی ادمین؛ وضعیت سفارش خودکار پیگیری می‌شود.</div>
+                <div class="card-subtitle">فروش Stars و Premium با انتخاب مستقل تأیید دستی یا ارسال خودکار؛ وضعیت سفارش خودکار پیگیری می‌شود.</div>
             </div>
         </div>
         <form method="post" class="card-body" style="display:grid;gap:12px">
@@ -560,24 +560,72 @@ include __DIR__ . '/inc/layout_head.php';
                     placeholder="<?= $tgApiKey !== '' ? '•••••••• (ذخیره شده؛ برای تغییر وارد کنید)' : 'tgt_...' ?>">
                 <small class="field-hint">کلید از Settings → API Keys در TGTools ساخته می‌شود و در پیام‌های ربات نمایش داده نمی‌شود.</small>
             </div>
-            <div class="notice <?= !empty($tgWalletStatus['ok']) ? 'notice-info' : 'notice-warn' ?>">
-                <strong>کیف پول API TGTools:</strong>
+            <?php
+            $tgWalletBalanceText = is_numeric($tgWalletStatus['balance_ton'] ?? null)
+                ? rtrim(rtrim(number_format((float) $tgWalletStatus['balance_ton'], 6, '.', ''), '0'), '.') . ' TON'
+                : 'نامشخص';
+            $tgWalletAddress = trim((string) ($tgWalletStatus['deposit_address'] ?? ''));
+            ?>
+            <div class="notice <?= !empty($tgWalletStatus['ok']) ? 'notice-info' : 'notice-warn' ?>" style="display:grid;gap:12px">
+                <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
+                    <strong>💎 کیف پول TGTools</strong>
+                    <a class="btn btn-ghost btn-sm" href="digital_services.php#tgtools">↻ بروزرسانی موجودی</a>
+                </div>
+
                 <?php if (!empty($tgWalletStatus['ok'])): ?>
-                    موجودی:
-                    <code><?= is_numeric($tgWalletStatus['balance_ton'] ?? null)
-                        ? htmlspecialchars(rtrim(rtrim(number_format((float) $tgWalletStatus['balance_ton'], 6, '.', ''), '0'), '.'))
-                        : 'نامشخص' ?> TON</code>
-                    <?php if (!empty($tgWalletStatus['deposit_address'])): ?>
-                        <br>آدرس واریز:
-                        <code><?= htmlspecialchars((string) $tgWalletStatus['deposit_address']) ?></code>
-                    <?php endif; ?>
+                    <div class="two-col" style="gap:10px">
+                        <div class="field">
+                            <label>موجودی TGTools</label>
+                            <input class="input" type="text"
+                                value="<?= htmlspecialchars($tgWalletBalanceText) ?>"
+                                readonly dir="ltr">
+                            <small class="field-hint">موجودی واقعی کیف پول API که سفارش‌های TGTools از آن کسر می‌شوند.</small>
+                        </div>
+                        <div class="field">
+                            <label>آدرس کیف پول / واریز TGTools</label>
+                            <div style="display:flex;gap:8px;align-items:center">
+                                <input class="input" type="text"
+                                    value="<?= htmlspecialchars($tgWalletAddress !== '' ? $tgWalletAddress : 'آدرس از API دریافت نشد') ?>"
+                                    readonly dir="ltr" data-tgtools-wallet-address>
+                                <?php if ($tgWalletAddress !== ''): ?>
+                                    <button class="btn btn-ghost btn-sm" type="button"
+                                        data-copy-tgtools-wallet
+                                        data-wallet-address="<?= htmlspecialchars($tgWalletAddress) ?>">📋 کپی</button>
+                                <?php endif; ?>
+                            </div>
+                            <small class="field-hint">برای شارژ حساب TGTools از همین آدرس واریز استفاده کنید.</small>
+                        </div>
+                    </div>
                 <?php else: ?>
-                    <?= htmlspecialchars((string) ($tgWalletStatus['message'] ?? 'دریافت موجودی ناموفق بود.')) ?>
+                    <div>
+                        <?= htmlspecialchars((string) ($tgWalletStatus['message'] ?? 'دریافت اطلاعات کیف پول TGTools ناموفق بود.')) ?>
+                    </div>
                 <?php endif; ?>
-                <br><small>
+
+                <small>
                     اتصال Tonkeeper به سایت به‌تنهایی موجودی API را تأمین نمی‌کند؛ سفارش API از موجودی کیف پول TGTools کسر می‌شود.
                 </small>
             </div>
+            <script>
+            document.querySelectorAll('[data-copy-tgtools-wallet]').forEach(function (button) {
+                button.addEventListener('click', async function () {
+                    var address = button.getAttribute('data-wallet-address') || '';
+                    if (!address) return;
+                    try {
+                        await navigator.clipboard.writeText(address);
+                        var original = button.textContent;
+                        button.textContent = '✅ کپی شد';
+                        setTimeout(function () { button.textContent = original; }, 1400);
+                    } catch (error) {
+                        var input = document.querySelector('[data-tgtools-wallet-address]');
+                        if (input) {
+                            input.focus();
+                            input.select();
+                        }
+                    }
+                });
+            });
+            </script>
             <div class="two-col" style="gap:10px">
                 <div class="field">
                     <label>حاشیه سود Stars (%)</label>
