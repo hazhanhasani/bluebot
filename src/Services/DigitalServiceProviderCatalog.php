@@ -349,7 +349,7 @@ final class BluebotProviderCatalogService
         if ($authHeader !== '' && !preg_match('/^[A-Za-z0-9-]{1,80}$/', $authHeader)) {
             throw new InvalidArgumentException('Authentication header name is invalid.');
         }
-        if ($productsPath !== '' && !preg_match('/^(?:smm:)?[A-Za-z0-9_.-]{1,190}$/', $productsPath)) {
+        if ($productsPath !== '' && !preg_match('/^(?:(?:smm|smm-get):)?[A-Za-z0-9_.-]{1,190}$/', $productsPath)) {
             throw new InvalidArgumentException('Catalog products path is invalid.');
         }
         foreach ([$idField, $nameField, $categoryField, $priceField] as $path) {
@@ -593,7 +593,9 @@ final class BluebotProviderCatalogService
         $provider['price_field'] = $mapping['price_field'];
 
         self::persistDiscoveredMapping($pdo, $providerKey, $mapping);
-        $smmStyle = str_starts_with((string) ($mapping['products_path'] ?? ''), 'smm:');
+        $mappingProductsPath = (string) ($mapping['products_path'] ?? '');
+        $smmStyle = str_starts_with($mappingProductsPath, 'smm:')
+            || str_starts_with($mappingProductsPath, 'smm-get:');
 
         $find = $pdo->prepare(
             "SELECT * FROM digital_service_products
@@ -1142,12 +1144,17 @@ final class BluebotProviderCatalogService
     private static function resolveCatalogMapping(array $body, array $provider): array
     {
         $productsPath = trim((string) ($provider['products_path'] ?? 'auto'));
-        $smmStyle = str_starts_with($productsPath, 'smm:');
-        if ($smmStyle) {
+        $smmPrefix = '';
+        if (str_starts_with($productsPath, 'smm-get:')) {
+            $smmPrefix = 'smm-get:';
+            $productsPath = substr($productsPath, 8);
+        } elseif (str_starts_with($productsPath, 'smm:')) {
+            $smmPrefix = 'smm:';
             $productsPath = substr($productsPath, 4);
-            if ($productsPath === '') {
-                $productsPath = '.';
-            }
+        }
+        $smmStyle = $smmPrefix !== '';
+        if ($smmStyle && $productsPath === '') {
+            $productsPath = '.';
         }
         $idField = trim((string) ($provider['id_field'] ?? 'auto'));
         $nameField = trim((string) ($provider['name_field'] ?? 'auto'));
@@ -1166,7 +1173,7 @@ final class BluebotProviderCatalogService
             return [
                 'ok' => true,
                 'items' => $items,
-                'products_path' => $smmStyle ? 'smm:' . $productsPath : $productsPath,
+                'products_path' => $smmStyle ? $smmPrefix . $productsPath : $productsPath,
                 'id_field' => $idField,
                 'name_field' => $nameField,
                 'category_field' => $categoryField,
@@ -1174,7 +1181,16 @@ final class BluebotProviderCatalogService
             ];
         }
 
-        return self::autoDiscoverCatalogMapping($body);
+        $auto = self::autoDiscoverCatalogMapping($body);
+        if ($smmStyle && !empty($auto['ok'])) {
+            $detectedPath = trim((string) ($auto['products_path'] ?? '.'));
+            if ($detectedPath === '') {
+                $detectedPath = '.';
+            }
+            $auto['products_path'] = $smmPrefix . $detectedPath;
+        }
+
+        return $auto;
     }
 
     private static function autoDiscoverCatalogMapping(array $body): array
@@ -1361,8 +1377,11 @@ final class BluebotProviderCatalogService
         $authPrefix = trim((string) ($provider['auth_prefix'] ?? 'Bearer'));
         $productsPath = trim((string) ($provider['products_path'] ?? ''));
 
+        if (str_starts_with($productsPath, 'smm-get:')) {
+            return self::requestSmmServices($url, $apiKey, $authHeader, $authPrefix, 'get');
+        }
         if (str_starts_with($productsPath, 'smm:')) {
-            return self::requestSmmServices($url, $apiKey, $authHeader, $authPrefix);
+            return self::requestSmmServices($url, $apiKey, $authHeader, $authPrefix, 'post');
         }
 
         $response = self::requestCatalogUrl($url, $apiKey, $authHeader, $authPrefix);
@@ -1373,7 +1392,7 @@ final class BluebotProviderCatalogService
         // Existing OZVinoo installs may still have an old GET catalog URL.
         // Try the SMM services contract before reporting a sync failure.
         if (strtolower((string) ($provider['provider_key'] ?? '')) === 'ozvinoo' && $apiKey !== '') {
-            $smm = self::requestSmmServices($url, $apiKey, $authHeader, $authPrefix);
+            $smm = self::requestSmmServices($url, $apiKey, $authHeader, $authPrefix, 'post');
             if (!empty($smm['ok'])) {
                 return $smm;
             }
@@ -1592,6 +1611,7 @@ final class BluebotProviderCatalogService
         string $apiKey,
         string $authHeader,
         string $authPrefix,
+        string $transport = 'post',
         int $redirectsRemaining = 1
     ): array {
         $legacyTivaHttp = self::isSafeTivaNovinLegacyUrl($url);
@@ -1611,19 +1631,25 @@ final class BluebotProviderCatalogService
             $headers[] = $authHeader . ': ' . $headerValue;
         }
 
+        $transport = strtolower(trim($transport));
+        if (!in_array($transport, ['post', 'get'], true)) {
+            return ['ok' => false, 'message' => 'Unsupported SMM catalog transport.'];
+        }
+
         $payload = http_build_query([
             'key' => $apiKey,
             'action' => 'services',
         ], '', '&', PHP_QUERY_RFC3986);
+        $requestUrl = $transport === 'get'
+            ? $url . (str_contains($url, '?') ? '&' : '?') . $payload
+            : $url;
 
-        $ch = curl_init($url);
+        $ch = curl_init($requestUrl);
         if ($ch === false) {
             return ['ok' => false, 'message' => 'Unable to initialise SMM provider request.'];
         }
 
-        curl_setopt_array($ch, [
-            CURLOPT_POST => true,
-            CURLOPT_POSTFIELDS => $payload,
+        $options = [
             CURLOPT_RETURNTRANSFER => true,
             CURLOPT_HTTPHEADER => $headers,
             CURLOPT_CONNECTTIMEOUT => self::DISCOVERY_CONNECT_TIMEOUT_SECONDS,
@@ -1633,7 +1659,12 @@ final class BluebotProviderCatalogService
             CURLOPT_PROTOCOLS => $legacyTivaHttp ? CURLPROTO_HTTP : CURLPROTO_HTTPS,
             CURLOPT_FOLLOWLOCATION => false,
             CURLOPT_USERAGENT => 'BlueBot/0.5.36 ProviderCatalog',
-        ]);
+        ];
+        if ($transport === 'post') {
+            $options[CURLOPT_POST] = true;
+            $options[CURLOPT_POSTFIELDS] = $payload;
+        }
+        curl_setopt_array($ch, $options);
 
         $raw = curl_exec($ch);
         $error = curl_error($ch);
@@ -1657,6 +1688,7 @@ final class BluebotProviderCatalogService
                     $apiKey,
                     $authHeader,
                     $authPrefix,
+                    $transport,
                     $redirectsRemaining - 1
                 );
             }

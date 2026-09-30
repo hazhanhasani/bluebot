@@ -338,6 +338,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     if ($action === 'save_provider_catalog') {
         $requestedApprovalMode = strtolower(trim((string) ($_POST['provider_approval_mode'] ?? 'manual')));
+        $providerCatalogMode = strtolower(trim((string) ($_POST['provider_catalog_mode'] ?? 'auto')));
+        $providerProductsPath = trim((string) ($_POST['products_path'] ?? 'auto'));
+        if ($providerCatalogMode === 'smm-post') {
+            $providerProductsPath = 'smm:.';
+        } elseif ($providerCatalogMode === 'smm-get') {
+            $providerProductsPath = 'smm-get:.';
+        } elseif ($providerCatalogMode !== 'auto') {
+            flash('error', 'نوع اتصال Provider معتبر نیست.');
+            header('Location: digital_services.php#providers');
+            exit;
+        }
+
         try {
             $provider = BluebotProviderCatalogService::saveProvider($pdo, [
                 'provider_key' => $_POST['provider_key'] ?? '',
@@ -346,7 +358,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 'api_key' => $_POST['provider_api_key'] ?? '',
                 'auth_header' => $_POST['provider_auth_header'] ?? 'Authorization',
                 'auth_prefix' => $_POST['provider_auth_prefix'] ?? 'Bearer',
-                'products_path' => $_POST['products_path'] ?? 'auto',
+                'products_path' => $providerProductsPath,
                 'id_field' => $_POST['id_field'] ?? 'auto',
                 'name_field' => $_POST['name_field'] ?? 'auto',
                 'category_field' => $_POST['category_field'] ?? 'auto',
@@ -1220,6 +1232,19 @@ include __DIR__ . '/inc/layout_head.php';
             <small class="field-hint">خودکار فقط برای Providerهای SMM سازگار با <code>add/status</code> فعال می‌شود؛ در غیر این صورت BlueBot آن را روی دستی نگه می‌دارد.</small>
         </div>
 
+        <div class="field">
+            <label>روش اتصال API / کاتالوگ</label>
+            <select class="select" name="provider_catalog_mode">
+                <option value="auto" selected>🔎 خودکار / REST JSON</option>
+                <option value="smm-post">📨 SMM استاندارد POST — پیشنهادشده</option>
+                <option value="smm-get">🧩 SMM قدیمی GET — سازگار با پنل‌های V8</option>
+            </select>
+            <small class="field-hint">
+                حالت GET فقط برای پنل‌های قدیمی که <code>?key=...&amp;action=services</code> می‌خواهند استفاده شود.
+                چون کلید API در Query String قرار می‌گیرد، برای Providerهای جدید همیشه POST را ترجیح دهید.
+            </small>
+        </div>
+
         <details>
             <summary style="cursor:pointer;font-weight:700">تنظیم ساختار JSON کاتالوگ</summary>
             <div style="display:grid;gap:10px;margin-top:12px">
@@ -1253,7 +1278,10 @@ include __DIR__ . '/inc/layout_head.php';
                         <input class="input" type="number" name="sync_interval_minutes" min="1" max="1440" value="15">
                     </div>
                 </div>
-                <small class="field-hint">پیش‌فرض <code>auto</code> است؛ BlueBot ساختار رایج JSON را خودش تشخیص می‌دهد. برای APIهای خاص می‌توانید مسیرهایی مثل <code>service.id</code> وارد کنید.</small>
+                <small class="field-hint">
+                    در حالت خودکار، BlueBot ساختار JSON را تشخیص می‌دهد. انتخاب SMM POST/GET در بالا مسیر را به
+                    <code>smm:.</code> یا <code>smm-get:.</code> تبدیل می‌کند؛ لازم نیست این مقدارها را دستی بنویسید.
+                </small>
             </div>
         </details>
 
@@ -1274,6 +1302,10 @@ include __DIR__ . '/inc/layout_head.php';
                     $providerKey = strtolower((string) ($providerCatalog['provider_key'] ?? ''));
                     $providerApprovalMode = BluebotDigitalServices::providerApprovalMode($pdo, $providerKey);
                     $providerAutoCapable = BluebotDigitalServices::providerSupportsAutomaticDelivery($pdo, $providerKey);
+                    $providerProductsPath = (string) ($providerCatalog['products_path'] ?? '');
+                    $providerTransportLabel = str_starts_with($providerProductsPath, 'smm-get:')
+                        ? 'SMM GET (Legacy)'
+                        : (str_starts_with($providerProductsPath, 'smm:') ? 'SMM POST' : 'REST/JSON');
                     ?>
                     <div class="notice <?= (int) $providerCatalog['active'] === 1 ? 'notice-info' : 'notice-warn' ?>" style="display:flex;justify-content:space-between;gap:12px;align-items:center;flex-wrap:wrap">
                         <div>
@@ -1282,6 +1314,7 @@ include __DIR__ . '/inc/layout_head.php';
                             <div class="field-hint" style="margin-top:4px">
                                 سود: <?= htmlspecialchars((string) $providerCatalog['profit_percent']) ?>٪
                                 · ارز: <?= htmlspecialchars(strtoupper((string) $providerCatalog['currency'])) ?>
+                                · API: <strong><?= htmlspecialchars($providerTransportLabel) ?></strong>
                                 · تأیید: <strong><?= $providerApprovalMode === 'automatic' ? '⚡ خودکار' : '🛡️ دستی' ?></strong>
                                 · آخرین Sync: <?= htmlspecialchars((string) ($providerCatalog['last_sync_at'] ?? '—')) ?>
                                 <?php if (!empty($providerCatalog['last_sync_status'])): ?>

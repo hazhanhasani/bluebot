@@ -951,6 +951,68 @@ if ($text == "/start" || $datain == "start" || $text == "start") {
     step('home', $from_id);
     update('user', 'Processing_value', '0', 'id', $from_id);
     return;
+} elseif (preg_match('/^ds_favorites:(\d{1,4})$/', (string) $datain, $digitalFavoritesMatch)) {
+    if (!check_active_btn($setting['keyboardmain'], 'text_digital_services')) {
+        sendmessage($from_id, $textbotlang['users']['buttonDisabled'], null, 'HTML');
+        return;
+    }
+    if (!empty($callback_query_id)) {
+        telegram('answerCallbackQuery', ['callback_query_id' => $callback_query_id, 'cache_time' => 0]);
+    }
+
+    $page = max(1, (int) $digitalFavoritesMatch[1]);
+    $products = BluebotDigitalServices::favoriteProducts($pdo, (string) $from_id);
+    $keyboardFavorites = BluebotDigitalServices::productCollectionKeyboard(
+        $products,
+        'هنوز سرویسی را به علاقه‌مندی‌ها اضافه نکرده‌اید.',
+        'ds_home',
+        $page,
+        8,
+        'ds_favorites:'
+    );
+    $textFavorites = "❤️ <b>علاقه‌مندی‌های من</b>\n\n"
+        . ($products === []
+            ? "از صفحه هر سرویس روی «افزودن / حذف علاقه‌مندی» بزنید."
+            : "سرویس موردنظر را انتخاب کنید 👇");
+
+    $editResult = Editmessagetext($from_id, $message_id, $textFavorites, $keyboardFavorites, 'HTML');
+    if (!is_array($editResult) || empty($editResult['ok'])) {
+        $description = is_array($editResult) ? strtolower(trim((string) ($editResult['description'] ?? ''))) : '';
+        if (!str_contains($description, 'message is not modified')) {
+            sendmessage($from_id, $textFavorites, $keyboardFavorites, 'HTML');
+        }
+    }
+    return;
+} elseif (preg_match('/^ds_bestsellers:(\d{1,4})$/', (string) $datain, $digitalBestsellersMatch)) {
+    if (!check_active_btn($setting['keyboardmain'], 'text_digital_services')) {
+        sendmessage($from_id, $textbotlang['users']['buttonDisabled'], null, 'HTML');
+        return;
+    }
+    if (!empty($callback_query_id)) {
+        telegram('answerCallbackQuery', ['callback_query_id' => $callback_query_id, 'cache_time' => 0]);
+    }
+
+    $page = max(1, (int) $digitalBestsellersMatch[1]);
+    $products = BluebotDigitalServices::bestSellingProducts($pdo, 30, 30);
+    $keyboardBestsellers = BluebotDigitalServices::productCollectionKeyboard(
+        $products,
+        'هنوز داده کافی برای پرفروش‌ها وجود ندارد.',
+        'ds_home',
+        $page,
+        8,
+        'ds_bestsellers:'
+    );
+    $textBestsellers = "🔥 <b>پرفروش‌های ۳۰ روز اخیر</b>\n\n"
+        . "رتبه‌بندی بر اساس مجموع تعداد سفارش‌های در حال انجام، تکمیل‌شده و تحویل جزئی است.";
+
+    $editResult = Editmessagetext($from_id, $message_id, $textBestsellers, $keyboardBestsellers, 'HTML');
+    if (!is_array($editResult) || empty($editResult['ok'])) {
+        $description = is_array($editResult) ? strtolower(trim((string) ($editResult['description'] ?? ''))) : '';
+        if (!str_contains($description, 'message is not modified')) {
+            sendmessage($from_id, $textBestsellers, $keyboardBestsellers, 'HTML');
+        }
+    }
+    return;
 } elseif (preg_match('/^ds_category:([a-z0-9_-]{1,40})(?::(\d{1,4}))?$/', (string) $datain, $digitalCategoryMatch)) {
     if (!check_active_btn($setting['keyboardmain'], 'text_digital_services')) {
         sendmessage($from_id, $textbotlang['users']['buttonDisabled'], null, 'HTML');
@@ -1554,6 +1616,42 @@ if ($text == "/start" || $datain == "start" || $text == "start") {
         );
     }
     return;
+} elseif (preg_match('/^ds_fav:(\d+)$/', (string) $datain, $digitalFavoriteMatch)) {
+    if (!check_active_btn($setting['keyboardmain'], 'text_digital_services')) {
+        sendmessage($from_id, $textbotlang['users']['buttonDisabled'], null, 'HTML');
+        return;
+    }
+
+    try {
+        $isFavorite = BluebotDigitalServices::toggleFavorite(
+            $pdo,
+            (string) $from_id,
+            (int) $digitalFavoriteMatch[1]
+        );
+        if (!empty($callback_query_id)) {
+            telegram('answerCallbackQuery', [
+                'callback_query_id' => $callback_query_id,
+                'text' => $isFavorite ? '❤️ به علاقه‌مندی‌ها اضافه شد' : '🤍 از علاقه‌مندی‌ها حذف شد',
+                'show_alert' => false,
+                'cache_time' => 0,
+            ]);
+        }
+    } catch (Throwable $favoriteError) {
+        bluebotLog('warning', 'Digital service favorite toggle failed', [
+            'user_id' => (string) $from_id,
+            'product_id' => (int) $digitalFavoriteMatch[1],
+            'error' => $favoriteError->getMessage(),
+        ]);
+        if (!empty($callback_query_id)) {
+            telegram('answerCallbackQuery', [
+                'callback_query_id' => $callback_query_id,
+                'text' => 'تغییر علاقه‌مندی انجام نشد.',
+                'show_alert' => true,
+                'cache_time' => 0,
+            ]);
+        }
+    }
+    return;
 } elseif (preg_match('/^ds_product:(\d+)$/', (string) $datain, $digitalProductMatch)) {
     if (!check_active_btn($setting['keyboardmain'], 'text_digital_services')) {
         sendmessage($from_id, $textbotlang['users']['buttonDisabled'], null, 'HTML');
@@ -1873,6 +1971,30 @@ if ($text == "/start" || $datain == "start" || $text == "start") {
                 $keyboard,
                 'HTML'
             );
+            return;
+        }
+        if (str_starts_with($e->getMessage(), 'DUPLICATE_ACTIVE_ORDER:')) {
+            step('home', $from_id);
+            update('user', 'Processing_value', '0', 'id', $from_id);
+            $duplicateId = (int) substr($e->getMessage(), strlen('DUPLICATE_ACTIVE_ORDER:'));
+            $duplicateOrder = BluebotDigitalServices::findUserOrder($pdo, (string) $from_id, $duplicateId);
+            if (is_array($duplicateOrder)) {
+                sendmessage(
+                    $from_id,
+                    "⚠️ <b>یک سفارش مشابه هنوز فعال است</b>\n\n"
+                        . "برای جلوگیری از ثبت و پرداخت تکراری، سفارش جدید ساخته نشد.\n\n"
+                        . BluebotDigitalServices::userOrderText($duplicateOrder),
+                    BluebotDigitalServices::userOrderKeyboard($duplicateOrder),
+                    'HTML'
+                );
+            } else {
+                sendmessage(
+                    $from_id,
+                    "⚠️ یک سفارش مشابه هنوز در حال پردازش است. از بخش «سفارش‌های من» وضعیت آن را بررسی کنید.",
+                    $keyboard,
+                    'HTML'
+                );
+            }
             return;
         }
         if ($e->getMessage() === 'PRICE_CHANGED') {

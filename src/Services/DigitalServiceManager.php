@@ -5,6 +5,8 @@ require_once __DIR__ . '/OZVinooClient.php';
 require_once __DIR__ . '/SmmPanelClient.php';
 require_once __DIR__ . '/NobitexMarketClient.php';
 require_once __DIR__ . '/DigitalServiceProviderCatalog.php';
+require_once __DIR__ . '/VirtualNumberLocale.php';
+require_once __DIR__ . '/OZVinooVirtualNumberProvider.php';
 
 final class BluebotDigitalServices
 {
@@ -13,16 +15,35 @@ final class BluebotDigitalServices
     private const STATUS_DELIVERED = 'delivered';
     private const STATUS_REJECTED = 'rejected';
     private const STATUS_FAILED = 'failed';
+    private const STATUS_PARTIAL_REVIEW = 'partial_review';
     private const OZVINOO_CATALOG_SCHEMA_VERSION = 2;
 
     public static function isAvailable(PDO $pdo): bool
     {
         try {
-            $stmt = $pdo->query("SHOW TABLES LIKE 'digital_service_products'");
-            return (bool) $stmt->fetchColumn();
+            foreach (['digital_service_products', 'digital_service_orders'] as $table) {
+                $stmt = $pdo->query("SHOW TABLES LIKE " . $pdo->quote($table));
+                if (!(bool) $stmt->fetchColumn()) {
+                    return false;
+                }
+            }
+            return true;
         } catch (Throwable $e) {
             return false;
         }
+    }
+
+    private static function isSmmProductsPath(string $productsPath): bool
+    {
+        return str_starts_with($productsPath, 'smm:')
+            || str_starts_with($productsPath, 'smm-get:');
+    }
+
+    private static function smmTransportFromProvider(array $provider): string
+    {
+        return str_starts_with((string) ($provider['products_path'] ?? ''), 'smm-get:')
+            ? 'get'
+            : 'post';
     }
 
     public static function listActive(PDO $pdo): array
@@ -59,7 +80,7 @@ final class BluebotDigitalServices
             return false;
         }
 
-        return str_starts_with((string) ($provider['products_path'] ?? ''), 'smm:')
+        return self::isSmmProductsPath((string) ($provider['products_path'] ?? ''))
             && trim((string) ($provider['api_key'] ?? '')) !== '';
     }
 
@@ -2297,6 +2318,180 @@ final class BluebotDigitalServices
         return !is_array($managed) || (int) ($managed['active'] ?? 1) === 1;
     }
 
+    private static function ensureFavoritesStorage(PDO $pdo): void
+    {
+        $pdo->exec(
+            "CREATE TABLE IF NOT EXISTS digital_service_favorites (
+                id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+                user_id VARCHAR(200) NOT NULL,
+                service_id INT UNSIGNED NOT NULL,
+                created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE KEY uniq_digital_service_favorite (user_id, service_id),
+                KEY idx_digital_service_favorite_user (user_id, created_at),
+                KEY idx_digital_service_favorite_service (service_id)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci"
+        );
+    }
+
+    public static function isFavorite(PDO $pdo, string $userId, int $productId): bool
+    {
+        $userId = trim($userId);
+        if ($userId === '' || $productId <= 0) {
+            return false;
+        }
+
+        self::ensureFavoritesStorage($pdo);
+        $stmt = $pdo->prepare(
+            "SELECT 1 FROM digital_service_favorites
+             WHERE user_id = ? AND service_id = ?
+             LIMIT 1"
+        );
+        $stmt->execute([$userId, $productId]);
+        return (bool) $stmt->fetchColumn();
+    }
+
+    public static function toggleFavorite(PDO $pdo, string $userId, int $productId): bool
+    {
+        $userId = trim($userId);
+        if ($userId === '' || $productId <= 0 || !is_array(self::findProduct($pdo, $productId))) {
+            throw new InvalidArgumentException('Favorite service request is invalid.');
+        }
+
+        self::ensureFavoritesStorage($pdo);
+        $pdo->beginTransaction();
+        try {
+            $check = $pdo->prepare(
+                "SELECT id FROM digital_service_favorites
+                 WHERE user_id = ? AND service_id = ?
+                 FOR UPDATE"
+            );
+            $check->execute([$userId, $productId]);
+            $favoriteId = $check->fetchColumn();
+
+            if ($favoriteId !== false) {
+                $delete = $pdo->prepare("DELETE FROM digital_service_favorites WHERE id = ?");
+                $delete->execute([(int) $favoriteId]);
+                $pdo->commit();
+                return false;
+            }
+
+            $insert = $pdo->prepare(
+                "INSERT INTO digital_service_favorites (user_id, service_id)
+                 VALUES (?, ?)"
+            );
+            $insert->execute([$userId, $productId]);
+            $pdo->commit();
+            return true;
+        } catch (Throwable $e) {
+            if ($pdo->inTransaction()) {
+                $pdo->rollBack();
+            }
+            throw $e;
+        }
+    }
+
+    public static function favoriteProducts(PDO $pdo, string $userId): array
+    {
+        $userId = trim($userId);
+        if ($userId === '') {
+            return [];
+        }
+
+        self::ensureFavoritesStorage($pdo);
+        $stmt = $pdo->prepare(
+            "SELECT p.*
+             FROM digital_service_favorites f
+             INNER JOIN digital_service_products p ON p.id = f.service_id
+             WHERE f.user_id = ? AND p.active = 1
+             ORDER BY f.created_at DESC, f.id DESC"
+        );
+        $stmt->execute([$userId]);
+        return $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+    }
+
+    public static function bestSellingProducts(PDO $pdo, int $limit = 12, int $days = 30): array
+    {
+        if (!self::isAvailable($pdo)) {
+            return [];
+        }
+
+        $limit = max(1, min(30, $limit));
+        $days = max(1, min(365, $days));
+        $stmt = $pdo->prepare(
+            "SELECT p.*, SUM(o.quantity) AS sold_quantity, COUNT(o.id) AS sold_orders
+             FROM digital_service_orders o
+             INNER JOIN digital_service_products p ON p.id = o.service_id
+             WHERE p.active = 1
+               AND o.status IN (?, ?, ?)
+               AND o.created_at >= DATE_SUB(NOW(), INTERVAL " . $days . " DAY)
+             GROUP BY p.id
+             ORDER BY sold_quantity DESC, sold_orders DESC, p.sort_order ASC, p.id ASC
+             LIMIT " . $limit
+        );
+        $stmt->execute([
+            self::STATUS_DELIVERED,
+            self::STATUS_PROCESSING,
+            self::STATUS_PARTIAL_REVIEW,
+        ]);
+        return $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+    }
+
+    public static function productCollectionKeyboard(
+        array $products,
+        string $emptyText,
+        string $backCallback = 'ds_home',
+        int $page = 1,
+        int $perPage = 8,
+        string $pageCallbackPrefix = ''
+    ): string {
+        $perPage = max(4, min(12, $perPage));
+        $total = count($products);
+        $pages = max(1, (int) ceil($total / $perPage));
+        $page = max(1, min($pages, $page));
+        $rows = [];
+
+        foreach (array_slice($products, ($page - 1) * $perPage, $perPage) as $product) {
+            $priceText = number_format((float) ($product['price'] ?? 0)) . ' تومان';
+            $name = preg_replace('/\s+/u', ' ', trim((string) ($product['name'] ?? 'سرویس'))) ?: 'سرویس';
+            $suffix = ' · ' . $priceText;
+            $maxNameLength = max(12, 60 - mb_strlen($suffix, 'UTF-8'));
+            if (mb_strlen($name, 'UTF-8') > $maxNameLength) {
+                $name = rtrim(mb_substr($name, 0, $maxNameLength - 1, 'UTF-8')) . '…';
+            }
+            $rows[] = [[
+                'text' => $name . $suffix,
+                'callback_data' => 'ds_product:' . (int) ($product['id'] ?? 0),
+            ]];
+        }
+
+        if ($rows === []) {
+            $rows[] = [[
+                'text' => $emptyText,
+                'callback_data' => $backCallback,
+            ]];
+        }
+
+        if ($pages > 1 && $pageCallbackPrefix !== '') {
+            $nav = [];
+            if ($page > 1) {
+                $nav[] = ['text' => '⬅️ قبلی', 'callback_data' => $pageCallbackPrefix . ($page - 1)];
+            }
+            if ($page < $pages) {
+                $nav[] = ['text' => 'بعدی ➡️', 'callback_data' => $pageCallbackPrefix . ($page + 1)];
+            }
+            if ($nav !== []) {
+                $rows[] = $nav;
+            }
+        }
+
+        $rows[] = [[
+            'text' => '↩️ فروش خدمات',
+            'callback_data' => $backCallback,
+        ]];
+
+        return json_encode(['inline_keyboard' => $rows], JSON_UNESCAPED_UNICODE);
+    }
+
     public static function categoryKeyboard(PDO $pdo, string $backText): string
     {
         self::ensureManagedCategories($pdo);
@@ -2343,6 +2538,16 @@ final class BluebotDigitalServices
             ]];
         }
 
+        $rows[] = [
+            [
+                'text' => '❤️ علاقه‌مندی‌ها',
+                'callback_data' => 'ds_favorites:1',
+            ],
+            [
+                'text' => '🔥 پرفروش‌ها',
+                'callback_data' => 'ds_bestsellers:1',
+            ],
+        ];
         $rows[] = [[
             'text' => '📋 سفارش‌های من',
             'callback_data' => 'ds_orders:1',
@@ -2383,6 +2588,10 @@ final class BluebotDigitalServices
                     ? 'telegram'
                     : ($applicationId > 0 ? ('app_' . $applicationId) : 'virtual_number');
             }
+            $applicationName = BluebotVirtualNumberLocale::serviceLabel(
+                $applicationCode,
+                $applicationName
+            );
 
             $key = (string) $applicationId;
             if (!isset($applications[$key])) {
@@ -2519,6 +2728,7 @@ final class BluebotDigitalServices
             if ($country === '') {
                 $country = trim((string) ($product['name'] ?? 'شماره مجازی'));
             }
+            $country = BluebotVirtualNumberLocale::countryLabel($country);
 
             $rows[] = [[
                 'text' => '🌍 ' . $country . ' · ' . number_format((float) ($product['price'] ?? 0)) . ' تومان',
@@ -2966,6 +3176,7 @@ final class BluebotDigitalServices
             self::STATUS_FAILED => $refunded
                 ? ['↩️', 'ناموفق / مبلغ برگشت خورده']
                 : ['🛠', 'در حال بررسی'],
+            self::STATUS_PARTIAL_REVIEW => ['⚠️', 'تحویل ناقص / نیازمند بررسی'],
             default => ['•', 'نامشخص'],
         };
     }
@@ -3111,6 +3322,8 @@ final class BluebotDigitalServices
             $text .= "\n💰 <b>مبلغ این سفارش به کیف پول برگشته است.</b>";
         } elseif ((string) ($order['status'] ?? '') === self::STATUS_PENDING) {
             $text .= "\n\nتا قبل از شروع پردازش می‌توانید سفارش را لغو کنید.";
+        } elseif ((string) ($order['status'] ?? '') === self::STATUS_PARTIAL_REVIEW) {
+            $text .= "\n\nبخشی از سرویس توسط Provider انجام شده و سفارش برای بررسی دقیق نگه داشته شده است. نتیجه نهایی برای شما ثبت می‌شود.";
         } elseif ((string) ($order['status'] ?? '') === self::STATUS_PROCESSING) {
             $text .= "\n\nنتیجه نهایی پس از بروزرسانی وضعیت برای شما ثبت می‌شود.";
         }
@@ -3267,6 +3480,10 @@ final class BluebotDigitalServices
                     'style' => 'success',
                 ]],
                 [[
+                    'text' => '❤️ افزودن / حذف علاقه‌مندی',
+                    'callback_data' => 'ds_fav:' . (int) $product['id'],
+                ]],
+                [[
                     'text' => '↩️ بازگشت',
                     'callback_data' => $backCallback,
                 ]],
@@ -3322,6 +3539,24 @@ final class BluebotDigitalServices
                 ]],
                 [[
                     'text' => '❌ رد و برگشت وجه',
+                    'callback_data' => 'ds_reject:' . $orderId,
+                    'style' => 'danger',
+                ]],
+            ],
+        ], JSON_UNESCAPED_UNICODE);
+    }
+
+    public static function adminPartialReviewKeyboard(int $orderId): string
+    {
+        return json_encode([
+            'inline_keyboard' => [
+                [[
+                    'text' => '✅ تکمیل دستی شد',
+                    'callback_data' => 'ds_complete:' . $orderId,
+                    'style' => 'success',
+                ]],
+                [[
+                    'text' => '↩️ رد و برگشت وجه',
                     'callback_data' => 'ds_reject:' . $orderId,
                     'style' => 'danger',
                 ]],
@@ -3390,6 +3625,39 @@ final class BluebotDigitalServices
         }
 
         return [true, $target];
+    }
+
+    private static function activeDuplicateOrder(
+        PDO $pdo,
+        string $userId,
+        int $productId,
+        string $target,
+        int $quantity
+    ): ?array {
+        $stmt = $pdo->prepare(
+            "SELECT * FROM digital_service_orders
+             WHERE user_id = ?
+               AND service_id = ?
+               AND target = ?
+               AND quantity = ?
+               AND refunded = 0
+               AND status IN (?, ?, ?, ?)
+             ORDER BY id DESC
+             LIMIT 1
+             FOR UPDATE"
+        );
+        $stmt->execute([
+            $userId,
+            $productId,
+            $target,
+            $quantity,
+            self::STATUS_PENDING,
+            self::STATUS_PROCESSING,
+            self::STATUS_FAILED,
+            self::STATUS_PARTIAL_REVIEW,
+        ]);
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+        return is_array($row) ? $row : null;
     }
 
     public static function createWalletOrder(
@@ -3479,6 +3747,19 @@ final class BluebotDigitalServices
                 throw new DomainException('PRICE_CHANGED');
             }
 
+            $duplicate = self::activeDuplicateOrder(
+                $pdo,
+                $userId,
+                $productId,
+                $target,
+                $quantity
+            );
+            if (is_array($duplicate)) {
+                throw new DomainException(
+                    'DUPLICATE_ACTIVE_ORDER:' . (int) ($duplicate['id'] ?? 0)
+                );
+            }
+
             $minBalance = ($freshUser['agent'] ?? 'f') === 'n2' && (int) ($freshUser['maxbuyagent'] ?? 0) !== 0
                 ? -(int) $freshUser['maxbuyagent']
                 : 0;
@@ -3556,7 +3837,9 @@ final class BluebotDigitalServices
         }
 
         $text = self::adminOrderText($order);
-        $keyboard = self::adminKeyboard((int) $order['id']);
+        $keyboard = (string) ($order['status'] ?? '') === self::STATUS_PARTIAL_REVIEW
+            ? self::adminPartialReviewKeyboard((int) $order['id'])
+            : self::adminKeyboard((int) $order['id']);
         foreach (array_unique(array_map('strval', $admins)) as $adminId) {
             if ($adminId === '' || $adminId === '0') {
                 continue;
@@ -3612,6 +3895,8 @@ final class BluebotDigitalServices
         if (in_array($status, [self::STATUS_PENDING, self::STATUS_FAILED], true)
             && (int) ($order['refunded'] ?? 0) === 0) {
             $text .= "\n\nبرای ادامه، «تأیید و ارسال» یا «رد و برگشت وجه» را انتخاب کنید.";
+        } elseif ($status === self::STATUS_PARTIAL_REVIEW) {
+            $text .= "\n\n⚠️ تحویل Provider ناقص بوده است. ارسال مجدد خودکار غیرفعال است تا بخش تحویل‌شده دوباره سفارش داده نشود. پس از بررسی، «تکمیل دستی» یا «رد و برگشت وجه» را انتخاب کنید.";
         } elseif ($status === self::STATUS_PROCESSING) {
             $text .= "\n\n⏳ سفارش در Provider در حال پردازش است.";
         }
@@ -3642,12 +3927,15 @@ final class BluebotDigitalServices
                 throw new RuntimeException('This failed order was already refunded. Create a new order before retrying.');
             }
 
+            $retryReference = $status === self::STATUS_FAILED
+                ? null
+                : ($order['provider_reference'] ?? null);
             $claim = $pdo->prepare(
                 "UPDATE digital_service_orders
-                 SET status = ?, admin_id = ?, approved_at = NOW(), updated_at = NOW()
+                 SET status = ?, admin_id = ?, provider_reference = ?, approved_at = NOW(), updated_at = NOW()
                  WHERE id = ?"
             );
-            $claim->execute([self::STATUS_PROCESSING, $adminId, $orderId]);
+            $claim->execute([self::STATUS_PROCESSING, $adminId, $retryReference, $orderId]);
             $pdo->commit();
         } catch (Throwable $e) {
             if ($pdo->inTransaction()) {
@@ -3716,6 +4004,19 @@ final class BluebotDigitalServices
         if (!empty($delivery['pending'])) {
             $responseJson = json_encode($delivery['response'] ?? $delivery, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
             $reference = trim((string) ($delivery['reference'] ?? ''));
+            if ($reference === '') {
+                return self::markRetryableProviderFailure(
+                    $pdo,
+                    $orderId,
+                    'Provider accepted an asynchronous order but returned no tracking reference.',
+                    is_array($delivery['response'] ?? null) ? $delivery['response'] : $delivery,
+                    [
+                        'retryable' => true,
+                        'manual_review' => true,
+                        'code' => 'PROVIDER_REFERENCE_MISSING',
+                    ]
+                );
+            }
             $pending = $pdo->prepare(
                 "UPDATE digital_service_orders
                  SET status = ?, provider_reference = ?, provider_response = ?, updated_at = NOW()
@@ -3864,7 +4165,7 @@ final class BluebotDigitalServices
 
         $registeredProvider = BluebotProviderCatalogService::findProvider($pdo, $provider);
         if (is_array($registeredProvider)) {
-            if (str_starts_with((string) ($registeredProvider['products_path'] ?? ''), 'smm:')) {
+            if (self::isSmmProductsPath((string) ($registeredProvider['products_path'] ?? ''))) {
                 return self::deliverRegisteredSmmProvider($registeredProvider, $order, $product);
             }
 
@@ -3894,7 +4195,8 @@ final class BluebotDigitalServices
             $client = new SmmPanelClient(
                 (string) ($provider['catalog_url'] ?? ''),
                 (string) ($provider['api_key'] ?? ''),
-                $providerKey
+                $providerKey,
+                self::smmTransportFromProvider($provider)
             );
             $response = $client->addOrder(
                 $serviceCode,
@@ -3984,7 +4286,16 @@ final class BluebotDigitalServices
 
     public static function reconcileRegisteredSmmProcessing(PDO $pdo, int $limit = 50): array
     {
-        $stats = ['checked' => 0, 'completed' => 0, 'failed' => 0, 'pending' => 0, 'partial' => 0, 'errors' => 0];
+        $stats = [
+            'checked' => 0,
+            'completed' => 0,
+            'failed' => 0,
+            'pending' => 0,
+            'partial' => 0,
+            'errors' => 0,
+            'bulk_requests' => 0,
+            'single_fallbacks' => 0,
+        ];
         $limit = max(1, min(100, $limit));
         $remaining = $limit;
 
@@ -3996,7 +4307,7 @@ final class BluebotDigitalServices
             $providerKey = strtolower(trim((string) ($provider['provider_key'] ?? '')));
             if ($providerKey === ''
                 || in_array($providerKey, ['ozvinoo', 'tivanovin'], true)
-                || !str_starts_with((string) ($provider['products_path'] ?? ''), 'smm:')
+                || !self::isSmmProductsPath((string) ($provider['products_path'] ?? ''))
                 || trim((string) ($provider['api_key'] ?? '')) === '') {
                 continue;
             }
@@ -4005,7 +4316,8 @@ final class BluebotDigitalServices
                 $client = new SmmPanelClient(
                     (string) ($provider['catalog_url'] ?? ''),
                     (string) ($provider['api_key'] ?? ''),
-                    $providerKey
+                    $providerKey,
+                    self::smmTransportFromProvider($provider)
                 );
             } catch (Throwable $e) {
                 $stats['errors']++;
@@ -4015,11 +4327,39 @@ final class BluebotDigitalServices
             $stmt = $pdo->prepare(
                 "SELECT * FROM digital_service_orders
                  WHERE provider = ? AND status = ? AND provider_reference IS NOT NULL
+                   AND provider_reference <> ''
                  ORDER BY id ASC
                  LIMIT " . $remaining
             );
             $stmt->execute([$providerKey, self::STATUS_PROCESSING]);
             $orders = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+            if ($orders === []) {
+                continue;
+            }
+
+            $references = [];
+            $ordersByReference = [];
+            foreach ($orders as $order) {
+                $reference = trim((string) ($order['provider_reference'] ?? ''));
+                if ($reference === '') {
+                    continue;
+                }
+                $references[] = $reference;
+                $ordersByReference[$reference] = $order;
+            }
+
+            $bulkStatuses = [];
+            if (count($references) > 1) {
+                try {
+                    $bulk = $client->statusesNormalized($references);
+                    if (!empty($bulk['ok']) && is_array($bulk['orders'] ?? null)) {
+                        $bulkStatuses = $bulk['orders'];
+                        $stats['bulk_requests']++;
+                    }
+                } catch (Throwable $e) {
+                    $bulkStatuses = [];
+                }
+            }
 
             foreach ($orders as $order) {
                 if ($remaining <= 0) {
@@ -4034,11 +4374,15 @@ final class BluebotDigitalServices
                     continue;
                 }
 
-                try {
-                    $status = $client->status($reference);
-                } catch (Throwable $e) {
-                    $stats['errors']++;
-                    continue;
+                $status = $bulkStatuses[$reference] ?? null;
+                if (!is_array($status) || empty($status['ok'])) {
+                    try {
+                        $status = $client->status($reference);
+                        $stats['single_fallbacks']++;
+                    } catch (Throwable $e) {
+                        $stats['errors']++;
+                        continue;
+                    }
                 }
 
                 if (empty($status['ok'])) {
@@ -4081,6 +4425,12 @@ final class BluebotDigitalServices
                 }
 
                 if ($normalized === 'partial') {
+                    self::markPartialReview(
+                        $pdo,
+                        (int) $order['id'],
+                        $status,
+                        'SMM provider reported partial delivery: ' . (string) ($status['raw_status'] ?? 'partial')
+                    );
                     $stats['partial']++;
                     continue;
                 }
@@ -4179,8 +4529,12 @@ final class BluebotDigitalServices
             }
 
             if ($normalized === 'partial') {
-                // Partial SMM orders may have a provider-side charge. Keep the
-                // order processing for manual review instead of over-refunding.
+                self::markPartialReview(
+                    $pdo,
+                    (int) $order['id'],
+                    $status,
+                    'TivaNovin reported partial delivery: ' . (string) ($status['raw_status'] ?? 'partial')
+                );
                 $stats['partial']++;
                 continue;
             }
@@ -4193,7 +4547,7 @@ final class BluebotDigitalServices
 
     public static function reconcileOZVinooProcessing(PDO $pdo, int $limit = 25): array
     {
-        $stats = ['checked' => 0, 'completed' => 0, 'failed' => 0, 'pending' => 0, 'errors' => 0];
+        $stats = ['checked' => 0, 'completed' => 0, 'failed' => 0, 'pending' => 0, 'partial' => 0, 'errors' => 0];
 
         if (!self::isAvailable($pdo)) {
             return $stats;
@@ -4216,6 +4570,7 @@ final class BluebotDigitalServices
         );
         $orders = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
         $client = new OZVinooClient($apiKey);
+        $numberProvider = new OZVinooVirtualNumberProvider($client);
 
         foreach ($orders as $order) {
             $stats['checked']++;
@@ -4243,8 +4598,10 @@ final class BluebotDigitalServices
 
                     $body = self::ozvinooResponseBody($response);
                     $data = is_array($body['data'] ?? null) ? $body['data'] : [];
-                    $state = $data['status'] ?? null;
-                    if ($state === true || in_array(strtolower((string) $state), ['ok', 'done', 'success', 'completed', 'delivered'], true)) {
+                    $state = strtolower(trim((string) ($data['status'] ?? '')));
+
+                    if (($data['status'] ?? null) === true
+                        || in_array($state, ['ok', 'done', 'success', 'completed', 'delivered'], true)) {
                         self::finalizeDeliveredOrder($pdo, (int) $order['id'], [
                             'ok' => true,
                             'reference' => $reference,
@@ -4254,7 +4611,7 @@ final class BluebotDigitalServices
                         continue;
                     }
 
-                    if (in_array(strtolower((string) $state), ['failed', 'error', 'cancel', 'cancelled', 'canceled', 'rejected'], true)) {
+                    if (in_array($state, ['failed', 'error', 'cancel', 'cancelled', 'canceled', 'rejected'], true)) {
                         self::failAndRefundProviderOrder(
                             $pdo,
                             (int) $order['id'],
@@ -4265,33 +4622,32 @@ final class BluebotDigitalServices
                         continue;
                     }
 
+                    if (in_array($state, ['partial', 'partially_completed', 'partially-completed'], true)) {
+                        self::markPartialReview(
+                            $pdo,
+                            (int) $order['id'],
+                            $response,
+                            'OZVinoo reported partial delivery.'
+                        );
+                        $stats['partial']++;
+                        continue;
+                    }
+
                     $stats['pending']++;
                     continue;
                 }
 
                 if ($type === 'virtual_number') {
-                    $metadata = self::productMetadata($product);
-                    $apiFamily = (string) ($metadata['api_family'] ?? 'telegram-numbers-v2');
-                    $response = $apiFamily === 'web-v1'
-                        ? $client->getCodeV1($reference)
-                        : $client->numberStatus($reference);
-                    $http = (int) ($response['http_status'] ?? 0);
-                    if ($http === 202) {
-                        $stats['pending']++;
-                        continue;
-                    }
-                    if (empty($response['ok'])) {
+                    $numberStatus = $numberProvider->status($reference, $product);
+                    if (empty($numberStatus['ok'])) {
                         $stats['errors']++;
                         continue;
                     }
 
-                    $body = self::ozvinooResponseBody($response);
-                    $data = is_array($body['data'] ?? null) ? $body['data'] : $body;
-                    $code = trim((string) ($data['code'] ?? ''));
-                    $number = trim((string) ($data['number'] ?? ''));
-                    $state = strtolower(trim((string) ($data['status'] ?? '')));
-
-                    if ($code !== '') {
+                    $numberState = (string) ($numberStatus['status'] ?? 'pending');
+                    if ($numberState === 'completed') {
+                        $number = trim((string) ($numberStatus['number'] ?? ''));
+                        $code = trim((string) ($numberStatus['code'] ?? ''));
                         $message = "✅ <b>شماره مجازی شما آماده است</b>\n\n"
                             . "📱 شماره: <code>" . self::escape($number !== '' ? $number : '—') . "</code>\n"
                             . "🔐 کد ورود: <code>" . self::escape($code) . "</code>\n"
@@ -4300,20 +4656,19 @@ final class BluebotDigitalServices
                         self::finalizeDeliveredOrder($pdo, (int) $order['id'], [
                             'ok' => true,
                             'reference' => $reference,
-                            'response' => $response,
+                            'response' => $numberStatus['response'] ?? $numberStatus,
                             'customer_message' => $message,
                         ]);
                         $stats['completed']++;
                         continue;
                     }
 
-                    if (in_array($state, ['cancel', 'cancelled', 'canceled', 'failed', 'error'], true)
-                        || str_contains(strtolower((string) ($body['message'] ?? '')), 'cancel')) {
+                    if ($numberState === 'failed') {
                         self::failAndRefundProviderOrder(
                             $pdo,
                             (int) $order['id'],
-                            'OZVinoo virtual-number order was cancelled.',
-                            $response
+                            'OZVinoo virtual-number order was cancelled or expired.',
+                            $numberStatus['response'] ?? $numberStatus
                         );
                         $stats['failed']++;
                         continue;
@@ -4346,13 +4701,54 @@ final class BluebotDigitalServices
         $type = (string) ($product['type'] ?? '');
         $client = new OZVinooClient($apiKey);
 
+        if ($type === 'virtual_number') {
+            $provider = new OZVinooVirtualNumberProvider($client);
+            $numberOrder = $provider->requestNumber($product);
+            if (empty($numberOrder['ok'])) {
+                return [
+                    'ok' => false,
+                    'retryable' => !empty($numberOrder['retryable']),
+                    'error' => trim((string) ($numberOrder['message'] ?? '')) ?: 'درخواست شماره مجازی عضوینو ناموفق بود.',
+                    'response' => $numberOrder['response'] ?? $numberOrder,
+                ];
+            }
+
+            $reference = trim((string) ($numberOrder['reference'] ?? ''));
+            if ($reference === '') {
+                return [
+                    'ok' => false,
+                    'retryable' => true,
+                    'error' => 'عضوینو شناسه پیگیری شماره مجازی برنگرداند.',
+                    'response' => $numberOrder,
+                ];
+            }
+
+            $result = [
+                'ok' => true,
+                'pending' => true,
+                'reference' => $reference,
+                'response' => $numberOrder['response'] ?? $numberOrder,
+            ];
+            $number = trim((string) ($numberOrder['number'] ?? ''));
+            if ($number !== '') {
+                $result['customer_message_pending'] = "📱 <b>شماره برای شما رزرو شد</b>\n\n"
+                    . "شماره: <code>" . self::escape($number) . "</code>\n"
+                    . "⏳ در انتظار دریافت کد ورود هستیم. به‌محض آماده‌شدن، کد خودکار برای شما ارسال می‌شود.";
+            }
+
+            return $result;
+        }
+
         try {
             if ($type === 'telegram_stars') {
                 $username = ltrim(trim((string) ($order['target'] ?? '')), '@');
                 if (!preg_match('/^[A-Za-z0-9_]{5,32}$/', $username)) {
                     return ['ok' => false, 'error' => 'یوزرنیم تلگرام مقصد معتبر نیست.'];
                 }
-                $response = $client->buyStars(max(50, (int) ($product['service_value'] ?? 50)), $username);
+                $response = $client->buyStars(
+                    max(50, (int) ($order['quantity'] ?? $product['service_value'] ?? 50)),
+                    $username
+                );
             } elseif ($type === 'telegram_premium') {
                 $username = ltrim(trim((string) ($order['target'] ?? '')), '@');
                 if (!preg_match('/^[A-Za-z0-9_]{5,32}$/', $username)) {
@@ -4363,23 +4759,6 @@ final class BluebotDigitalServices
                     return ['ok' => false, 'retryable' => true, 'error' => 'شناسه بسته Premium عضوینو پیدا نشد.'];
                 }
                 $response = $client->buyPremium($packageId, $username);
-            } elseif ($type === 'virtual_number') {
-                $metadata = self::productMetadata($product);
-                $apiFamily = (string) ($metadata['api_family'] ?? 'telegram-numbers-v2');
-                if ($apiFamily === 'web-v1') {
-                    $serviceId = max(0, (int) ($metadata['service_id'] ?? 0));
-                    $range = trim((string) ($metadata['range'] ?? ''));
-                    if ($serviceId <= 0 || $range === '') {
-                        return ['ok' => false, 'retryable' => true, 'error' => 'اطلاعات سرویس/کشور شماره مجازی عضوینو کامل نیست.'];
-                    }
-                    $response = $client->getNumberV1($serviceId, $range);
-                } else {
-                    $countryId = trim((string) ($metadata['country_id'] ?? $product['provider_service_code'] ?? ''));
-                    if ($countryId === '') {
-                        return ['ok' => false, 'retryable' => true, 'error' => 'شناسه کشور شماره مجازی عضوینو پیدا نشد.'];
-                    }
-                    $response = $client->buyNumber($countryId, true);
-                }
             } else {
                 return ['ok' => false, 'error' => 'Unsupported OZVinoo official service type.'];
             }
@@ -4399,14 +4778,7 @@ final class BluebotDigitalServices
 
         $body = self::ozvinooResponseBody($response);
         $data = is_array($body['data'] ?? null) ? $body['data'] : $body;
-        $reference = '';
-
-        if ($type === 'virtual_number') {
-            $reference = trim((string) ($data['order_id'] ?? $data['request_id'] ?? $data['id'] ?? ''));
-        } else {
-            $reference = trim((string) ($data['code'] ?? $data['order_id'] ?? $data['id'] ?? ''));
-        }
-
+        $reference = trim((string) ($data['code'] ?? $data['order_id'] ?? $data['id'] ?? ''));
         if ($reference === '') {
             return [
                 'ok' => false,
@@ -4416,23 +4788,12 @@ final class BluebotDigitalServices
             ];
         }
 
-        $result = [
+        return [
             'ok' => true,
             'pending' => true,
             'reference' => $reference,
             'response' => $response,
         ];
-
-        if ($type === 'virtual_number') {
-            $number = trim((string) ($data['number'] ?? ''));
-            if ($number !== '') {
-                $result['customer_message_pending'] = "📱 <b>شماره برای شما رزرو شد</b>\n\n"
-                    . "شماره: <code>" . self::escape($number) . "</code>\n"
-                    . "⏳ در انتظار دریافت کد ورود هستیم. به‌محض آماده‌شدن، کد خودکار برای شما ارسال می‌شود.";
-            }
-        }
-
-        return $result;
     }
 
     private static function ozvinooRetryableHttp(int $http): bool
@@ -4737,6 +5098,124 @@ final class BluebotDigitalServices
         );
 
         return ['ok' => true, 'order' => $finalOrder, 'delivery' => $delivery];
+    }
+
+    private static function markPartialReview(
+        PDO $pdo,
+        int $orderId,
+        array $providerStatus,
+        string $reason = 'Provider reported partial delivery.'
+    ): array {
+        $payload = json_encode(
+            [
+                'error' => $reason,
+                'partial' => true,
+                'manual_review_only' => true,
+                'response' => $providerStatus,
+            ],
+            JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES
+        );
+
+        $stmt = $pdo->prepare(
+            "UPDATE digital_service_orders
+             SET status = ?, refunded = 0, provider_response = ?, updated_at = NOW()
+             WHERE id = ? AND status = ?"
+        );
+        $stmt->execute([
+            self::STATUS_PARTIAL_REVIEW,
+            is_string($payload) ? $payload : $reason,
+            $orderId,
+            self::STATUS_PROCESSING,
+        ]);
+
+        $transitioned = $stmt->rowCount() === 1;
+        $order = self::findOrder($pdo, $orderId);
+        if ($transitioned
+            && is_array($order)
+            && (string) ($order['status'] ?? '') === self::STATUS_PARTIAL_REVIEW) {
+            sendmessage(
+                (string) ($order['user_id'] ?? ''),
+                "🛠 <b>سفارش شما نیاز به بررسی دارد</b>\n\n"
+                    . "🧾 کد سفارش: <code>" . self::escape((string) ($order['order_code'] ?? '')) . "</code>\n"
+                    . "بخشی از سرویس انجام شده و سفارش برای بررسی دقیق نگه داشته شده است. نتیجه نهایی برای شما ثبت می‌شود.",
+                self::userOrderKeyboard($order),
+                'HTML'
+            );
+            self::notifyAdmins($pdo, $order);
+        }
+
+        return [
+            'ok' => false,
+            'partial' => true,
+            'retryable' => false,
+            'refunded' => false,
+            'order' => $order,
+            'error' => $reason,
+        ];
+    }
+
+    public static function completePartialReview(PDO $pdo, int $orderId, string $adminId): array
+    {
+        $pdo->beginTransaction();
+        try {
+            $stmt = $pdo->prepare("SELECT * FROM digital_service_orders WHERE id = ? FOR UPDATE");
+            $stmt->execute([$orderId]);
+            $order = $stmt->fetch(PDO::FETCH_ASSOC);
+            if (!is_array($order)) {
+                throw new RuntimeException('Order not found.');
+            }
+
+            $status = (string) ($order['status'] ?? '');
+            if ($status === self::STATUS_DELIVERED) {
+                $pdo->commit();
+                return ['ok' => true, 'already_done' => true, 'order' => $order];
+            }
+            if ($status !== self::STATUS_PARTIAL_REVIEW) {
+                throw new RuntimeException('Only partial-review orders can be completed manually.');
+            }
+            if ((int) ($order['refunded'] ?? 0) === 1) {
+                throw new RuntimeException('Refunded order cannot be completed.');
+            }
+
+            $response = json_decode((string) ($order['provider_response'] ?? ''), true);
+            $response = is_array($response) ? $response : [];
+            $response['manual_completion'] = [
+                'admin_id' => $adminId,
+                'completed_at' => date(DATE_ATOM),
+            ];
+            $responseJson = json_encode($response, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+
+            $update = $pdo->prepare(
+                "UPDATE digital_service_orders
+                 SET status = ?, admin_id = ?, provider_response = ?, delivered_at = NOW(), updated_at = NOW()
+                 WHERE id = ?"
+            );
+            $update->execute([
+                self::STATUS_DELIVERED,
+                $adminId,
+                is_string($responseJson) ? $responseJson : (string) ($order['provider_response'] ?? ''),
+                $orderId,
+            ]);
+            $pdo->commit();
+        } catch (Throwable $e) {
+            if ($pdo->inTransaction()) {
+                $pdo->rollBack();
+            }
+            throw $e;
+        }
+
+        $finalOrder = self::findOrder($pdo, $orderId) ?? $order;
+        sendmessage(
+            (string) ($finalOrder['user_id'] ?? ''),
+            "✅ <b>سفارش شما تکمیل شد</b>\n\n"
+                . "🧾 کد سفارش: <code>" . self::escape((string) ($finalOrder['order_code'] ?? '')) . "</code>\n"
+                . "📦 " . self::escape((string) ($finalOrder['service_name'] ?? 'سرویس')) . "\n"
+                . "🔢 تعداد: <b>" . number_format(max(1, (int) ($finalOrder['quantity'] ?? 1))) . "</b>",
+            self::userOrderKeyboard($finalOrder),
+            'HTML'
+        );
+
+        return ['ok' => true, 'order' => $finalOrder];
     }
 
     private static function markRetryableProviderFailure(

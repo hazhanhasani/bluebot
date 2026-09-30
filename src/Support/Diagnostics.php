@@ -51,6 +51,8 @@ function bluebotCollectDiagnostics(PDO $pdo, array $setting): array
         'orders_pending' => 0,
         'orders_processing' => 0,
         'orders_failed_review' => 0,
+        'orders_partial_review' => 0,
+        'orders_stale_processing' => 0,
         'orders_delivered' => 0,
         'providers' => [],
     ];
@@ -75,6 +77,14 @@ function bluebotCollectDiagnostics(PDO $pdo, array $setting): array
                 ->fetchColumn();
             $digitalServices['orders_failed_review'] = (int) $pdo
                 ->query("SELECT COUNT(*) FROM digital_service_orders WHERE status = 'failed' AND refunded = 0")
+                ->fetchColumn();
+            $digitalServices['orders_partial_review'] = (int) $pdo
+                ->query("SELECT COUNT(*) FROM digital_service_orders WHERE status = 'partial_review' AND refunded = 0")
+                ->fetchColumn();
+            $digitalServices['orders_stale_processing'] = (int) $pdo
+                ->query("SELECT COUNT(*) FROM digital_service_orders
+                         WHERE status = 'processing'
+                           AND updated_at < DATE_SUB(NOW(), INTERVAL 30 MINUTE)")
                 ->fetchColumn();
             $digitalServices['orders_delivered'] = (int) $pdo
                 ->query("SELECT COUNT(*) FROM digital_service_orders WHERE status = 'delivered'")
@@ -209,6 +219,8 @@ function bluebotBuildDebugReport(PDO $pdo, array $setting, array $webhookSecret 
         . 'Pending: <code>' . number_format((int) ($digital['orders_pending'] ?? 0)) . "</code>\n"
         . 'Processing: <code>' . number_format((int) ($digital['orders_processing'] ?? 0)) . "</code>\n"
         . 'Needs review: <code>' . number_format((int) ($digital['orders_failed_review'] ?? 0)) . "</code>\n"
+        . 'Partial review: <code>' . number_format((int) ($digital['orders_partial_review'] ?? 0)) . "</code>\n"
+        . 'Stale processing (>30m): <code>' . number_format((int) ($digital['orders_stale_processing'] ?? 0)) . "</code>\n"
         . 'Delivered: <code>' . number_format((int) ($digital['orders_delivered'] ?? 0)) . "</code>\n"
         . 'Providers: <code>' . $digitalProviderText . "</code>\n\n"
         . '<i>No secrets are included in this report.</i>';

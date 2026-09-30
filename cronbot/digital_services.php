@@ -81,7 +81,10 @@ try {
     }
 
     $ozStats = BluebotDigitalServices::reconcileOZVinooProcessing($pdo, 25);
-    if (($ozStats['completed'] ?? 0) > 0 || ($ozStats['failed'] ?? 0) > 0 || ($ozStats['errors'] ?? 0) > 0) {
+    if (($ozStats['completed'] ?? 0) > 0
+        || ($ozStats['failed'] ?? 0) > 0
+        || ($ozStats['partial'] ?? 0) > 0
+        || ($ozStats['errors'] ?? 0) > 0) {
         bluebotLog('info', 'OZVinoo digital service reconciliation completed', $ozStats);
     }
 } catch (Throwable $e) {

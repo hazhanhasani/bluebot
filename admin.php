@@ -206,6 +206,50 @@ if (preg_match('/^ds_approve:(\d+)$/', (string) $datain, $digitalApproveMatch)
     return;
 }
 
+if (preg_match('/^ds_complete:(\d+)$/', (string) $datain, $digitalCompleteMatch)
+    && $adminrulecheck['rule'] === 'administrator') {
+    $orderId = (int) $digitalCompleteMatch[1];
+    try {
+        $result = BluebotDigitalServices::completePartialReview($pdo, $orderId, (string) $from_id);
+        $order = is_array($result['order'] ?? null)
+            ? $result['order']
+            : BluebotDigitalServices::findOrder($pdo, $orderId);
+
+        $completedText = "✅ <b>سفارش پس از بررسی دستی تکمیل شد</b>\n\n"
+            . BluebotDigitalServices::adminOrderText(is_array($order) ? $order : ['id' => $orderId]);
+
+        Editmessagetext(
+            $from_id,
+            $message_id,
+            $completedText,
+            json_encode(['inline_keyboard' => []], JSON_UNESCAPED_UNICODE),
+            'HTML'
+        );
+
+        if ($callback_query_id) {
+            telegram('answerCallbackQuery', [
+                'callback_query_id' => $callback_query_id,
+                'text' => !empty($result['already_done']) ? 'قبلاً تکمیل شده است.' : 'سفارش تکمیل شد.',
+                'show_alert' => false,
+            ]);
+        }
+    } catch (Throwable $e) {
+        bluebotLog('error', 'Digital service partial completion failed', [
+            'admin_id' => (string) $from_id,
+            'order_id' => $orderId,
+            'error' => $e->getMessage(),
+        ]);
+        if ($callback_query_id) {
+            telegram('answerCallbackQuery', [
+                'callback_query_id' => $callback_query_id,
+                'text' => 'خطا در تکمیل سفارش: ' . mb_substr($e->getMessage(), 0, 120, 'UTF-8'),
+                'show_alert' => true,
+            ]);
+        }
+    }
+    return;
+}
+
 if (preg_match('/^ds_reject:(\d+)$/', (string) $datain, $digitalRejectMatch)
     && $adminrulecheck['rule'] === 'administrator') {
     $orderId = (int) $digitalRejectMatch[1];
@@ -7779,6 +7823,32 @@ if ($datain == "settimecornremove" && $adminrulecheck['rule'] == "administrator"
             assertSqlIdentifier($column);
             $stmt = $pdo->prepare("UPDATE {$table} SET {$column} = :target_id WHERE {$column} = :source_id");
             $stmt->execute([':target_id' => $targetId, ':source_id' => $sourceId]);
+        }
+
+        $digitalOrdersTable = (bool) $pdo->query("SHOW TABLES LIKE 'digital_service_orders'")->fetchColumn();
+        if ($digitalOrdersTable) {
+            $stmt = $pdo->prepare(
+                "UPDATE digital_service_orders
+                 SET user_id = :target_id
+                 WHERE user_id = :source_id"
+            );
+            $stmt->execute([':target_id' => $targetId, ':source_id' => $sourceId]);
+        }
+
+        // Favorites have a unique (user_id, service_id) key, so merge
+        // them explicitly instead of using a plain UPDATE that can collide.
+        $favoritesTable = (bool) $pdo->query("SHOW TABLES LIKE 'digital_service_favorites'")->fetchColumn();
+        if ($favoritesTable) {
+            $stmt = $pdo->prepare(
+                "INSERT IGNORE INTO digital_service_favorites (user_id, service_id, created_at)
+                 SELECT :target_id, service_id, created_at
+                 FROM digital_service_favorites
+                 WHERE user_id = :source_id"
+            );
+            $stmt->execute([':target_id' => $targetId, ':source_id' => $sourceId]);
+
+            $stmt = $pdo->prepare("DELETE FROM digital_service_favorites WHERE user_id = :source_id");
+            $stmt->execute([':source_id' => $sourceId]);
         }
 
         $stmt = $pdo->prepare("UPDATE user SET affiliates = :target_id WHERE affiliates = :source_id");
