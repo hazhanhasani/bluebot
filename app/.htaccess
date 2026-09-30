@@ -29,10 +29,15 @@ Options -Indexes
         Header always set Cloudflare-CDN-Cache-Control "no-store"
     </FilesMatch>
 
-    # JS/CSS filenames in this legacy Mini App build are not guaranteed to be
-    # content-hashed after hotfixes. Revalidate them so Telegram/Cloudflare never
-    # combine different generations of the React bundle.
-    <FilesMatch "\.(?:js|css)$">
+    # Vite-style hashed bundles are immutable and safe to cache aggressively.
+    <FilesMatch "^[A-Za-z0-9._-]+-[A-Za-z0-9_-]{6,}\.(?:js|css)$">
+        Header always set Cache-Control "public, max-age=31536000, immutable"
+        Header always set CDN-Cache-Control "public, max-age=31536000, immutable"
+        Header always set Cloudflare-CDN-Cache-Control "public, max-age=31536000, immutable"
+    </FilesMatch>
+
+    # Non-hashed scripts/styles must revalidate to avoid stale Telegram WebViews.
+    <FilesMatch "^(?![A-Za-z0-9._-]+-[A-Za-z0-9_-]{6,}\.(?:js|css)$).+\.(?:js|css)$">
         Header always set Cache-Control "no-cache, must-revalidate"
         Header always set Pragma "no-cache"
         Header always set CDN-Cache-Control "no-cache"
