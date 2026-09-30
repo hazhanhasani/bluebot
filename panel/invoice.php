@@ -23,7 +23,7 @@ if ($scope === 'digital') {
     $action = trim((string) ($_POST['action'] ?? ''));
     $orderId = max(0, (int) ($_POST['order_id'] ?? 0));
 
-    if (in_array($action, ['digital_approve', 'digital_reject'], true) && $orderId > 0) {
+    if (in_array($action, ['digital_approve', 'digital_reject', 'digital_complete'], true) && $orderId > 0) {
       try {
         if ($action === 'digital_approve') {
           $result = BluebotDigitalServices::approveAndDeliver(
@@ -45,6 +45,13 @@ if ($scope === 'digital') {
           } else {
             flash('success', 'سفارش با موفقیت تحویل شد.');
           }
+        } elseif ($action === 'digital_complete') {
+          BluebotDigitalServices::completePartialReview(
+            $pdo,
+            $orderId,
+            (string) ($_SESSION['admin_user'] ?? 'panel')
+          );
+          flash('success', 'سفارش تحویل ناقص پس از بررسی به‌صورت دستی تکمیل شد.');
         } else {
           BluebotDigitalServices::rejectAndRefund(
             $pdo,
@@ -100,6 +107,7 @@ if ($scope === 'digital') {
     'processing' => ['tag-info', 'در حال پردازش'],
     'delivered' => ['tag-ok', 'تحویل‌شده'],
     'failed' => ['tag-no', 'ناموفق'],
+    'partial_review' => ['tag-warn', 'تحویل ناقص / بررسی'],
     'rejected' => ['tag-plain', 'رد و مستردشده'],
   ];
 
@@ -121,14 +129,19 @@ if ($scope === 'digital') {
   <?php
   $pendingCount = (int) db_count(
     $pdo,
-    "SELECT COUNT(*) FROM digital_service_orders WHERE status IN ('pending_approval','failed') AND refunded = 0"
+    "SELECT COUNT(*) FROM digital_service_orders WHERE status IN ('pending_approval','failed','partial_review') AND refunded = 0"
   );
   $processingCount = (int) db_count($pdo, "SELECT COUNT(*) FROM digital_service_orders WHERE status = 'processing'");
+  $staleProcessingCount = (int) db_count(
+    $pdo,
+    "SELECT COUNT(*) FROM digital_service_orders
+     WHERE status = 'processing' AND updated_at < DATE_SUB(NOW(), INTERVAL 30 MINUTE)"
+  );
   $deliveredCount = (int) db_count($pdo, "SELECT COUNT(*) FROM digital_service_orders WHERE status = 'delivered'");
   ?>
   <div class="stats-grid fade-up" style="margin-bottom:16px">
     <div class="stat-card"><div class="stat-label">نیازمند اقدام</div><div class="stat-value"><?= number_format($pendingCount) ?></div></div>
-    <div class="stat-card"><div class="stat-label">در حال پردازش</div><div class="stat-value"><?= number_format($processingCount) ?></div></div>
+    <div class="stat-card"><div class="stat-label">در حال پردازش</div><div class="stat-value"><?= number_format($processingCount) ?></div><?php if ($staleProcessingCount > 0): ?><small class="cm">⚠️ <?= number_format($staleProcessingCount) ?> سفارش بیش از ۳۰ دقیقه</small><?php endif; ?></div>
     <div class="stat-card"><div class="stat-label">تحویل‌شده</div><div class="stat-value"><?= number_format($deliveredCount) ?></div></div>
   </div>
 
@@ -177,6 +190,9 @@ if ($scope === 'digital') {
               $statusClass = 'tag-warn';
               $statusLabel = 'نیازمند بررسی';
             }
+            $isStaleProcessing = $orderStatus === 'processing'
+              && !empty($order['updated_at'])
+              && strtotime((string) $order['updated_at']) < (time() - 1800);
           ?>
             <tr>
               <td class="cf"><?= (int) $order['id'] ?></td>
@@ -205,8 +221,21 @@ if ($scope === 'digital') {
                     <input type="hidden" name="order_id" value="<?= (int) $order['id'] ?>">
                     <button class="btn btn-no btn-sm" type="submit">رد + بازگشت وجه</button>
                   </form>
+                <?php elseif ($orderStatus === 'partial_review' && (int) ($order['refunded'] ?? 0) !== 1): ?>
+                  <form method="post" style="display:inline" data-confirm="پس از بررسی، این سفارش به‌عنوان تکمیل‌شده ثبت شود؟">
+                    <input type="hidden" name="_csrf" value="<?= csrf_token() ?>">
+                    <input type="hidden" name="action" value="digital_complete">
+                    <input type="hidden" name="order_id" value="<?= (int) $order['id'] ?>">
+                    <button class="btn btn-ok btn-sm" type="submit">تکمیل دستی</button>
+                  </form>
+                  <form method="post" style="display:inline" data-confirm="تحویل ناقص بوده است. آیا کل مبلغ سفارش به کیف پول کاربر برگردد؟">
+                    <input type="hidden" name="_csrf" value="<?= csrf_token() ?>">
+                    <input type="hidden" name="action" value="digital_reject">
+                    <input type="hidden" name="order_id" value="<?= (int) $order['id'] ?>">
+                    <button class="btn btn-no btn-sm" type="submit">رد + بازگشت وجه</button>
+                  </form>
                 <?php elseif ($orderStatus === 'processing'): ?>
-                  <span class="cf">پیگیری خودکار</span>
+                  <span class="<?= $isStaleProcessing ? 'tag tag-warn' : 'cf' ?>"><?= $isStaleProcessing ? '⚠️ پیگیری طولانی' : 'پیگیری خودکار' ?></span>
                 <?php else: ?>
                   <span class="cf">—</span>
                 <?php endif; ?>
