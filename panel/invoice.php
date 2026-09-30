@@ -172,10 +172,14 @@ if ($scope === 'digital') {
         <?php else: ?>
           <?php foreach ($orders as $order):
             $orderStatus = (string) ($order['status'] ?? '');
+            $providerProgress = BluebotDigitalServices::providerProgress($order);
             [$statusClass, $statusLabel] = $statusMap[$orderStatus] ?? ['tag-plain', $orderStatus ?: '—'];
             if ($orderStatus === 'failed' && (int) ($order['refunded'] ?? 0) !== 1) {
               $statusClass = 'tag-warn';
               $statusLabel = 'نیازمند بررسی';
+            } elseif ($orderStatus === 'processing' && (string) ($providerProgress['status'] ?? '') === 'partial') {
+              $statusClass = 'tag-warn';
+              $statusLabel = 'تحویل جزئی';
             }
           ?>
             <tr>
@@ -188,7 +192,12 @@ if ($scope === 'digital') {
               <td><code><?= htmlspecialchars((string) $order['provider']) ?></code></td>
               <td class="cn cs"><?= number_format((int) $order['amount']) ?> تومان</td>
               <td><span class="tag <?= $statusClass ?>"><?= htmlspecialchars($statusLabel) ?></span><?php if ((int) ($order['refunded'] ?? 0) === 1): ?><br><small class="cm">مسترد شده</small><?php endif; ?></td>
-              <td class="cm"><?= htmlspecialchars(trunc((string) ($order['provider_reference'] ?? '—'), 18)) ?></td>
+              <td class="cm">
+                <?= htmlspecialchars(trunc((string) ($order['provider_reference'] ?? '—'), 18)) ?>
+                <?php if (is_int($providerProgress['remains'] ?? null)): ?>
+                  <br><small>باقی‌مانده: <?= number_format((int) $providerProgress['remains']) ?></small>
+                <?php endif; ?>
+              </td>
               <td class="cf"><?= safe_date($order['created_at'] ?? null, 'Y/m/d H:i') ?></td>
               <td>
                 <div style="display:flex;gap:5px;flex-wrap:wrap">
@@ -206,7 +215,11 @@ if ($scope === 'digital') {
                     <button class="btn btn-no btn-sm" type="submit">رد + بازگشت وجه</button>
                   </form>
                 <?php elseif ($orderStatus === 'processing'): ?>
-                  <span class="cf">پیگیری خودکار</span>
+                  <?php if ((string) ($providerProgress['status'] ?? '') === 'partial'): ?>
+                    <span class="tag tag-warn">بررسی دستی تحویل جزئی</span>
+                  <?php else: ?>
+                    <span class="cf">پیگیری خودکار</span>
+                  <?php endif; ?>
                 <?php else: ?>
                   <span class="cf">—</span>
                 <?php endif; ?>

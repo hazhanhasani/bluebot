@@ -70,6 +70,19 @@ paginated and deliberately uses customer-facing status language:
 
 Provider references and raw provider error messages remain admin-facing.
 
+Each order in **سفارش‌های من** is individually selectable. The detail view shows
+the order code, product, quantity, target, amount and customer-safe status. A
+manual order that is still `pending_approval` can be cancelled by its owner from
+this detail screen. Cancellation is confirmed in a second step, locks the order,
+refunds the exact order amount in the same database transaction, and refuses the
+cancellation if an administrator or automatic provider has already claimed the
+order for processing.
+
+Auto-imported provider descriptions are not shown directly to customers. This
+prevents provider names, technical delivery notes, or upstream-specific wording
+from leaking through the product page. Manually managed products may still show
+their administrator-written description.
+
 ### Nobitex API host and optional API Key
 > **Signature encoding:** Nobitex's documented `urlsafe_b64encode` output
 > includes Base64 padding. BlueBot preserves trailing `=` characters in
@@ -271,6 +284,16 @@ section without exposing API keys or credentials. It reports active product coun
 pending orders, processing orders, unresolved failed orders requiring review,
 delivered orders, and each registered provider's enabled state, manual/automatic
 mode and latest sync state.
+
+## Partial delivery visibility
+
+SMM status payloads can report `partial`, `remains`, `start_count` and
+`charge`. BlueBot keeps partial orders in processing rather than automatically
+refunding them because part of the quantity may already have been delivered and
+charged upstream. The Orders panel marks these rows as **تحویل جزئی**, shows the
+reported remaining quantity, and flags them for manual review. The customer sees
+a neutral **تحویل جزئی / در حال بررسی** status and, when available, the remaining
+quantity without seeing provider references or raw API errors.
 
 ## Background reconciliation
 
