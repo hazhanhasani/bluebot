@@ -166,6 +166,16 @@ $checks = [
     [str_contains($manager, "userOrdersPage"), 'customer digital-order history query missing'],
     [str_contains($manager, "userOrdersText"), 'customer digital-order history text missing'],
     [str_contains($manager, "userOrdersKeyboard"), 'customer digital-order history keyboard missing'],
+    [str_contains($manager, "findUserOrder"), 'customer order detail ownership query missing'],
+    [str_contains($manager, "userOrderText"), 'customer order detail renderer missing'],
+    [str_contains($manager, "userOrderKeyboard"), 'customer order detail keyboard missing'],
+    [str_contains($manager, "userCancelConfirmKeyboard"), 'customer cancellation confirmation keyboard missing'],
+    [str_contains($manager, "cancelPendingOrderByUser"), 'safe customer pending-order cancellation missing'],
+    [str_contains($manager, "ORDER_CANCEL_UNAVAILABLE"), 'customer cancellation race guard missing'],
+    [str_contains($manager, "customerProductDescription"), 'customer-safe product description helper missing'],
+    [str_contains($manager, "providerProgress"), 'provider progress parser missing'],
+    [str_contains($manager, "تحویل جزئی / در حال بررسی"), 'partial delivery customer status missing'],
+
     [str_contains($manager, "'callback_data' => 'ds_orders:1'"), 'digital-service landing page must link to customer order history'],
     [str_contains($manager, "orderStatusLabel"), 'customer-friendly digital order status labels missing'],
 
@@ -345,6 +355,11 @@ $checks = [
     [str_contains($invoicePanel, "digital_reject"), 'digital order rejection must live under Orders'],
     [str_contains($invoicePanel, "number_format(max(1, (int) (\$order['quantity'] ?? 1)))"), 'Orders panel must show order quantity'],
     [str_contains($invoicePanel, "نیازمند بررسی"), 'Orders panel must distinguish non-refunded failed orders requiring review'],
+    [str_contains($invoicePanel, "providerProgress"), 'Orders panel provider progress parsing missing'],
+    [str_contains($invoicePanel, "تحویل جزئی"), 'Orders panel partial delivery label missing'],
+    [str_contains($invoicePanel, "باقی‌مانده:"), 'Orders panel remaining quantity display missing'],
+    [str_contains($invoicePanel, "بررسی دستی تحویل جزئی"), 'Orders panel partial delivery review guidance missing'],
+
 
     [str_contains($invoicePanel, "scope=digital"), 'Orders digital scope missing'],
     [str_contains($categoryPanel, "digital_category_add"), 'digital category create action missing'],
@@ -411,6 +426,12 @@ $checks = [
     [str_contains($index, "catalogPageInfo(\$pdo, \$category, \$requestedPage, 8)"), 'digital category route must paginate large provider catalogs'],
     [str_contains($index, "ds_confirm:"), 'user order confirmation route missing'],
     [str_contains($index, "/^ds_orders:"), 'customer digital-order history route missing'],
+    [str_contains($index, "/^ds_order:"), 'customer digital-order detail route missing'],
+    [str_contains($index, "/^ds_cancel:"), 'customer digital-order cancel confirmation route missing'],
+    [str_contains($index, "/^ds_cancel_confirm:"), 'customer digital-order cancellation route missing'],
+    [str_contains($index, "cancelPendingOrderByUser"), 'checkout routes must use atomic customer cancellation'],
+    [str_contains($index, "customerProductDescription"), 'auto-imported provider descriptions must not leak to customer product pages'],
+
     [str_contains($index, "BluebotDigitalServices::createWalletOrder(\$pdo, \$user, \$product, \$target, \$quantity)"), 'checkout must persist selected quantity'],
     [str_contains($index, "موجودی بعد از خرید"), 'checkout confirmation must show post-purchase wallet balance'],
     [str_contains($index, "savedata('save', 'digital_service_amount'"), 'checkout must store the customer-confirmed amount'],
@@ -456,6 +477,7 @@ $checks = [
     [!str_contains($index, "سفارش تا تأیید دستی ادمین ارسال نخواهد شد."), 'customer confirmation leaks internal approval workflow'],
     [!str_contains($langFa, "در صف تأیید و ارسال ادمین"), 'customer queued message leaks internal approval workflow'],
     [!str_contains($index, "ارسال خودکار موقتاً انجام نشد"), 'customer checkout must not expose provider auto-delivery failures'],
+    [!str_contains($index, "mb_substr(\$description, 0, 600") || str_contains($index, "customerProductDescription"), 'customer pages must not display raw provider descriptions'],
     [str_contains($manager, "سفارش در حال بررسی و پردازش است"), 'automatic fallback must keep customer messaging neutral'],
 
     [!str_contains($manager, "برای TGTools باید یوزرنیم"), 'customer validation leaks provider name'],
