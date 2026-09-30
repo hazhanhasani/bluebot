@@ -46,8 +46,12 @@ final class BluebotDigitalServices
             return false;
         }
 
-        if (in_array($providerKey, ['tgtools', 'ozvinoo', 'tivanovin'], true)) {
-            return true;
+        if ($providerKey === 'tgtools') {
+            return trim(self::setting($pdo, 'tgtools_api_key', '')) !== '';
+        }
+
+        if ($providerKey === 'ozvinoo') {
+            return trim(self::setting($pdo, 'ozvinoo_api_key', '')) !== '';
         }
 
         $provider = BluebotProviderCatalogService::findProvider($pdo, $providerKey);
