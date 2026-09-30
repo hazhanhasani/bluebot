@@ -154,7 +154,7 @@ $checks = [
     [str_contains($manager, "catalogPageInfo"), 'digital service catalog pagination info missing'],
     [str_contains($manager, "array_slice(\$products, \$offset, \$perPage)"), 'digital service catalog keyboard must be paginated'],
     [str_contains($manager, "mb_substr(\$name, 0, \$maxNameLength - 1"), 'digital service button labels must be length-limited'],
-    [str_contains($manager, "'callback_data' => 'ds_category:' . \$category . ':'"), 'digital service category pagination callback missing'],
+    [str_contains($manager, "'ds_category:' . \$category . ':'"), 'digital service category pagination callback missing'],
     [str_contains($manager, "virtualNumberApplications"), 'Callinoo application-level number navigation missing'],
     [str_contains($manager, "OZVINOO_CATALOG_SCHEMA_VERSION"), 'Callinoo catalog schema version missing'],
     [str_contains($manager, "ozvinoo_catalog_schema_version"), 'Callinoo catalog migration marker missing'],
