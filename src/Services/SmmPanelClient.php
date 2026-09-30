@@ -8,7 +8,9 @@ declare(strict_types=1);
  * Supported actions:
  * - services
  * - add
- * - status
+ * - status / multi-status
+ * - refill / refill status
+ * - cancel
  * - balance
  *
  * API keys are sent only in the request body. HTTPS is required for generic
@@ -82,8 +84,13 @@ final class SmmPanelClient
         ];
     }
 
-    public function addOrder(string $service, string $link, int $quantity): array
-    {
+    public function addOrder(
+        string $service,
+        string $link,
+        int $quantity,
+        ?int $runs = null,
+        ?int $interval = null
+    ): array {
         $service = trim($service);
         $link = trim($link);
         $quantity = max(1, $quantity);
@@ -92,12 +99,20 @@ final class SmmPanelClient
             return ['ok' => false, 'message' => 'Service code and target are required.'];
         }
 
-        $response = $this->request([
+        $payload = [
             'action' => 'add',
             'service' => $service,
             'link' => $link,
             'quantity' => $quantity,
-        ]);
+        ];
+        if ($runs !== null && $runs > 0) {
+            $payload['runs'] = $runs;
+        }
+        if ($interval !== null && $interval > 0) {
+            $payload['interval'] = $interval;
+        }
+
+        $response = $this->request($payload);
         if (empty($response['ok'])) {
             return $response;
         }
@@ -166,6 +181,123 @@ final class SmmPanelClient
             'remains' => isset($data['remains']) && is_numeric($data['remains']) ? (int) $data['remains'] : null,
             'data' => $data,
         ];
+    }
+
+    public function statuses(array $orderIds): array
+    {
+        $ids = [];
+        foreach ($orderIds as $orderId) {
+            $id = trim((string) $orderId);
+            if ($id !== '' && preg_match('/^[A-Za-z0-9_-]{1,80}$/', $id)) {
+                $ids[] = $id;
+            }
+            if (count($ids) >= 100) {
+                break;
+            }
+        }
+        $ids = array_values(array_unique($ids));
+        if ($ids === []) {
+            return ['ok' => false, 'message' => 'At least one provider order id is required.'];
+        }
+
+        return $this->request([
+            'action' => 'status',
+            'orders' => implode(',', $ids),
+        ]);
+    }
+
+    public function refill(string $orderId): array
+    {
+        $orderId = trim($orderId);
+        if ($orderId === '') {
+            return ['ok' => false, 'message' => 'Provider order id is required.'];
+        }
+
+        $response = $this->request([
+            'action' => 'refill',
+            'order' => $orderId,
+        ]);
+        if (empty($response['ok'])) {
+            return $response;
+        }
+
+        $data = is_array($response['data'] ?? null) ? $response['data'] : [];
+        $refillId = isset($data['refill']) && is_scalar($data['refill'])
+            ? trim((string) $data['refill'])
+            : '';
+        if ($refillId === '') {
+            return [
+                'ok' => false,
+                'http_status' => (int) ($response['http_status'] ?? 0),
+                'message' => trim((string) ($data['error'] ?? $data['message'] ?? 'Provider did not return a refill id.')),
+                'data' => $data,
+            ];
+        }
+
+        return [
+            'ok' => true,
+            'http_status' => (int) ($response['http_status'] ?? 0),
+            'refill' => $refillId,
+            'data' => $data,
+        ];
+    }
+
+    public function refillStatus(string $refillId): array
+    {
+        $refillId = trim($refillId);
+        if ($refillId === '') {
+            return ['ok' => false, 'message' => 'Provider refill id is required.'];
+        }
+
+        $response = $this->request([
+            'action' => 'refill_status',
+            'refill' => $refillId,
+        ]);
+        if (empty($response['ok'])) {
+            return $response;
+        }
+
+        $data = is_array($response['data'] ?? null) ? $response['data'] : [];
+        $status = trim((string) ($data['status'] ?? ''));
+        if ($status === '') {
+            return [
+                'ok' => false,
+                'http_status' => (int) ($response['http_status'] ?? 0),
+                'message' => trim((string) ($data['error'] ?? $data['message'] ?? 'Provider refill status is missing.')),
+                'data' => $data,
+            ];
+        }
+
+        return [
+            'ok' => true,
+            'http_status' => (int) ($response['http_status'] ?? 0),
+            'status' => self::normaliseStatus($status),
+            'raw_status' => $status,
+            'data' => $data,
+        ];
+    }
+
+    public function cancel(array $orderIds): array
+    {
+        $ids = [];
+        foreach ($orderIds as $orderId) {
+            $id = trim((string) $orderId);
+            if ($id !== '' && preg_match('/^[A-Za-z0-9_-]{1,80}$/', $id)) {
+                $ids[] = $id;
+            }
+            if (count($ids) >= 100) {
+                break;
+            }
+        }
+        $ids = array_values(array_unique($ids));
+        if ($ids === []) {
+            return ['ok' => false, 'message' => 'At least one provider order id is required.'];
+        }
+
+        return $this->request([
+            'action' => 'cancel',
+            'orders' => implode(',', $ids),
+        ]);
     }
 
     public static function normaliseStatus(string $status): string
