@@ -566,7 +566,8 @@ include __DIR__ . '/inc/layout_head.php';
                 : 'نامشخص';
             $tgWalletAddress = trim((string) ($tgWalletStatus['deposit_address'] ?? ''));
             ?>
-            <div class="notice <?= !empty($tgWalletStatus['ok']) ? 'notice-info' : 'notice-warn' ?>" style="display:grid;gap:12px">
+            <div class="card" data-persistent-tgtools-wallet
+                style="display:grid;gap:12px;padding:16px;background:var(--sf2);border-color:<?= !empty($tgWalletStatus['ok']) ? 'var(--bds)' : 'var(--warn)' ?>">
                 <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
                     <strong>💎 کیف پول TGTools</strong>
                     <a class="btn btn-ghost btn-sm" href="digital_services.php#tgtools">↻ بروزرسانی موجودی</a>
