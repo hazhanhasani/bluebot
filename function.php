@@ -1340,7 +1340,18 @@ function creditReferralCommission(string $buyerId, int $sourceAmount, string $so
     $buyer = select("user", "*", "id", $buyerId, "select");
     $referrerId = trim((string) ($buyer['affiliates'] ?? ''));
     if ($referrerId === '' || $referrerId === '0' || $referrerId === $buyerId || !rowExists("user", "id", $referrerId)) {
+        if ($referrerId === $buyerId) {
+            logReferralRiskEvent($buyerId, $referrerId, 'commission_rejected', 'self_referral', $sourceType . ':' . $sourceId);
+        }
         return ['credited' => false, 'reason' => 'no_referrer'];
+    }
+    if (referralCreatesCycle($buyerId, $referrerId)) {
+        logReferralRiskEvent($buyerId, $referrerId, 'commission_rejected', 'referral_cycle', $sourceType . ':' . $sourceId);
+        return ['credited' => false, 'reason' => 'referral_cycle'];
+    }
+    if (referralPhoneCollision($buyerId, $referrerId)) {
+        logReferralRiskEvent($buyerId, $referrerId, 'commission_rejected', 'same_verified_phone', $sourceType . ':' . $sourceId);
+        return ['credited' => false, 'reason' => 'same_verified_phone'];
     }
 
     $settingRow = select("setting", "*", null, null, "select");
