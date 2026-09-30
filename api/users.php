@@ -453,6 +453,7 @@ function usr_transfer_account(array $data, string $method): void
         ['wheel_list', 'id_user'],
         ['sms_deliveries', 'user_id'],
         ['sms_otp_challenges', 'user_id'],
+        ['digital_service_orders', 'user_id'],
         ['reagent_report', 'user_id'],
         ['reagent_report', 'reagent'],
     ];
@@ -477,6 +478,22 @@ function usr_transfer_account(array $data, string $method): void
             assertSqlIdentifier($column);
             $stmt = $pdo->prepare("UPDATE {$table} SET {$column} = :target_id WHERE {$column} = :source_id");
             $stmt->execute([':target_id' => $targetId, ':source_id' => $sourceId]);
+        }
+
+        // Favorites have a unique (user_id, service_id) key, so merge
+        // them explicitly instead of using a plain UPDATE that can collide.
+        $favoritesTable = (bool) $pdo->query("SHOW TABLES LIKE 'digital_service_favorites'")->fetchColumn();
+        if ($favoritesTable) {
+            $stmt = $pdo->prepare(
+                "INSERT IGNORE INTO digital_service_favorites (user_id, service_id, created_at)
+                 SELECT :target_id, service_id, created_at
+                 FROM digital_service_favorites
+                 WHERE user_id = :source_id"
+            );
+            $stmt->execute([':target_id' => $targetId, ':source_id' => $sourceId]);
+
+            $stmt = $pdo->prepare("DELETE FROM digital_service_favorites WHERE user_id = :source_id");
+            $stmt->execute([':source_id' => $sourceId]);
         }
 
         // Referral ownership is stored directly on user rows and also needs to
