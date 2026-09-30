@@ -1412,26 +1412,28 @@ if ($text == "/start" || $datain == "start" || $text == "start") {
         return;
     }
 
-    if (!empty($callback_query_id)) {
-        telegram('answerCallbackQuery', [
-            'callback_query_id' => $callback_query_id,
-            'cache_time' => 0,
-        ]);
-    }
-
     $order = BluebotDigitalServices::findUserOrder(
         $pdo,
         (string) $from_id,
         (int) $digitalOrderMatch[1]
     );
     if (!is_array($order)) {
+        if (!empty($callback_query_id)) {
+            telegram('answerCallbackQuery', [
+                'callback_query_id' => $callback_query_id,
+                'text' => 'سفارش پیدا نشد.',
+                'show_alert' => true,
+                'cache_time' => 0,
+            ]);
+        }
+        return;
+    }
+
+    if (!empty($callback_query_id)) {
         telegram('answerCallbackQuery', [
             'callback_query_id' => $callback_query_id,
-            'text' => 'سفارش پیدا نشد.',
-            'show_alert' => true,
             'cache_time' => 0,
         ]);
-        return;
     }
 
     $orderText = BluebotDigitalServices::userOrderText($order);
