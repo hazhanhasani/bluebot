@@ -45,6 +45,86 @@ function bluebotCollectDiagnostics(PDO $pdo, array $setting): array
         ]);
     }
 
+    $digitalServices = [
+        'available' => false,
+        'active_products' => 0,
+        'orders_pending' => 0,
+        'orders_processing' => 0,
+        'orders_failed_review' => 0,
+        'orders_delivered' => 0,
+        'providers' => [],
+    ];
+    try {
+        $ordersTable = (bool) $pdo->query("SHOW TABLES LIKE 'digital_service_orders'")->fetchColumn();
+        $productsTable = (bool) $pdo->query("SHOW TABLES LIKE 'digital_service_products'")->fetchColumn();
+        $providersTable = (bool) $pdo->query("SHOW TABLES LIKE 'digital_service_providers'")->fetchColumn();
+        $settingsTable = (bool) $pdo->query("SHOW TABLES LIKE 'digital_service_settings'")->fetchColumn();
+
+        $digitalServices['available'] = $ordersTable && $productsTable;
+        if ($productsTable) {
+            $digitalServices['active_products'] = (int) $pdo
+                ->query("SELECT COUNT(*) FROM digital_service_products WHERE active = 1")
+                ->fetchColumn();
+        }
+        if ($ordersTable) {
+            $digitalServices['orders_pending'] = (int) $pdo
+                ->query("SELECT COUNT(*) FROM digital_service_orders WHERE status = 'pending_approval'")
+                ->fetchColumn();
+            $digitalServices['orders_processing'] = (int) $pdo
+                ->query("SELECT COUNT(*) FROM digital_service_orders WHERE status = 'processing'")
+                ->fetchColumn();
+            $digitalServices['orders_failed_review'] = (int) $pdo
+                ->query("SELECT COUNT(*) FROM digital_service_orders WHERE status = 'failed' AND refunded = 0")
+                ->fetchColumn();
+            $digitalServices['orders_delivered'] = (int) $pdo
+                ->query("SELECT COUNT(*) FROM digital_service_orders WHERE status = 'delivered'")
+                ->fetchColumn();
+        }
+
+        if ($providersTable) {
+            $providerRows = $pdo->query(
+                "SELECT provider_key, name, active, last_sync_at, last_sync_status
+                 FROM digital_service_providers
+                 ORDER BY provider_key ASC"
+            )->fetchAll(PDO::FETCH_ASSOC) ?: [];
+
+            $approvalModes = [];
+            if ($settingsTable) {
+                $settingsStmt = $pdo->query(
+                    "SELECT setting_key, setting_value
+                     FROM digital_service_settings
+                     WHERE setting_key LIKE 'provider_approval_%'"
+                );
+                foreach ($settingsStmt->fetchAll(PDO::FETCH_ASSOC) ?: [] as $row) {
+                    $key = substr((string) ($row['setting_key'] ?? ''), strlen('provider_approval_'));
+                    if ($key !== '') {
+                        $approvalModes[$key] = (string) ($row['setting_value'] ?? 'manual');
+                    }
+                }
+            }
+
+            foreach ($providerRows as $row) {
+                $key = strtolower(trim((string) ($row['provider_key'] ?? '')));
+                if ($key === '') {
+                    continue;
+                }
+                $digitalServices['providers'][] = [
+                    'key' => $key,
+                    'name' => (string) ($row['name'] ?? $key),
+                    'active' => (int) ($row['active'] ?? 0) === 1,
+                    'mode' => strtolower((string) ($approvalModes[$key] ?? 'manual')),
+                    'last_sync_at' => (string) ($row['last_sync_at'] ?? ''),
+                    'last_sync_status' => (string) ($row['last_sync_status'] ?? ''),
+                ];
+            }
+        }
+    } catch (Throwable $error) {
+        bluebotLog('warning', 'Debug digital-services check failed', [
+            'exception' => get_class($error),
+            'reason' => $error->getMessage(),
+        ]);
+    }
+
     $apiTokenConfigured = bluebotHasDedicatedApiToken();
 
     $webhookProtected = trim((string) ($setting['webhook_secret'] ?? '')) !== '';
@@ -66,6 +146,7 @@ function bluebotCollectDiagnostics(PDO $pdo, array $setting): array
         'delivery_reviewed' => $deliveryReviewed,
         'free_disk' => $freeBytes === false ? 'unknown' : number_format($freeBytes / 1073741824, 2) . ' GB',
         'bot_status' => (string) ($setting['Bot_Status'] ?? 'unknown'),
+        'digital_services' => $digitalServices,
         'time' => date('Y-m-d H:i:s T'),
     ];
 }
@@ -91,6 +172,22 @@ function bluebotBuildDebugReport(PDO $pdo, array $setting, array $webhookSecret 
         ? 'unknown'
         : (string) $diagnostics['delivery_errors'];
 
+    $digital = is_array($diagnostics['digital_services'] ?? null)
+        ? $diagnostics['digital_services']
+        : [];
+    $digitalProviders = [];
+    foreach ((array) ($digital['providers'] ?? []) as $provider) {
+        $providerKey = $escape((string) ($provider['key'] ?? 'provider'));
+        $providerMode = (($provider['mode'] ?? 'manual') === 'automatic') ? 'auto' : 'manual';
+        $providerState = !empty($provider['active']) ? 'on' : 'off';
+        $syncState = trim((string) ($provider['last_sync_status'] ?? ''));
+        $digitalProviders[] = $providerKey
+            . ':' . $providerState
+            . '/' . $providerMode
+            . ($syncState !== '' ? '/' . $escape($syncState) : '');
+    }
+    $digitalProviderText = $digitalProviders !== [] ? implode(', ', $digitalProviders) : 'none';
+
     return "<b>🔵 BlueBot /debug</b>\n\n"
         . 'Version: <code>' . $escape((string) $diagnostics['version']) . "</code>\n"
         . 'Mini App: <code>' . $escape((string) $diagnostics['mini_version']) . "</code>\n"
@@ -106,6 +203,14 @@ function bluebotBuildDebugReport(PDO $pdo, array $setting, array $webhookSecret 
         . 'Free disk: <code>' . $escape((string) $diagnostics['free_disk']) . "</code>\n"
         . 'Bot status: <code>' . $escape((string) $diagnostics['bot_status']) . "</code>\n"
         . 'Time: <code>' . $escape((string) $diagnostics['time']) . "</code>\n\n"
+        . "<b>🛍 Digital Services</b>\n"
+        . 'Module: ' . $status((bool) ($digital['available'] ?? false)) . "\n"
+        . 'Active products: <code>' . number_format((int) ($digital['active_products'] ?? 0)) . "</code>\n"
+        . 'Pending: <code>' . number_format((int) ($digital['orders_pending'] ?? 0)) . "</code>\n"
+        . 'Processing: <code>' . number_format((int) ($digital['orders_processing'] ?? 0)) . "</code>\n"
+        . 'Needs review: <code>' . number_format((int) ($digital['orders_failed_review'] ?? 0)) . "</code>\n"
+        . 'Delivered: <code>' . number_format((int) ($digital['orders_delivered'] ?? 0)) . "</code>\n"
+        . 'Providers: <code>' . $digitalProviderText . "</code>\n\n"
         . '<i>No secrets are included in this report.</i>';
 }
 

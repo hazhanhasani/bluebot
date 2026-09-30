@@ -1379,10 +1379,44 @@ if ($text == "/start" || $datain == "start" || $text == "start") {
         (string) ($catalog['keyboard'] ?? '')
     );
     return;
+} elseif (preg_match('/^ds_orders:(\d{1,4})$/', (string) $datain, $digitalOrdersMatch)) {
+    if (!check_active_btn($setting['keyboardmain'], 'text_digital_services')) {
+        sendmessage($from_id, $textbotlang['users']['buttonDisabled'], null, 'HTML');
+        return;
+    }
+
+    if (!empty($callback_query_id)) {
+        telegram('answerCallbackQuery', [
+            'callback_query_id' => $callback_query_id,
+            'cache_time' => 0,
+        ]);
+    }
+
+    $ordersPage = max(1, (int) $digitalOrdersMatch[1]);
+    $ordersText = BluebotDigitalServices::userOrdersText($pdo, (string) $from_id, $ordersPage);
+    $ordersKeyboard = BluebotDigitalServices::userOrdersKeyboard($pdo, (string) $from_id, $ordersPage);
+
+    $editResult = Editmessagetext($from_id, $message_id, $ordersText, $ordersKeyboard, 'HTML');
+    if (!is_array($editResult) || empty($editResult['ok'])) {
+        $description = is_array($editResult) ? strtolower(trim((string) ($editResult['description'] ?? ''))) : '';
+        if (!str_contains($description, 'message is not modified')) {
+            sendmessage($from_id, $ordersText, $ordersKeyboard, 'HTML');
+        }
+    }
+    step('home', $from_id);
+    update('user', 'Processing_value', '0', 'id', $from_id);
+    return;
 } elseif (preg_match('/^ds_product:(\d+)$/', (string) $datain, $digitalProductMatch)) {
     if (!check_active_btn($setting['keyboardmain'], 'text_digital_services')) {
         sendmessage($from_id, $textbotlang['users']['buttonDisabled'], null, 'HTML');
         return;
+    }
+
+    if (!empty($callback_query_id)) {
+        telegram('answerCallbackQuery', [
+            'callback_query_id' => $callback_query_id,
+            'cache_time' => 0,
+        ]);
     }
 
     $product = BluebotDigitalServices::findProduct($pdo, (int) $digitalProductMatch[1]);
@@ -1395,29 +1429,62 @@ if ($text == "/start" || $datain == "start" || $text == "start") {
         return;
     }
 
+    $rules = BluebotDigitalServices::quantityRules($product);
     $serviceValue = max(1, (int) ($product['service_value'] ?? 1));
     $typeLabel = match ((string) ($product['type'] ?? '')) {
-        'telegram_stars' => number_format($serviceValue) . ' Telegram Stars',
-        'telegram_premium' => $serviceValue . ' ماه Telegram Premium',
+        'telegram_stars' => number_format($serviceValue) . ' استار تلگرام',
+        'telegram_premium' => $serviceValue . ' ماه تلگرام پرمیوم',
         'virtual_number' => 'شماره مجازی',
-        default => 'خدمت دیجیتال',
+        default => 'سرویس دیجیتال',
     };
-    $productText = "🎁 <b>" . htmlspecialchars((string) $product['name'], ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . "</b>\n\n"
-        . "📦 " . htmlspecialchars($typeLabel, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . "\n"
-        . "💳 قیمت: <b>" . number_format((float) $product['price']) . " تومان</b>";
-    if (($product['provider'] ?? '') === 'ozvinoo' && $serviceValue > 1) {
-        $productText .= "\n📊 مقدار این بسته: <b>" . number_format($serviceValue) . "</b>";
+
+    $productText = "🛍 <b>" . htmlspecialchars((string) $product['name'], ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . "</b>\n\n"
+        . "📦 نوع: " . htmlspecialchars($typeLabel, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . "\n";
+
+    if (!empty($rules['variable'])) {
+        $min = max(1, (int) ($rules['min'] ?? 1));
+        $max = max($min, (int) ($rules['max'] ?? $min));
+        $minPrice = BluebotDigitalServices::priceForQuantity($product, $min);
+        $productText .= "🔢 مقدار مجاز: <b>" . number_format($min) . " تا " . number_format($max) . "</b>\n"
+            . "💳 قیمت از: <b>" . number_format($minPrice) . " تومان</b>\n"
+            . "🧮 قیمت نهایی بر اساس تعداد انتخابی شما محاسبه می‌شود.";
+    } else {
+        $productText .= "🔢 مقدار: <b>" . number_format($serviceValue) . "</b>\n"
+            . "💳 قیمت: <b>" . number_format((float) $product['price']) . " تومان</b>";
     }
-    $productText .= "\n\nبرای ثبت سفارش روی دکمه زیر بزنید 👇";
+
+    $description = trim((string) ($product['description'] ?? ''));
+    if ($description !== '' && !str_starts_with($description, 'محصول همگام‌شده از ')) {
+        $productText .= "\n\n📝 " . nl2br(htmlspecialchars(
+            mb_substr($description, 0, 600, 'UTF-8'),
+            ENT_QUOTES | ENT_SUBSTITUTE,
+            'UTF-8'
+        ));
+    }
+
+    $productText .= "\n\nبرای ادامه روی «ثبت سفارش» بزنید 👇";
 
     step('home', $from_id);
     update('user', 'Processing_value', '0', 'id', $from_id);
-    Editmessagetext(
+
+    $editResult = Editmessagetext(
         $from_id,
         $message_id,
         $productText,
-        BluebotDigitalServices::productKeyboard($product, $textbotlang['users']['backbtn'])
+        BluebotDigitalServices::productKeyboard($product, $textbotlang['users']['backbtn']),
+        'HTML'
     );
+    if (!is_array($editResult) || empty($editResult['ok'])) {
+        $description = is_array($editResult) ? strtolower(trim((string) ($editResult['description'] ?? ''))) : '';
+        if (!str_contains($description, 'message is not modified')) {
+            sendmessage(
+                $from_id,
+                $productText,
+                BluebotDigitalServices::productKeyboard($product, $textbotlang['users']['backbtn']),
+                'HTML'
+            );
+        }
+    }
     return;
 } elseif (preg_match('/^ds_buy:(\d+)$/', (string) $datain, $digitalBuyMatch)) {
     $product = BluebotDigitalServices::findProduct($pdo, (int) $digitalBuyMatch[1]);
@@ -1433,52 +1500,107 @@ if ($text == "/start" || $datain == "start" || $text == "start") {
     if (!empty($callback_query_id)) {
         telegram('answerCallbackQuery', [
             'callback_query_id' => $callback_query_id,
-            'text' => 'اطلاعات سفارش را وارد کنید.',
+            'text' => 'ادامه ثبت سفارش…',
             'show_alert' => false,
             'cache_time' => 0,
         ]);
     }
 
     savedata('clear', 'digital_service_id', (string) $product['id']);
+    $rules = BluebotDigitalServices::quantityRules($product);
+
+    if (!empty($rules['variable'])) {
+        $min = max(1, (int) ($rules['min'] ?? 1));
+        $max = max($min, (int) ($rules['max'] ?? $min));
+        $minPrice = BluebotDigitalServices::priceForQuantity($product, $min);
+
+        step('digital_service_quantity', $from_id);
+        Editmessagetext(
+            $from_id,
+            $message_id,
+            "🔢 <b>تعداد موردنظر را وارد کنید</b>\n\n"
+                . "📦 " . htmlspecialchars((string) $product['name'], ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . "\n"
+                . "حداقل: <b>" . number_format($min) . "</b>\n"
+                . "حداکثر: <b>" . number_format($max) . "</b>\n"
+                . "💳 قیمت از: <b>" . number_format($minPrice) . " تومان</b>\n\n"
+                . "فقط عدد ارسال کنید؛ مثال: <code>" . number_format($min, 0, '.', '') . "</code>",
+            BluebotDigitalServices::targetKeyboard($product),
+            'HTML'
+        );
+        return;
+    }
+
+    [, $fixedQuantity] = BluebotDigitalServices::validateQuantity($product, null);
+    savedata('save', 'digital_service_quantity', (string) $fixedQuantity);
 
     $presetTarget = BluebotDigitalServices::presetTarget($product);
     if ($presetTarget !== null) {
         savedata('save', 'digital_service_target', $presetTarget);
         step('digital_service_confirm', $from_id);
 
-        $confirmText = "<b>" . htmlspecialchars($textbotlang['digitalServices']['confirmTitle'], ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . "</b>\n\n"
+        $amount = BluebotDigitalServices::priceForQuantity($product, (int) $fixedQuantity);
+        savedata('save', 'digital_service_amount', (string) $amount);
+        $confirmText = "🧾 <b>بررسی نهایی سفارش</b>\n\n"
             . "📦 " . htmlspecialchars((string) $product['name'], ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . "\n"
-            . "💳 مبلغ: <b>" . number_format((float) $product['price']) . " تومان</b>\n\n"
-            . "پس از ثبت سفارش، شماره رزرو می‌شود و کد ورود به‌صورت خودکار برای شما ارسال خواهد شد.";
+            . "🔢 مقدار: <b>" . number_format((int) $fixedQuantity) . "</b>\n"
+            . "💳 مبلغ: <b>" . number_format($amount) . " تومان</b>\n\n"
+            . "با تأیید، مبلغ از کیف پول شما کسر و سفارش ثبت می‌شود.";
 
         Editmessagetext(
             $from_id,
             $message_id,
             $confirmText,
-            BluebotDigitalServices::confirmKeyboard((int) $product['id'], $textbotlang['users']['backbtn'])
+            BluebotDigitalServices::confirmKeyboard((int) $product['id'], $textbotlang['users']['backbtn']),
+            'HTML'
         );
         return;
     }
 
     step('digital_service_target', $from_id);
-
-    $targetPrompt = $textbotlang['digitalServices']['targetPrompt'];
-    if (in_array((string) ($product['provider'] ?? ''), ['tgtools', 'ozvinoo'], true)
-        && in_array((string) ($product['type'] ?? ''), ['telegram_stars', 'telegram_premium'], true)) {
-        $targetPrompt = "👤 یوزرنیم تلگرام دریافت‌کننده را ارسال کنید.\nمثال: <code>@username</code>";
-    } elseif (($product['provider'] ?? '') === 'ozvinoo') {
-        $targetPrompt = "🔗 لینک، یوزرنیم یا مقصد موردنیاز این سرویس را ارسال کنید.";
-    }
-
-    // editMessageText only accepts InlineKeyboardMarkup. $backuser becomes a
-    // ReplyKeyboardMarkup when the main menu uses reply buttons, which made
-    // Telegram reject this edit and left the customer with no visible order form.
     Editmessagetext(
         $from_id,
         $message_id,
         "<b>" . htmlspecialchars((string) $product['name'], ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . "</b>\n\n"
-            . $targetPrompt,
-        BluebotDigitalServices::targetKeyboard($product)
+            . BluebotDigitalServices::targetPrompt($product),
+        BluebotDigitalServices::targetKeyboard($product),
+        'HTML'
+    );
+    return;
+} elseif ($user['step'] === 'digital_service_quantity') {
+    $digitalData = bluebotJsonArray($user['Processing_value'] ?? '');
+    $productId = (int) ($digitalData['digital_service_id'] ?? 0);
+    $product = BluebotDigitalServices::findProduct($pdo, $productId);
+    if (!is_array($product) || !BluebotDigitalServices::isVariableQuantityProduct($product)) {
+        step('home', $from_id);
+        sendmessage($from_id, $textbotlang['digitalServices']['notFound'], $keyboard, 'HTML');
+        return;
+    }
+
+    $quantity = BluebotDigitalServices::normaliseQuantityInput((string) $text);
+    [$quantityValid, $quantityOrError] = BluebotDigitalServices::validateQuantity($product, $quantity);
+    if (!$quantityValid || !is_int($quantityOrError)) {
+        sendmessage(
+            $from_id,
+            "⚠️ <b>تعداد واردشده معتبر نیست</b>\n\n"
+                . htmlspecialchars((string) $quantityOrError, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8')
+                . "\nفقط عدد ارسال کنید.",
+            BluebotDigitalServices::targetKeyboard($product),
+            'HTML'
+        );
+        return;
+    }
+
+    savedata('save', 'digital_service_quantity', (string) $quantityOrError);
+    step('digital_service_target', $from_id);
+
+    $calculatedPrice = BluebotDigitalServices::priceForQuantity($product, $quantityOrError);
+    sendmessage(
+        $from_id,
+        "✅ تعداد <b>" . number_format($quantityOrError) . "</b> انتخاب شد.\n"
+            . "💳 مبلغ سفارش: <b>" . number_format($calculatedPrice) . " تومان</b>\n\n"
+            . BluebotDigitalServices::targetPrompt($product),
+        BluebotDigitalServices::targetKeyboard($product),
+        'HTML'
     );
     return;
 } elseif ($user['step'] === 'digital_service_target') {
@@ -1491,12 +1613,26 @@ if ($text == "/start" || $datain == "start" || $text == "start") {
         return;
     }
 
+    $quantity = isset($digitalData['digital_service_quantity'])
+        ? (int) $digitalData['digital_service_quantity']
+        : null;
+    [$quantityValid, $quantityOrError] = BluebotDigitalServices::validateQuantity($product, $quantity);
+    if (!$quantityValid || !is_int($quantityOrError)) {
+        step('home', $from_id);
+        update('user', 'Processing_value', '0', 'id', $from_id);
+        sendmessage($from_id, '⚠️ مقدار سفارش معتبر نیست؛ لطفاً سفارش را دوباره ثبت کنید.', $keyboard, 'HTML');
+        return;
+    }
+
     [$targetValid, $targetValue] = BluebotDigitalServices::validateTarget($product, (string) $text);
     if (!$targetValid) {
         sendmessage(
             $from_id,
-            htmlspecialchars((string) $targetValue, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'),
-            $backuser,
+            "⚠️ <b>مقصد معتبر نیست</b>\n\n"
+                . htmlspecialchars((string) $targetValue, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8')
+                . "\n\n"
+                . BluebotDigitalServices::targetPrompt($product),
+            BluebotDigitalServices::targetKeyboard($product),
             'HTML'
         );
         return;
@@ -1505,14 +1641,23 @@ if ($text == "/start" || $datain == "start" || $text == "start") {
     savedata('save', 'digital_service_target', (string) $targetValue);
     step('digital_service_confirm', $from_id);
 
-    $confirmText = "<b>" . htmlspecialchars($textbotlang['digitalServices']['confirmTitle'], ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . "</b>\n\n"
+    $amount = BluebotDigitalServices::priceForQuantity($product, $quantityOrError);
+    savedata('save', 'digital_service_amount', (string) $amount);
+    $balance = (int) ($user['Balance'] ?? 0);
+    $afterBalance = $balance - $amount;
+
+    $confirmText = "🧾 <b>بررسی نهایی سفارش</b>\n\n"
         . "📦 " . htmlspecialchars((string) $product['name'], ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . "\n"
-        . "👤 مقصد: <code>" . htmlspecialchars((string) $targetValue, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . "</code>\n";
-    if (($product['provider'] ?? '') === 'ozvinoo' && (int) ($product['service_value'] ?? 1) > 1) {
-        $confirmText .= "📊 مقدار: <b>" . number_format((int) $product['service_value']) . "</b>\n";
+        . "🔢 تعداد: <b>" . number_format($quantityOrError) . "</b>\n"
+        . "🎯 مقصد: <code>" . htmlspecialchars((string) $targetValue, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . "</code>\n"
+        . "💳 مبلغ: <b>" . number_format($amount) . " تومان</b>\n"
+        . "👛 موجودی فعلی: <b>" . number_format($balance) . " تومان</b>\n";
+
+    if ($afterBalance >= 0) {
+        $confirmText .= "💰 موجودی بعد از خرید: <b>" . number_format($afterBalance) . " تومان</b>\n";
     }
-    $confirmText .= "💳 مبلغ: <b>" . number_format((float) $product['price']) . " تومان</b>\n\n"
-        . "برای ثبت نهایی سفارش، دکمه تأیید را بزنید.";
+
+    $confirmText .= "\nبا زدن «تأیید و ثبت سفارش»، اطلاعات بالا نهایی می‌شود.";
 
     sendmessage(
         $from_id,
@@ -1523,17 +1668,33 @@ if ($text == "/start" || $datain == "start" || $text == "start") {
     return;
 } elseif (preg_match('/^ds_confirm:(\d+)$/', (string) $datain, $digitalConfirmMatch)) {
     if ($user['step'] !== 'digital_service_confirm') {
+        if (!empty($callback_query_id)) {
+            telegram('answerCallbackQuery', [
+                'callback_query_id' => $callback_query_id,
+                'text' => 'این سفارش قبلاً ثبت شده یا منقضی شده است.',
+                'show_alert' => true,
+                'cache_time' => 0,
+            ]);
+        }
+        return;
+    }
+
+    if (!empty($callback_query_id)) {
         telegram('answerCallbackQuery', [
             'callback_query_id' => $callback_query_id,
-            'text' => 'این سفارش منقضی شده است؛ دوباره ثبت سفارش کنید.',
-            'show_alert' => true,
+            'text' => 'در حال ثبت سفارش…',
+            'show_alert' => false,
+            'cache_time' => 0,
         ]);
-        return;
     }
 
     $digitalData = bluebotJsonArray($user['Processing_value'] ?? '');
     $productId = (int) ($digitalData['digital_service_id'] ?? 0);
     $target = trim((string) ($digitalData['digital_service_target'] ?? ''));
+    $quantity = isset($digitalData['digital_service_quantity'])
+        ? (int) $digitalData['digital_service_quantity']
+        : null;
+
     if ($productId !== (int) $digitalConfirmMatch[1] || $target === '') {
         step('home', $from_id);
         sendmessage($from_id, $textbotlang['digitalServices']['invalidTarget'], $keyboard, 'HTML');
@@ -1547,34 +1708,59 @@ if ($text == "/start" || $datain == "start" || $text == "start") {
         return;
     }
 
+    $quotedAmount = BluebotDigitalServices::priceForQuantity($product, $quantity);
+
     try {
-        $order = BluebotDigitalServices::createWalletOrder($pdo, $user, $product, $target);
+        $order = BluebotDigitalServices::createWalletOrder($pdo, $user, $product, $target, $quantity);
     } catch (DomainException $e) {
         if ($e->getMessage() === 'INSUFFICIENT_BALANCE') {
             step('home', $from_id);
             update('user', 'Processing_value', '0', 'id', $from_id);
-            sendmessage($from_id, $textbotlang['digitalServices']['insufficient'], $keyboard, 'HTML');
+            sendmessage(
+                $from_id,
+                "❌ <b>موجودی کیف پول کافی نیست</b>\n\n"
+                    . "💳 مبلغ سفارش: <b>" . number_format($quotedAmount) . " تومان</b>\n"
+                    . "👛 موجودی شما: <b>" . number_format((float) ($user['Balance'] ?? 0)) . " تومان</b>\n\n"
+                    . "ابتدا کیف پول را شارژ کنید و سپس دوباره سفارش دهید.",
+                $keyboard,
+                'HTML'
+            );
+            return;
+        }
+        if ($e->getMessage() === 'PRICE_CHANGED') {
+            step('home', $from_id);
+            update('user', 'Processing_value', '0', 'id', $from_id);
+            sendmessage(
+                $from_id,
+                "🔄 <b>قیمت این سرویس بروزرسانی شده است</b>\n\n"
+                    . "برای جلوگیری از کسر مبلغی متفاوت با مبلغ تأییدشده، سفارش ثبت نشد. "
+                    . "لطفاً سرویس را دوباره باز کنید و قیمت جدید را تأیید کنید.",
+                $keyboard,
+                'HTML'
+            );
             return;
         }
         if ($e->getMessage() === 'ORDER_STATE_INVALID') {
             if (!empty($callback_query_id)) {
                 telegram('answerCallbackQuery', [
                     'callback_query_id' => $callback_query_id,
-                    'text' => 'این سفارش قبلاً ثبت شده یا منقضی شده است.',
+                    'text' => 'این سفارش قبلاً ثبت شده یا اطلاعات آن تغییر کرده است.',
                     'show_alert' => true,
                     'cache_time' => 0,
                 ]);
-            } else {
-                sendmessage($from_id, '⚠️ این سفارش قبلاً ثبت شده یا منقضی شده است.', $keyboard, 'HTML');
             }
             return;
         }
         throw $e;
     } catch (InvalidArgumentException $e) {
+        step('home', $from_id);
+        update('user', 'Processing_value', '0', 'id', $from_id);
         sendmessage(
             $from_id,
-            htmlspecialchars($e->getMessage(), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'),
-            $backuser,
+            "⚠️ ثبت سفارش متوقف شد\n\n"
+                . htmlspecialchars($e->getMessage(), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8')
+                . "\nلطفاً سفارش را دوباره ثبت کنید.",
+            $keyboard,
             'HTML'
         );
         return;
@@ -1584,7 +1770,12 @@ if ($text == "/start" || $datain == "start" || $text == "start") {
             'product_id' => $productId,
             'error' => $e->getMessage(),
         ]);
-        sendmessage($from_id, '❌ ثبت سفارش انجام نشد. لطفاً دوباره تلاش کنید.', $keyboard, 'HTML');
+        sendmessage(
+            $from_id,
+            '❌ ثبت سفارش انجام نشد. مبلغی از کیف پول شما کسر نشده است؛ لطفاً دوباره تلاش کنید.',
+            $keyboard,
+            'HTML'
+        );
         return;
     }
 
@@ -1622,13 +1813,26 @@ if ($text == "/start" || $datain == "start" || $text == "start") {
         ]);
     }
 
+    $orderKeyboard = json_encode([
+        'inline_keyboard' => [
+            [
+                ['text' => '📋 سفارش‌های من', 'callback_data' => 'ds_orders:1'],
+                ['text' => '🛍 ادامه خرید', 'callback_data' => 'ds_home'],
+            ],
+        ],
+    ], JSON_UNESCAPED_UNICODE);
+
     sendmessage(
         $from_id,
-        $textbotlang['digitalServices']['queued']
-            . "\n\n🧾 کد سفارش: <code>"
+        "✅ <b>سفارش شما با موفقیت ثبت شد</b>\n\n"
+            . "🧾 کد سفارش: <code>"
             . htmlspecialchars((string) ($order['order_code'] ?? ''), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8')
-            . "</code>",
-        $keyboard,
+            . "</code>\n"
+            . "📦 " . htmlspecialchars((string) ($order['service_name'] ?? $product['name']), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . "\n"
+            . "🔢 تعداد: <b>" . number_format(max(1, (int) ($order['quantity'] ?? 1))) . "</b>\n"
+            . "💳 مبلغ: <b>" . number_format((float) ($order['amount'] ?? 0)) . " تومان</b>\n\n"
+            . "🔄 وضعیت سفارش از بخش «سفارش‌های من» قابل پیگیری است.",
+        $orderKeyboard,
         'HTML'
     );
     return;

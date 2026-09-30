@@ -104,7 +104,7 @@ if ($scope === 'digital') {
   ];
 
   $pageTitle = 'سفارش‌ها · فروش خدمات';
-  $pageLede = 'مدیریت سفارش‌های Stars، Premium، شماره مجازی و سرویس‌های دیجیتال';
+  $pageLede = 'پیگیری سفارش‌ها، مقدار، مقصد، وضعیت Provider و عملیات بازگشت وجه';
   $activeNav = 'invoice';
   include __DIR__ . '/inc/layout_head.php';
   ?>
@@ -163,22 +163,27 @@ if ($scope === 'digital') {
       <table class="tbl-xl">
         <thead>
           <tr>
-            <th>#</th><th>کد سفارش</th><th>کاربر</th><th>سرویس</th><th>مقصد</th><th>Provider</th><th>مبلغ</th><th>وضعیت</th><th>پیگیری</th><th>تاریخ</th><th>عملیات</th>
+            <th>#</th><th>کد سفارش</th><th>کاربر</th><th>سرویس</th><th>تعداد</th><th>مقصد</th><th>Provider</th><th>مبلغ</th><th>وضعیت</th><th>پیگیری</th><th>تاریخ</th><th>عملیات</th>
           </tr>
         </thead>
         <tbody>
         <?php if ($orders === []): ?>
-          <tr><td colspan="11"><div class="empty"><p>سفارشی با این فیلتر پیدا نشد.</p></div></td></tr>
+          <tr><td colspan="12"><div class="empty"><p>سفارشی با این فیلتر پیدا نشد.</p></div></td></tr>
         <?php else: ?>
           <?php foreach ($orders as $order):
             $orderStatus = (string) ($order['status'] ?? '');
             [$statusClass, $statusLabel] = $statusMap[$orderStatus] ?? ['tag-plain', $orderStatus ?: '—'];
+            if ($orderStatus === 'failed' && (int) ($order['refunded'] ?? 0) !== 1) {
+              $statusClass = 'tag-warn';
+              $statusLabel = 'نیازمند بررسی';
+            }
           ?>
             <tr>
               <td class="cf"><?= (int) $order['id'] ?></td>
               <td><code><?= htmlspecialchars((string) $order['order_code']) ?></code></td>
               <td class="cm"><?= htmlspecialchars((string) $order['user_id']) ?></td>
               <td><strong><?= htmlspecialchars((string) $order['service_name']) ?></strong></td>
+              <td class="cn"><?= number_format(max(1, (int) ($order['quantity'] ?? 1))) ?></td>
               <td class="cm"><?= htmlspecialchars(trunc((string) $order['target'], 24)) ?></td>
               <td><code><?= htmlspecialchars((string) $order['provider']) ?></code></td>
               <td class="cn cs"><?= number_format((int) $order['amount']) ?> تومان</td>

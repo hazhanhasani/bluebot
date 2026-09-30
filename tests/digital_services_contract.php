@@ -26,7 +26,7 @@ $langFa = file_get_contents($root . '/lang/fa.php');
 $buyStart = strpos($index, "} elseif (preg_match('/^ds_buy:");
 $buyEnd = $buyStart === false
     ? false
-    : strpos($index, "} elseif (\$user['step'] === 'digital_service_target')", $buyStart);
+    : strpos($index, "} elseif (preg_match('/^ds_confirm:", $buyStart);
 $buyRoute = ($buyStart !== false && $buyEnd !== false)
     ? substr($index, $buyStart, $buyEnd - $buyStart)
     : '';
@@ -39,6 +39,7 @@ $checks = [
     [str_contains($manager, "maybeAutoApproveOrder"), 'automatic order approval dispatcher missing'],
     [str_contains($manager, "admin_id = ?"), 'automatic delivery must reuse atomic approval claim'],
     [str_contains($manager, "deliverRegisteredSmmProvider"), 'generic SMM provider delivery adapter missing'],
+    [substr_count($manager, "\$order['quantity'] ?? \$product['service_value']") >= 3, 'SMM delivery must use the order quantity snapshot'],
     [str_contains($manager, "reconcileRegisteredSmmProcessing"), 'generic SMM provider reconciliation missing'],
     [str_contains($index, "maybeAutoApproveOrder"), 'bot checkout must attempt automatic provider delivery'],
     [str_contains($index, '$automaticHandled'), 'bot checkout automatic-delivery guard missing'],
@@ -157,6 +158,17 @@ $checks = [
     [str_contains($manager, "giftPremiumSubscription"), 'Telegram Premium provider missing'],
     [str_contains($manager, "provider === 'tgtools'"), 'TGTools provider dispatch missing'],
     [str_contains($manager, "generatedProviderProductCode"), 'automatic provider product code generation missing'],
+    [str_contains($manager, "quantityRules"), 'SMM quantity rules helper missing'],
+    [str_contains($manager, "normaliseQuantityInput"), 'localized quantity parser missing'],
+    [str_contains($manager, "validateQuantity"), 'quantity min/max validation missing'],
+    [str_contains($manager, "priceForQuantity"), 'dynamic quantity pricing helper missing'],
+    [str_contains($manager, "wholesale_rate_per_1000"), 'dynamic SMM pricing must use provider rate-per-1000 metadata'],
+    [str_contains($manager, "userOrdersPage"), 'customer digital-order history query missing'],
+    [str_contains($manager, "userOrdersText"), 'customer digital-order history text missing'],
+    [str_contains($manager, "userOrdersKeyboard"), 'customer digital-order history keyboard missing'],
+    [str_contains($manager, "'callback_data' => 'ds_orders:1'"), 'digital-service landing page must link to customer order history'],
+    [str_contains($manager, "orderStatusLabel"), 'customer-friendly digital order status labels missing'],
+
     [str_contains($manager, "categoryKeyboard"), 'digital service category keyboard missing'],
 
     [str_contains($manager, "serviceScopeForProduct"), 'digital service scope resolver missing'],
@@ -237,7 +249,8 @@ $checks = [
     [str_contains($manager, "markRetryableProviderFailure"), 'retryable provider failure state missing'],
     [str_contains($manager, '$automaticTgToolsFallback'), 'TGTools automatic manual-fallback guard missing'],
     [str_contains($manager, "'automatic_fallback' => true"), 'TGTools automatic fallback metadata missing'],
-    [str_contains($manager, 'ارسال خودکار TGTools انجام نشد؛ نیاز به بررسی و ارسال دستی دارد.'), 'TGTools admin-only fallback notice missing'],
+    [str_contains($manager, 'وضعیت: <b>'), 'admin order status summary missing'],
+    [str_contains($manager, 'خطای Provider:'), 'provider errors must remain visible to administrators'],
     [str_contains($manager, 'سفارش شما با موفقیت ثبت شد'), 'TGTools customer fallback confirmation missing'],
     [str_contains($manager, "(string) (\$order['admin_id'] ?? '') === 'auto'"), 'TGTools async failure must detect automatic orders'],
 
@@ -259,6 +272,8 @@ $checks = [
     [str_contains($manager, "category_label"), 'dynamic provider category labels missing'],
     [str_contains($manager, "targetKeyboard"), 'dedicated inline target keyboard missing'],
     [str_contains($manager, "ORDER_STATE_INVALID"), 'order confirmation idempotency guard missing'],
+    [str_contains($manager, "PRICE_CHANGED"), 'checkout price-change guard missing'],
+    [str_contains($manager, "digital_service_amount"), 'confirmed checkout amount snapshot missing'],
     [str_contains($manager, "digital_service_processing"), 'atomic order-intent claim missing'],
     [str_contains($manager, "SELECT * FROM user WHERE id = ? FOR UPDATE"), 'user order-intent row lock missing'],
     [str_contains($manager, "provider_service_code = NULL"), 'TGTools products must not require provider service codes'],
@@ -320,10 +335,17 @@ $checks = [
     [str_contains($servicePanel, "digital_edit"), 'digital service edit action must live under Services'],
     [str_contains($servicePanel, "digital_toggle"), 'digital service activation action must live under Services'],
     [str_contains($servicePanel, "digital_delete"), 'digital service delete action must live under Services'],
+    [str_contains($servicePanel, "quantityRules"), 'Services panel must display variable SMM quantity rules'],
+    [str_contains($servicePanel, "quantityRules['min']"), 'Services panel minimum quantity display missing'],
+    [str_contains($servicePanel, "quantityRules['max']"), 'Services panel maximum quantity display missing'],
+
     [str_contains($servicePanel, "scope=digital"), 'Services digital scope missing'],
     [str_contains($servicePanel, "'tgtools'"), 'TGTools provider support missing from Services digital scope'],
     [str_contains($invoicePanel, "digital_approve"), 'digital order approval must live under Orders'],
     [str_contains($invoicePanel, "digital_reject"), 'digital order rejection must live under Orders'],
+    [str_contains($invoicePanel, "number_format(max(1, (int) (\$order['quantity'] ?? 1)))"), 'Orders panel must show order quantity'],
+    [str_contains($invoicePanel, "نیازمند بررسی"), 'Orders panel must distinguish non-refunded failed orders requiring review'],
+
     [str_contains($invoicePanel, "scope=digital"), 'Orders digital scope missing'],
     [str_contains($categoryPanel, "digital_category_add"), 'digital category create action missing'],
     [str_contains($categoryPanel, "digital_category_edit"), 'digital category edit action missing'],
@@ -388,6 +410,13 @@ $checks = [
     [str_contains($index, "sendmessage(\$from_id, \$categoryText, \$categoryKeyboard, 'HTML')"), 'digital category edit failure must fall back to a new message'],
     [str_contains($index, "catalogPageInfo(\$pdo, \$category, \$requestedPage, 8)"), 'digital category route must paginate large provider catalogs'],
     [str_contains($index, "ds_confirm:"), 'user order confirmation route missing'],
+    [str_contains($index, "/^ds_orders:"), 'customer digital-order history route missing'],
+    [str_contains($index, "BluebotDigitalServices::createWalletOrder(\$pdo, \$user, \$product, \$target, \$quantity)"), 'checkout must persist selected quantity'],
+    [str_contains($index, "موجودی بعد از خرید"), 'checkout confirmation must show post-purchase wallet balance'],
+    [str_contains($index, "savedata('save', 'digital_service_amount'"), 'checkout must store the customer-confirmed amount'],
+    [str_contains($index, "قیمت این سرویس بروزرسانی شده است"), 'checkout must stop when provider pricing changes before debit'],
+    [str_contains($index, "سفارش‌های من"), 'checkout success must link to order history'],
+
     [str_contains($index, "BluebotDigitalServices::ensureMainKeyboardButton(\$pdo);"), 'digital-service keyboard bootstrap is not executed'],
     [strpos($index, "ensureMainKeyboardButton") < strpos($index, "require_once __DIR__ . '/keyboard.php';"), 'keyboard bootstrap must run before keyboard rendering'],
     [str_contains($buyRoute, "BluebotDigitalServices::targetKeyboard(\$product)"), 'order target screen must use an inline keyboard'],
@@ -409,13 +438,15 @@ $checks = [
     [str_contains($index, "/^ds_vn_app:(\\d+):(\\d+)$/"), 'Callinoo application/country callback route missing'],
     [str_contains($index, "virtualNumberApplicationsKeyboard"), 'virtual-number category must open platform selection'],
     [str_contains($index, "virtualNumberApplicationCatalog"), 'virtual-number platform must open paginated countries'],
-    [str_contains($index, "لینک، یوزرنیم یا مقصد موردنیاز این سرویس"), 'OZVinoo customer target prompt missing'],
-    [str_contains($index, "مقدار این بسته"), 'OZVinoo fixed-package quantity display missing'],
+    [str_contains($manager, "targetPrompt"), 'context-aware customer target prompt missing'],
+    [str_contains($index, "digital_service_quantity"), 'variable SMM quantity step missing'],
+    [str_contains($index, "normaliseQuantityInput"), 'localized quantity parsing is not used by checkout'],
+    [str_contains($index, "priceForQuantity"), 'dynamic quantity pricing is not used by checkout'],
     [str_contains($index, "categoryKeyboard"), 'customer category landing screen missing'],
     [str_contains($index, "notifyAdmins"), 'admin notification missing'],
     [str_contains($admin, "ds_approve:"), 'bot approval callback missing'],
     [str_contains($admin, "ds_reject:"), 'bot reject callback missing'],
-    [str_contains($admin, "قابل تلاش مجدد است"), 'admin retryable provider error UX missing'],
+    [str_contains($admin, "نیاز به بررسی و تلاش مجدد دارد"), 'admin retryable provider review UX missing'],
     [str_contains($admin, "مبلغ برگشت خورد"), 'admin refunded provider error UX missing'],
     [str_contains($keyboard, "text_digital_services"), 'main keyboard mapping missing'],
     [str_contains($setting, "text_digital_services"), 'default keyboard token missing'],
@@ -424,9 +455,12 @@ $checks = [
     [!str_contains($index, "ارسال فقط بعد از تأیید دستی ادمین انجام می‌شود."), 'customer product page leaks internal approval workflow'],
     [!str_contains($index, "سفارش تا تأیید دستی ادمین ارسال نخواهد شد."), 'customer confirmation leaks internal approval workflow'],
     [!str_contains($langFa, "در صف تأیید و ارسال ادمین"), 'customer queued message leaks internal approval workflow'],
+    [!str_contains($index, "ارسال خودکار موقتاً انجام نشد"), 'customer checkout must not expose provider auto-delivery failures'],
+    [str_contains($manager, "سفارش در حال بررسی و پردازش است"), 'automatic fallback must keep customer messaging neutral'],
+
     [!str_contains($manager, "برای TGTools باید یوزرنیم"), 'customer validation leaks provider name'],
     [str_contains($langFa, "سرویس موردنظر را انتخاب کنید 👇"), 'customer catalog copy was not simplified'],
-    [str_contains($langFa, "دسته‌بندی موردنظر را انتخاب کنید 👇"), 'customer category prompt missing'],
+    [str_contains($langFa, "دسته‌بندی موردنظر را انتخاب کنید؛ سپس نوع سرویس را مشخص کنید 👇"), 'customer category prompt missing'],
 ];
 
 foreach ($checks as [$ok, $message]) {
