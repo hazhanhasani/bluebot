@@ -125,6 +125,84 @@ final class BluebotDigitalServices
         self::setSetting($pdo, self::providerApprovalSettingKey($providerKey), $mode, false);
     }
 
+    private static function providerCircuitSettingKey(string $providerKey, string $suffix): string
+    {
+        $providerKey = strtolower(trim($providerKey));
+        return 'provider_circuit_' . $providerKey . '_' . $suffix;
+    }
+
+    public static function providerCircuitStatus(PDO $pdo, string $providerKey): array
+    {
+        $providerKey = strtolower(trim($providerKey));
+        if ($providerKey === '' || $providerKey === 'manual') {
+            return ['open' => false, 'failures' => 0, 'until' => 0];
+        }
+
+        $failures = max(0, (int) self::setting(
+            $pdo,
+            self::providerCircuitSettingKey($providerKey, 'failures'),
+            '0'
+        ));
+        $until = max(0, (int) self::setting(
+            $pdo,
+            self::providerCircuitSettingKey($providerKey, 'until'),
+            '0'
+        ));
+
+        if ($until > 0 && $until <= time()) {
+            self::setSetting($pdo, self::providerCircuitSettingKey($providerKey, 'until'), '0', false);
+            self::setSetting($pdo, self::providerCircuitSettingKey($providerKey, 'failures'), '0', false);
+            return ['open' => false, 'failures' => 0, 'until' => 0];
+        }
+
+        return ['open' => $until > time(), 'failures' => $failures, 'until' => $until];
+    }
+
+    private static function recordProviderDeliveryResult(
+        PDO $pdo,
+        string $providerKey,
+        bool $success,
+        bool $retryableFailure
+    ): array {
+        $providerKey = strtolower(trim($providerKey));
+        if ($providerKey === '' || $providerKey === 'manual') {
+            return ['open' => false, 'failures' => 0, 'until' => 0];
+        }
+
+        if ($success) {
+            self::setSetting($pdo, self::providerCircuitSettingKey($providerKey, 'failures'), '0', false);
+            self::setSetting($pdo, self::providerCircuitSettingKey($providerKey, 'until'), '0', false);
+            return ['open' => false, 'failures' => 0, 'until' => 0];
+        }
+
+        if (!$retryableFailure) {
+            return self::providerCircuitStatus($pdo, $providerKey);
+        }
+
+        $status = self::providerCircuitStatus($pdo, $providerKey);
+        $failures = max(0, (int) ($status['failures'] ?? 0)) + 1;
+        $threshold = max(2, min(10, (int) self::setting($pdo, 'provider_circuit_threshold', '3')));
+        $cooldownMinutes = max(1, min(120, (int) self::setting($pdo, 'provider_circuit_cooldown_minutes', '10')));
+        $until = $failures >= $threshold ? time() + ($cooldownMinutes * 60) : 0;
+
+        self::setSetting(
+            $pdo,
+            self::providerCircuitSettingKey($providerKey, 'failures'),
+            (string) $failures,
+            false
+        );
+        if ($until > 0) {
+            self::setSetting(
+                $pdo,
+                self::providerCircuitSettingKey($providerKey, 'until'),
+                (string) $until,
+                false
+            );
+        }
+
+        return ['open' => $until > time(), 'failures' => $failures, 'until' => $until];
+    }
+
     public static function maybeAutoApproveOrder(PDO $pdo, array $order): array
     {
         $provider = strtolower(trim((string) ($order['provider'] ?? 'manual')));
@@ -132,8 +210,30 @@ final class BluebotDigitalServices
             return ['automatic' => false, 'order' => $order];
         }
 
+        $circuit = self::providerCircuitStatus($pdo, $provider);
+        if (!empty($circuit['open'])) {
+            $heldOrder = self::findOrder($pdo, (int) ($order['id'] ?? 0)) ?? $order;
+            if (is_array($heldOrder)) {
+                self::notifyAdmins($pdo, $heldOrder);
+            }
+            return [
+                'automatic' => true,
+                'ok' => false,
+                'retryable' => true,
+                'circuit_open' => true,
+                'order' => $heldOrder,
+            ];
+        }
+
         $result = self::approveAndDeliver($pdo, (int) ($order['id'] ?? 0), 'auto');
         $result['automatic'] = true;
+        $circuit = self::recordProviderDeliveryResult(
+            $pdo,
+            $provider,
+            !empty($result['ok']),
+            empty($result['ok']) && !empty($result['retryable'])
+        );
+        $result['provider_circuit'] = $circuit;
 
         if (empty($result['ok']) && !empty($result['retryable'])) {
             $failedOrder = is_array($result['order'] ?? null)
