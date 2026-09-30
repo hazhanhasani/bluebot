@@ -109,6 +109,25 @@ final class BluebotDigitalServices
 
         $result = self::approveAndDeliver($pdo, (int) ($order['id'] ?? 0), 'auto');
         $result['automatic'] = true;
+
+        if (empty($result['ok']) && !empty($result['retryable'])) {
+            $failedOrder = is_array($result['order'] ?? null)
+                ? $result['order']
+                : self::findOrder($pdo, (int) ($order['id'] ?? 0));
+
+            if (is_array($failedOrder)) {
+                sendmessage(
+                    (string) ($failedOrder['user_id'] ?? ''),
+                    "⚠️ <b>ارسال خودکار موقتاً انجام نشد</b>\n\n"
+                        . "🧾 کد: <code>" . self::escape((string) ($failedOrder['order_code'] ?? '')) . "</code>\n"
+                        . "سفارش برای بررسی مدیر نگه داشته شد و مبلغ از بین نرفته است.",
+                    null,
+                    'HTML'
+                );
+                self::notifyAdmins($pdo, $failedOrder);
+            }
+        }
+
         return $result;
     }
 
