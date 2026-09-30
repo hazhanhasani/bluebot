@@ -6149,64 +6149,34 @@ if ($text == "/start" || $datain == "start" || $text == "start") {
             update("setting", "numbercount", $value);
         }
     }
-    $affiliatescommission = select("affiliates", "*", null, null, "select");
-    $marzbanporsant_one_buy = $affiliatescommission;
-    $stmt = $pdo->prepare("SELECT * FROM invoice WHERE name_product != :name_product  AND id_user = :id_user AND Status != 'Unpaid'");
+    $stmt = $pdo->prepare("SELECT * FROM invoice WHERE name_product != :name_product AND id_user = :id_user AND Status != 'Unpaid'");
     $stmt->bindParam(':id_user', $from_id);
     $stmt->bindParam(':name_product', $textbotlang['common']['labels']['testServiceName']);
     $stmt->execute();
     $countinvoice = $stmt->rowCount();
-    if ($affiliatescommission['status_commission'] == "oncommission" && ($user['affiliates'] != null && intval($user['affiliates']) != 0)) {
-        if ($marzbanporsant_one_buy['porsant_one_buy'] == "on_buy_porsant") {
-            if ($countinvoice == 1) {
-                $result = ($priceproduct * $setting['affiliatespercentage']) / 100;
-                $user_Balance = select("user", "*", "id", $user['affiliates'], "select");
-                $Balance_prim = $user_Balance['Balance'] + $result;
-                if (intval($setting['scorestatus']) == 1 and !in_array($user['affiliates'], $admin_ids)) {
-                    sendmessage($user['affiliates'], $textbotlang['users']['affiliates']['pointsEarned2Alt'], null, 'html');
-                    $scorenew = $user_Balance['score'] + 2;
-                    update("user", "score", $scorenew, "id", $user['affiliates']);
-                }
-                addBalance($user['affiliates'], $result);
-                $result = number_format($result);
-                $dateacc = date('Y/m/d H:i:s');
-                $textadd = sprintf($textbotlang['users']['affiliates']['commissionPaid'], $result);
-                $textreportport = sprintf($textbotlang['Admin']['reportgroup']['commissionPaid'], $result, $user['affiliates'], $from_id, $dateacc);
-                if (strlen($setting['Channel_Report']) > 0) {
-                    telegram('sendmessage', [
-                        'chat_id' => $setting['Channel_Report'],
-                        'message_thread_id' => $porsantreport,
-                        'text' => $textreportport,
-                        'parse_mode' => "HTML"
-                    ]);
-                }
-                sendmessage($user['affiliates'], $textadd, null, 'HTML');
-            }
-        } else {
 
-            $result = ($priceproduct * $setting['affiliatespercentage']) / 100;
-            $user_Balance = select("user", "*", "id", $user['affiliates'], "select");
-            $Balance_prim = $user_Balance['Balance'] + $result;
-            if (intval($setting['scorestatus']) == 1 and !in_array($user['affiliates'], $admin_ids)) {
-                sendmessage($user['affiliates'], $textbotlang['users']['affiliates']['pointsEarned2Alt'], null, 'html');
-                $scorenew = $user_Balance['score'] + 2;
-                update("user", "score", $scorenew, "id", $user['affiliates']);
-            }
-            addBalance($user['affiliates'], $result);
-            $result = number_format($result);
-            $dateacc = date('Y/m/d H:i:s');
-            $textadd = sprintf($textbotlang['users']['affiliates']['commissionPaid2'], $result);
-            $textreportport = sprintf($textbotlang['Admin']['reportgroup']['commissionPaid2'], $result, $user['affiliates'], $from_id, $dateacc);
-            if (strlen($setting['Channel_Report']) > 0) {
-                telegram('sendmessage', [
-                    'chat_id' => $setting['Channel_Report'],
-                    'message_thread_id' => $porsantreport,
-                    'text' => $textreportport,
-                    'parse_mode' => "HTML"
-                ]);
-            }
-            sendmessage($user['affiliates'], $textadd, null, 'HTML');
+    // All referral payouts use the idempotent ledger. This closes the legacy
+    // direct-wallet purchase path that could otherwise bypass tier/antifraud rules.
+    $commission = creditReferralCommission(
+        (string) $from_id,
+        max(0, (int) $priceproduct),
+        'subscription',
+        (string) $randomString
+    );
+    if (!empty($commission['credited'])) {
+        if (intval($setting['scorestatus']) == 1 && !in_array($commission['referrer_id'], $admin_ids)) {
+            $referrer = select("user", "*", "id", $commission['referrer_id'], "select");
+            update("user", "score", ((int) ($referrer['score'] ?? 0)) + 2, "id", $commission['referrer_id']);
+            sendmessage($commission['referrer_id'], $textbotlang['users']['affiliates']['pointsEarned2Alt'], null, 'html');
         }
+        $resultFormatted = number_format((int) $commission['amount']);
+        sendmessage(
+            $commission['referrer_id'],
+            sprintf($textbotlang['users']['affiliates']['commissionPaid2'], $resultFormatted)
+                . (!empty($commission['tier_label']) ? "\n🏅 سطح: <b>" . $commission['tier_label'] . "</b>" : ''),
+            null,
+            'HTML'
+        );
     }
     if (intval($setting['scorestatus']) == 1 and !in_array($from_id, $admin_ids)) {
         sendmessage($from_id, $textbotlang['users']['affiliates']['pointsEarned1Alt'], null, 'html');
