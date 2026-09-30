@@ -3213,9 +3213,21 @@ final class BluebotDigitalServices
             $pdo->commit();
             clearSelectCache('user');
 
+            $finalOrder = self::findUserOrder($pdo, $userId, $orderId) ?? $order;
+            $admins = select('admin', 'id_admin', null, null, 'FETCH_COLUMN');
+            if (is_array($admins)) {
+                $notice = "↩️ <b>سفارش توسط کاربر لغو شد</b>\n\n"
+                    . self::adminOrderText($finalOrder);
+                foreach (array_unique(array_map('strval', $admins)) as $adminId) {
+                    if ($adminId !== '' && $adminId !== '0') {
+                        sendmessage($adminId, $notice, null, 'HTML');
+                    }
+                }
+            }
+
             return [
                 'ok' => true,
-                'order' => self::findUserOrder($pdo, $userId, $orderId) ?? $order,
+                'order' => $finalOrder,
             ];
         } catch (Throwable $e) {
             if ($pdo->inTransaction()) {
