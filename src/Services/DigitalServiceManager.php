@@ -3401,11 +3401,28 @@ final class BluebotDigitalServices
                 throw new DomainException('ORDER_CANCEL_UNAVAILABLE');
             }
 
-            $refund = $pdo->prepare("UPDATE user SET Balance = Balance + ? WHERE id = ?");
-            $refund->execute([(int) ($order['amount'] ?? 0), $userId]);
-            if ($refund->rowCount() !== 1) {
-                throw new RuntimeException('Refund failed.');
-            }
+            bluebotWalletAdjust(
+
+
+                $pdo,
+
+
+                (string) $userId,
+
+
+                (int) ($order['amount'] ?? 0),
+
+
+                'digital_service_refund',
+
+
+                (string) ($order['order_code'] ?? $orderId),
+
+
+                'digital-refund:' . (string) ($order['order_code'] ?? $orderId)
+
+
+            );
 
             $update = $pdo->prepare(
                 "UPDATE digital_service_orders
