@@ -23,7 +23,7 @@ if ($scope === 'digital') {
     $action = trim((string) ($_POST['action'] ?? ''));
     $orderId = max(0, (int) ($_POST['order_id'] ?? 0));
 
-    if (in_array($action, ['digital_approve', 'digital_reject', 'digital_complete'], true) && $orderId > 0) {
+    if (in_array($action, ['digital_approve', 'digital_reject', 'digital_complete', 'digital_provider_cancel', 'digital_provider_refill'], true) && $orderId > 0) {
       try {
         if ($action === 'digital_approve') {
           $result = BluebotDigitalServices::approveAndDeliver(
@@ -52,6 +52,20 @@ if ($scope === 'digital') {
             (string) ($_SESSION['admin_user'] ?? 'panel')
           );
           flash('success', 'سفارش تحویل ناقص پس از بررسی به‌صورت دستی تکمیل شد.');
+        } elseif ($action === 'digital_provider_cancel') {
+          BluebotDigitalServices::requestProviderCancel(
+            $pdo,
+            $orderId,
+            (string) ($_SESSION['admin_user'] ?? 'panel')
+          );
+          flash('success', 'درخواست لغو به Provider ارسال شد. بازگشت وجه فقط پس از تأیید وضعیت نهایی Provider انجام می‌شود.');
+        } elseif ($action === 'digital_provider_refill') {
+          $result = BluebotDigitalServices::requestProviderRefill(
+            $pdo,
+            $orderId,
+            (string) ($_SESSION['admin_user'] ?? 'panel')
+          );
+          flash('success', 'درخواست جبران ریزش ثبت شد. شناسه Refill: ' . (string) ($result['refill'] ?? '—'));
         } else {
           BluebotDigitalServices::rejectAndRefund(
             $pdo,
@@ -197,6 +211,10 @@ if ($scope === 'digital') {
             $isStaleProcessing = $orderStatus === 'processing'
               && !empty($order['updated_at'])
               && strtotime((string) $order['updated_at']) < (time() - 1800);
+            $providerKey = strtolower(trim((string) ($order['provider'] ?? '')));
+            $hasProviderReference = trim((string) ($order['provider_reference'] ?? '')) !== '';
+            $smmOrderActionCapable = $hasProviderReference
+              && !in_array($providerKey, ['manual', 'tgtools', 'ozvinoo', 'telegram_bot'], true);
           ?>
             <tr>
               <td class="cf"><?= (int) $order['id'] ?></td>
@@ -252,6 +270,21 @@ if ($scope === 'digital') {
                   <?php else: ?>
                     <span class="cf">پیگیری خودکار</span>
                   <?php endif; ?>
+                  <?php if ($smmOrderActionCapable): ?>
+                    <form method="post" style="display:inline" data-confirm="درخواست لغو به Provider ارسال شود؟ تا تأیید وضعیت نهایی، وجه خودکار برنمی‌گردد.">
+                      <input type="hidden" name="_csrf" value="<?= csrf_token() ?>">
+                      <input type="hidden" name="action" value="digital_provider_cancel">
+                      <input type="hidden" name="order_id" value="<?= (int) $order['id'] ?>">
+                      <button class="btn btn-no btn-sm" type="submit">درخواست لغو Provider</button>
+                    </form>
+                  <?php endif; ?>
+                <?php elseif ($orderStatus === 'delivered' && $smmOrderActionCapable): ?>
+                  <form method="post" style="display:inline" data-confirm="درخواست جبران ریزش برای این سفارش به Provider ارسال شود؟">
+                    <input type="hidden" name="_csrf" value="<?= csrf_token() ?>">
+                    <input type="hidden" name="action" value="digital_provider_refill">
+                    <input type="hidden" name="order_id" value="<?= (int) $order['id'] ?>">
+                    <button class="btn btn-ghost btn-sm" type="submit">♻️ جبران ریزش</button>
+                  </form>
                 <?php else: ?>
                   <span class="cf">—</span>
                 <?php endif; ?>
