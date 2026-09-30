@@ -15,6 +15,26 @@ Digital-service administration is intentionally split across the existing BlueBo
 
 This avoids duplicate product/order management screens and keeps each resource in the panel section where administrators already expect it.
 
+### Live TON/GRAM pricing from Nobitex
+
+TGTools wholesale prices are denominated in TON. BlueBot no longer requires an
+administrator to maintain a manual TON/Toman conversion rate.
+
+- Source: Nobitex public market API.
+- Market: `GRAMIRT`, as requested for the legacy TON/Gram market.
+- Endpoint: `GET https://apiv2.nobitex.ir/v3/orderbook/GRAMIRT`.
+- Price field: `lastTradePrice`.
+- Authentication: none.
+- Refresh cadence: once per minute from the digital-services cron.
+- Failure behavior: the last successful rate is kept; products are not repriced
+  to zero when Nobitex is temporarily unavailable.
+- Repricing: existing TGTools Stars/Premium products are recalculated from their
+  stored `wholesale_ton` metadata without requiring another TGTools catalog
+  request.
+
+The provider panel exposes the current cached rate, source market, last refresh
+time and the last fetch error, plus a manual “refresh now” button.
+
 ## Providers
 
 - `tgtools`: Stars and Premium through TGTools.

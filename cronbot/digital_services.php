@@ -17,6 +17,16 @@ try {
         return;
     }
 
+    $tonRate = BluebotDigitalServices::refreshTgToolsTonRateFromNobitex($pdo, false, 60);
+    if (empty($tonRate['skipped'])) {
+        bluebotLog(!empty($tonRate['ok']) ? 'info' : 'warning', 'Nobitex GRAMIRT TON rate refresh checked', [
+            'ok' => !empty($tonRate['ok']),
+            'rate_toman' => (float) ($tonRate['rate_toman'] ?? 0),
+            'repriced' => (int) ($tonRate['repriced'] ?? 0),
+            'message' => (string) ($tonRate['message'] ?? ''),
+        ]);
+    }
+
     $catalog = BluebotDigitalServices::maybeSyncTgToolsCatalog($pdo, 900);
     if (empty($catalog['skipped'])) {
         if (empty($catalog['remote_ok'])) {

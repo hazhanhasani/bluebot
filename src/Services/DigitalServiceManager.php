@@ -2,6 +2,7 @@
 
 require_once __DIR__ . '/TgToolsClient.php';
 require_once __DIR__ . '/OZVinooClient.php';
+require_once __DIR__ . '/NobitexMarketClient.php';
 require_once __DIR__ . '/DigitalServiceProviderCatalog.php';
 
 final class BluebotDigitalServices
@@ -238,6 +239,181 @@ final class BluebotDigitalServices
         };
     }
 
+    public static function tgToolsTonRateStatus(PDO $pdo): array
+    {
+        return [
+            'rate_toman' => max(0.0, (float) self::setting($pdo, 'tgtools_ton_toman_rate', '0')),
+            'source' => self::setting($pdo, 'tgtools_ton_rate_source', 'nobitex'),
+            'market' => self::setting($pdo, 'tgtools_ton_rate_market', 'GRAMIRT'),
+            'last_sync' => (int) self::setting($pdo, 'tgtools_ton_rate_last_sync', '0'),
+            'last_market_update' => (int) self::setting($pdo, 'tgtools_ton_rate_market_update', '0'),
+            'last_error' => self::setting($pdo, 'tgtools_ton_rate_last_error', ''),
+        ];
+    }
+
+    public static function refreshTgToolsTonRateFromNobitex(
+        PDO $pdo,
+        bool $force = false,
+        int $maxAgeSeconds = 60
+    ): array {
+        $maxAgeSeconds = max(15, min(3600, $maxAgeSeconds));
+        $status = self::tgToolsTonRateStatus($pdo);
+
+        if (!$force
+            && (float) ($status['rate_toman'] ?? 0) > 0
+            && (int) ($status['last_sync'] ?? 0) > 0
+            && (time() - (int) $status['last_sync']) < $maxAgeSeconds) {
+            return [
+                'ok' => true,
+                'skipped' => true,
+                'cached' => true,
+                'rate_toman' => (float) $status['rate_toman'],
+                'market' => (string) ($status['market'] ?? 'GRAMIRT'),
+                'last_sync' => (int) $status['last_sync'],
+                'last_market_update' => (int) ($status['last_market_update'] ?? 0),
+                'repriced' => 0,
+                'message' => '',
+            ];
+        }
+
+        $response = (new NobitexMarketClient())->tonTomanRate();
+        if (empty($response['ok'])) {
+            $message = trim((string) ($response['message'] ?? '')) ?: 'Nobitex rate request failed.';
+            self::setSetting($pdo, 'tgtools_ton_rate_last_error', $message, false);
+
+            return [
+                'ok' => false,
+                'skipped' => false,
+                'cached' => (float) ($status['rate_toman'] ?? 0) > 0,
+                'rate_toman' => (float) ($status['rate_toman'] ?? 0),
+                'market' => 'GRAMIRT',
+                'last_sync' => (int) ($status['last_sync'] ?? 0),
+                'last_market_update' => (int) ($status['last_market_update'] ?? 0),
+                'repriced' => 0,
+                'message' => $message,
+                'response' => $response,
+            ];
+        }
+
+        $rate = (float) ($response['rate_toman'] ?? 0);
+        if ($rate <= 0) {
+            return [
+                'ok' => false,
+                'skipped' => false,
+                'cached' => (float) ($status['rate_toman'] ?? 0) > 0,
+                'rate_toman' => (float) ($status['rate_toman'] ?? 0),
+                'market' => 'GRAMIRT',
+                'last_sync' => (int) ($status['last_sync'] ?? 0),
+                'last_market_update' => (int) ($status['last_market_update'] ?? 0),
+                'repriced' => 0,
+                'message' => 'Nobitex returned an invalid GRAMIRT rate.',
+            ];
+        }
+
+        $now = time();
+        self::setSetting($pdo, 'tgtools_ton_toman_rate', self::decimalString($rate), false);
+        self::setSetting($pdo, 'tgtools_ton_rate_source', 'nobitex', false);
+        self::setSetting($pdo, 'tgtools_ton_rate_market', 'GRAMIRT', false);
+        self::setSetting($pdo, 'tgtools_ton_rate_last_sync', (string) $now, false);
+        self::setSetting(
+            $pdo,
+            'tgtools_ton_rate_market_update',
+            is_numeric($response['last_update'] ?? null) ? (string) (int) $response['last_update'] : '0',
+            false
+        );
+        self::setSetting($pdo, 'tgtools_ton_rate_last_error', '', false);
+
+        $repriced = self::repriceTgToolsCatalogFromTonRate($pdo, $rate);
+
+        return [
+            'ok' => true,
+            'skipped' => false,
+            'cached' => false,
+            'rate_toman' => $rate,
+            'market' => 'GRAMIRT',
+            'last_sync' => $now,
+            'last_market_update' => is_numeric($response['last_update'] ?? null)
+                ? (int) $response['last_update']
+                : 0,
+            'repriced' => $repriced,
+            'message' => '',
+            'response' => $response,
+        ];
+    }
+
+    private static function repriceTgToolsCatalogFromTonRate(PDO $pdo, float $tonRateToman): int
+    {
+        if ($tonRateToman <= 0 || !self::isAvailable($pdo)) {
+            return 0;
+        }
+
+        $stmt = $pdo->query(
+            "SELECT * FROM digital_service_products
+             WHERE provider = 'tgtools'
+               AND type IN ('telegram_stars', 'telegram_premium')"
+        );
+        $products = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+        if ($products === []) {
+            return 0;
+        }
+
+        $update = $pdo->prepare(
+            "UPDATE digital_service_products
+             SET price = ?, active = ?, metadata = ?, updated_at = NOW()
+             WHERE id = ?"
+        );
+
+        $updated = 0;
+        foreach ($products as $product) {
+            $metadata = self::productMetadata($product);
+            $wholesaleTon = $metadata['wholesale_ton'] ?? null;
+            if (!is_numeric($wholesaleTon) || (float) $wholesaleTon <= 0) {
+                continue;
+            }
+
+            $type = (string) ($product['type'] ?? '');
+            $fallbackProfit = $type === 'telegram_stars'
+                ? (float) self::setting($pdo, 'tgtools_stars_profit_percent', '0')
+                : (float) self::setting($pdo, 'tgtools_premium_profit_percent', '0');
+            $profitPercent = is_numeric($metadata['profit_percent'] ?? null)
+                ? (float) $metadata['profit_percent']
+                : $fallbackProfit;
+
+            $price = BluebotProviderCatalogService::calculateSellingPrice(
+                (float) $wholesaleTon,
+                'ton',
+                $tonRateToman,
+                max(0.0, min(1000.0, $profitPercent))
+            );
+            if ($price <= 0) {
+                continue;
+            }
+
+            $metadata['ton_rate_toman'] = $tonRateToman;
+            $metadata['ton_rate_source'] = 'nobitex';
+            $metadata['ton_rate_market'] = 'GRAMIRT';
+            $metadata['ton_rate_synced_at'] = gmdate(DATE_ATOM);
+            $metadata = self::mergeAdminProductMetadata($product, $metadata);
+
+            $metadataJson = json_encode($metadata, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+            if (!is_string($metadataJson)) {
+                continue;
+            }
+
+            $active = self::providerManagedActive($product, 1);
+            $update->execute([$price, $active, $metadataJson, (int) $product['id']]);
+            $updated++;
+        }
+
+        return $updated;
+    }
+
+    private static function decimalString(float $value): string
+    {
+        $text = number_format($value, 8, '.', '');
+        return rtrim(rtrim($text, '0'), '.');
+    }
+
     /**
      * Stars/Premium providers are amount/period based and do not expose an
      * opaque "service code" that an admin should have to know. BlueBot keeps
@@ -261,6 +437,7 @@ final class BluebotDigitalServices
 
         $starsProfit = max(0.0, min(1000.0, (float) self::setting($pdo, 'tgtools_stars_profit_percent', '0')));
         $premiumProfit = max(0.0, min(1000.0, (float) self::setting($pdo, 'tgtools_premium_profit_percent', '0')));
+        self::refreshTgToolsTonRateFromNobitex($pdo, false, 60);
         $tonRateToman = max(0.0, (float) self::setting($pdo, 'tgtools_ton_toman_rate', '0'));
 
         $definitions = [];
@@ -371,6 +548,8 @@ final class BluebotDigitalServices
                 'price_mode' => 'margin',
                 'profit_percent' => $profitPercent,
                 'ton_rate_toman' => $tonRateToman,
+                'ton_rate_source' => 'nobitex',
+                'ton_rate_market' => 'GRAMIRT',
                 'category_key' => (string) $definition['type'] === 'telegram_stars' ? 'stars' : 'premium',
                 'category_label' => (string) $definition['type'] === 'telegram_stars'
                     ? '⭐ استارز تلگرام'

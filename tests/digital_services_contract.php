@@ -14,6 +14,7 @@ $categoryPanel = file_get_contents($root . '/panel/category.php');
 $categoryTable = file_get_contents($root . '/db/tables/digital_service_categories.php');
 $tgTools = file_get_contents($root . '/src/Services/TgToolsClient.php');
 $ozvinooClient = file_get_contents($root . '/src/Services/OZVinooClient.php');
+$nobitexClient = file_get_contents($root . '/src/Services/NobitexMarketClient.php');
 $providerCatalog = file_get_contents($root . '/src/Services/DigitalServiceProviderCatalog.php');
 $providerTable = file_get_contents($root . '/db/tables/digital_service_providers.php');
 $cronJobs = file_get_contents($root . '/cronbot/jobs.php');
@@ -91,6 +92,16 @@ $checks = [
     [str_contains($manager, "if (\$type === 'telegram_premium')"), 'Telegram Premium category mapping missing'],
     [str_contains($manager, "if (\$type === 'telegram_stars')"), 'Telegram Stars category mapping missing'],
     [str_contains($manager, "ensureTgToolsCatalog"), 'automatic Stars/Premium catalog generation missing'],
+    [str_contains($manager, "refreshTgToolsTonRateFromNobitex"), 'live Nobitex TON-rate refresh missing'],
+    [str_contains($manager, "repriceTgToolsCatalogFromTonRate"), 'TGTools repricing after TON-rate changes missing'],
+    [str_contains($manager, "'ton_rate_source' => 'nobitex'"), 'TGTools product metadata must record Nobitex as TON-rate source'],
+    [str_contains($manager, "'ton_rate_market' => 'GRAMIRT'"), 'TGTools product metadata must record GRAMIRT market'],
+    [str_contains($nobitexClient, "/v3/orderbook/"), 'Nobitex orderbook endpoint missing'],
+    [str_contains($nobitexClient, "GRAMIRT"), 'Nobitex GRAMIRT market missing'],
+    [str_contains($nobitexClient, "lastTradePrice"), 'Nobitex lastTradePrice parser missing'],
+    [str_contains($digitalServicesCron, "refreshTgToolsTonRateFromNobitex"), 'cron must refresh Nobitex TON rate'],
+    [str_contains($panel, "دریافت نرخ لحظه‌ای نوبیتکس"), 'manual Nobitex TON-rate refresh control missing'],
+    [!str_contains($panel, 'name="tgtools_ton_toman_rate"'), 'manual TON-rate input must be removed'],
     [str_contains($manager, "WHERE provider = 'tgtools' AND type = ? AND service_value = ?"), 'TGTools catalog must not hijack matching products from other providers'],
     [str_contains($manager, "maybeSyncTgToolsCatalog"), 'periodic TGTools catalog refresh missing'],
     [str_contains($manager, "tgToolsWalletStatus"), 'TGTools API wallet diagnostics missing'],
@@ -138,6 +149,9 @@ $checks = [
     [str_contains($settings, "tgtools_stars_profit_percent"), 'TGTools Stars profit seed missing'],
     [str_contains($settings, "tgtools_premium_profit_percent"), 'TGTools Premium profit seed missing'],
     [str_contains($settings, "tgtools_ton_toman_rate"), 'TGTools TON rate seed missing'],
+    [str_contains($settings, "tgtools_ton_rate_source"), 'Nobitex rate source seed missing'],
+    [str_contains($settings, "tgtools_ton_rate_market"), 'Nobitex market seed missing'],
+    [str_contains($settings, "tgtools_ton_rate_last_sync"), 'Nobitex rate sync timestamp seed missing'],
     [str_contains($settings, "ozvinoo_profit_percent"), 'OZVinoo profit seed missing'],
     [str_contains($settings, "ozvinoo_catalog_path"), 'OZVinoo catalog path seed missing'],
     [str_contains($settings, "ozvinoo_exchange_rate_toman"), 'OZVinoo exchange rate seed missing'],
