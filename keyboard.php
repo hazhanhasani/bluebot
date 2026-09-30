@@ -576,7 +576,7 @@ function affiliateSettingsMenu()
         ],
         [
             ['text' => '🔎 جستجوی کاربر', 'callback_data' => "affiliate-search"],
-            ['text' => '🧾 تراکنش‌ها', 'callback_data' => "affiliate-transactions-1"],
+            ['text' => '🛡 گزارش ضدتقلب', 'callback_data' => "affiliate-risk-1"],
         ],
         [['text' => $textbotlang['keyboard']['backToPreviousMenu'], 'callback_data' => "featurecat-sales"]],
     ];
