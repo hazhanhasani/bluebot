@@ -1315,6 +1315,120 @@ function addBalance($userId, $amount)
     $stmt = $pdo->prepare("UPDATE user SET Balance = Balance + ? WHERE id = ?");
     $stmt->execute([$amount, $userId]);
 }
+/**
+ * Credit a referral commission exactly once for a completed purchase.
+ *
+ * $sourceType/$sourceId form a stable idempotency key, so retries, webhook
+ * replays and provider reconciliation cannot pay the same commission twice.
+ */
+function creditReferralCommission(string $buyerId, int $sourceAmount, string $sourceType, string $sourceId): array
+{
+    global $pdo;
+
+    $buyerId = trim($buyerId);
+    $sourceType = preg_replace('/[^a-z0-9_-]/i', '', strtolower(trim($sourceType))) ?: 'unknown';
+    $sourceId = trim($sourceId);
+    if ($buyerId === '' || $sourceId === '' || $sourceAmount <= 0) {
+        return ['credited' => false, 'reason' => 'invalid_source'];
+    }
+
+    $affiliate = select("affiliates", "*", null, null, "select");
+    if (!is_array($affiliate) || ($affiliate['status_commission'] ?? '') !== 'oncommission') {
+        return ['credited' => false, 'reason' => 'disabled'];
+    }
+
+    $buyer = select("user", "*", "id", $buyerId, "select");
+    $referrerId = trim((string) ($buyer['affiliates'] ?? ''));
+    if ($referrerId === '' || $referrerId === '0' || $referrerId === $buyerId || !rowExists("user", "id", $referrerId)) {
+        return ['credited' => false, 'reason' => 'no_referrer'];
+    }
+
+    $settingRow = select("setting", "*", null, null, "select");
+    $percent = is_numeric($settingRow['affiliatespercentage'] ?? null)
+        ? max(0.0, min(100.0, (float) $settingRow['affiliatespercentage']))
+        : 0.0;
+    if ($percent <= 0) {
+        return ['credited' => false, 'reason' => 'zero_percent'];
+    }
+
+    // First-purchase-only now covers both subscriptions and digital services.
+    if (($affiliate['porsant_one_buy'] ?? '') === 'on_buy_porsant') {
+        $normal = $pdo->prepare(
+            "SELECT COUNT(*) FROM invoice
+             WHERE id_user = ? AND Status NOT IN ('Unpaid', 'failed', 'cancelled', 'rejected')"
+        );
+        $normal->execute([$buyerId]);
+        $digital = $pdo->prepare(
+            "SELECT COUNT(*) FROM digital_service_orders
+             WHERE user_id = ? AND status = 'delivered' AND refunded = 0"
+        );
+        $digital->execute([$buyerId]);
+        if (((int) $normal->fetchColumn() + (int) $digital->fetchColumn()) > 1) {
+            return ['credited' => false, 'reason' => 'first_purchase_only'];
+        }
+    }
+
+    $amount = (int) floor(($sourceAmount * $percent) / 100);
+    if ($amount <= 0) {
+        return ['credited' => false, 'reason' => 'rounded_zero'];
+    }
+
+    $eventKey = hash('sha256', $sourceType . ':' . $sourceId);
+    $started = !$pdo->inTransaction();
+    if ($started) {
+        $pdo->beginTransaction();
+    }
+
+    try {
+        $insert = $pdo->prepare(
+            "INSERT IGNORE INTO referral_commissions
+             (event_key, referrer_id, referred_user_id, source_type, source_id, amount, percent, source_amount)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
+        );
+        $insert->execute([
+            $eventKey,
+            $referrerId,
+            $buyerId,
+            $sourceType,
+            $sourceId,
+            $amount,
+            $percent,
+            $sourceAmount,
+        ]);
+        if ($insert->rowCount() !== 1) {
+            if ($started) {
+                $pdo->commit();
+            }
+            return ['credited' => false, 'reason' => 'already_credited'];
+        }
+
+        $credit = $pdo->prepare("UPDATE user SET Balance = Balance + ? WHERE id = ?");
+        $credit->execute([$amount, $referrerId]);
+        if ($credit->rowCount() !== 1) {
+            throw new RuntimeException('Referral commission credit failed.');
+        }
+
+        if ($started) {
+            $pdo->commit();
+        }
+        clearSelectCache('user');
+        return [
+            'credited' => true,
+            'amount' => $amount,
+            'percent' => $percent,
+            'referrer_id' => $referrerId,
+            'buyer_id' => $buyerId,
+            'source_type' => $sourceType,
+            'source_id' => $sourceId,
+        ];
+    } catch (Throwable $e) {
+        if ($started && $pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
+        throw $e;
+    }
+}
+
 function DirectPayment($order_id, $image = null)
 {
     $image = $image ?: bluebotQrBackgroundPath();
