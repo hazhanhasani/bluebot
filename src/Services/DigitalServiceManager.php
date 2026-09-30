@@ -2588,6 +2588,10 @@ final class BluebotDigitalServices
                     ? 'telegram'
                     : ($applicationId > 0 ? ('app_' . $applicationId) : 'virtual_number');
             }
+            $applicationName = BluebotVirtualNumberLocale::serviceLabel(
+                $applicationCode,
+                $applicationName
+            );
 
             $key = (string) $applicationId;
             if (!isset($applications[$key])) {
@@ -2724,6 +2728,7 @@ final class BluebotDigitalServices
             if ($country === '') {
                 $country = trim((string) ($product['name'] ?? 'شماره مجازی'));
             }
+            $country = BluebotVirtualNumberLocale::countryLabel($country);
 
             $rows[] = [[
                 'text' => '🌍 ' . $country . ' · ' . number_format((float) ($product['price'] ?? 0)) . ' تومان',
