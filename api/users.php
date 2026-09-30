@@ -453,7 +453,6 @@ function usr_transfer_account(array $data, string $method): void
         ['wheel_list', 'id_user'],
         ['sms_deliveries', 'user_id'],
         ['sms_otp_challenges', 'user_id'],
-        ['digital_service_orders', 'user_id'],
         ['reagent_report', 'user_id'],
         ['reagent_report', 'reagent'],
     ];
@@ -477,6 +476,16 @@ function usr_transfer_account(array $data, string $method): void
             assertSqlIdentifier($table);
             assertSqlIdentifier($column);
             $stmt = $pdo->prepare("UPDATE {$table} SET {$column} = :target_id WHERE {$column} = :source_id");
+            $stmt->execute([':target_id' => $targetId, ':source_id' => $sourceId]);
+        }
+
+        $digitalOrdersTable = (bool) $pdo->query("SHOW TABLES LIKE 'digital_service_orders'")->fetchColumn();
+        if ($digitalOrdersTable) {
+            $stmt = $pdo->prepare(
+                "UPDATE digital_service_orders
+                 SET user_id = :target_id
+                 WHERE user_id = :source_id"
+            );
             $stmt->execute([':target_id' => $targetId, ':source_id' => $sourceId]);
         }
 
