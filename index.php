@@ -1539,6 +1539,7 @@ if ($text == "/start" || $datain == "start" || $text == "start") {
         step('digital_service_confirm', $from_id);
 
         $amount = BluebotDigitalServices::priceForQuantity($product, (int) $fixedQuantity);
+        savedata('save', 'digital_service_amount', (string) $amount);
         $confirmText = "🧾 <b>بررسی نهایی سفارش</b>\n\n"
             . "📦 " . htmlspecialchars((string) $product['name'], ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . "\n"
             . "🔢 مقدار: <b>" . number_format((int) $fixedQuantity) . "</b>\n"
@@ -1641,6 +1642,7 @@ if ($text == "/start" || $datain == "start" || $text == "start") {
     step('digital_service_confirm', $from_id);
 
     $amount = BluebotDigitalServices::priceForQuantity($product, $quantityOrError);
+    savedata('save', 'digital_service_amount', (string) $amount);
     $balance = (int) ($user['Balance'] ?? 0);
     $afterBalance = $balance - $amount;
 
@@ -1720,6 +1722,19 @@ if ($text == "/start" || $datain == "start" || $text == "start") {
                     . "💳 مبلغ سفارش: <b>" . number_format($quotedAmount) . " تومان</b>\n"
                     . "👛 موجودی شما: <b>" . number_format((float) ($user['Balance'] ?? 0)) . " تومان</b>\n\n"
                     . "ابتدا کیف پول را شارژ کنید و سپس دوباره سفارش دهید.",
+                $keyboard,
+                'HTML'
+            );
+            return;
+        }
+        if ($e->getMessage() === 'PRICE_CHANGED') {
+            step('home', $from_id);
+            update('user', 'Processing_value', '0', 'id', $from_id);
+            sendmessage(
+                $from_id,
+                "🔄 <b>قیمت این سرویس بروزرسانی شده است</b>\n\n"
+                    . "برای جلوگیری از کسر مبلغی متفاوت با مبلغ تأییدشده، سفارش ثبت نشد. "
+                    . "لطفاً سرویس را دوباره باز کنید و قیمت جدید را تأیید کنید.",
                 $keyboard,
                 'HTML'
             );
