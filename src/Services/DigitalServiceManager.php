@@ -5,6 +5,8 @@ require_once __DIR__ . '/OZVinooClient.php';
 require_once __DIR__ . '/SmmPanelClient.php';
 require_once __DIR__ . '/NobitexMarketClient.php';
 require_once __DIR__ . '/DigitalServiceProviderCatalog.php';
+require_once __DIR__ . '/VirtualNumberLocale.php';
+require_once __DIR__ . '/OZVinooVirtualNumberProvider.php';
 
 final class BluebotDigitalServices
 {
@@ -13,16 +15,35 @@ final class BluebotDigitalServices
     private const STATUS_DELIVERED = 'delivered';
     private const STATUS_REJECTED = 'rejected';
     private const STATUS_FAILED = 'failed';
+    private const STATUS_PARTIAL_REVIEW = 'partial_review';
     private const OZVINOO_CATALOG_SCHEMA_VERSION = 2;
 
     public static function isAvailable(PDO $pdo): bool
     {
         try {
-            $stmt = $pdo->query("SHOW TABLES LIKE 'digital_service_products'");
-            return (bool) $stmt->fetchColumn();
+            foreach (['digital_service_products', 'digital_service_orders'] as $table) {
+                $stmt = $pdo->query("SHOW TABLES LIKE " . $pdo->quote($table));
+                if (!(bool) $stmt->fetchColumn()) {
+                    return false;
+                }
+            }
+            return true;
         } catch (Throwable $e) {
             return false;
         }
+    }
+
+    private static function isSmmProductsPath(string $productsPath): bool
+    {
+        return str_starts_with($productsPath, 'smm:')
+            || str_starts_with($productsPath, 'smm-get:');
+    }
+
+    private static function smmTransportFromProvider(array $provider): string
+    {
+        return str_starts_with((string) ($provider['products_path'] ?? ''), 'smm-get:')
+            ? 'get'
+            : 'post';
     }
 
     public static function listActive(PDO $pdo): array
@@ -59,7 +80,7 @@ final class BluebotDigitalServices
             return false;
         }
 
-        return str_starts_with((string) ($provider['products_path'] ?? ''), 'smm:')
+        return self::isSmmProductsPath((string) ($provider['products_path'] ?? ''))
             && trim((string) ($provider['api_key'] ?? '')) !== '';
     }
 
@@ -3864,7 +3885,7 @@ final class BluebotDigitalServices
 
         $registeredProvider = BluebotProviderCatalogService::findProvider($pdo, $provider);
         if (is_array($registeredProvider)) {
-            if (str_starts_with((string) ($registeredProvider['products_path'] ?? ''), 'smm:')) {
+            if (self::isSmmProductsPath((string) ($registeredProvider['products_path'] ?? ''))) {
                 return self::deliverRegisteredSmmProvider($registeredProvider, $order, $product);
             }
 
@@ -3996,7 +4017,7 @@ final class BluebotDigitalServices
             $providerKey = strtolower(trim((string) ($provider['provider_key'] ?? '')));
             if ($providerKey === ''
                 || in_array($providerKey, ['ozvinoo', 'tivanovin'], true)
-                || !str_starts_with((string) ($provider['products_path'] ?? ''), 'smm:')
+                || !self::isSmmProductsPath((string) ($provider['products_path'] ?? ''))
                 || trim((string) ($provider['api_key'] ?? '')) === '') {
                 continue;
             }
