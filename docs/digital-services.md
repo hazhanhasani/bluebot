@@ -90,6 +90,32 @@ of treating the catalog as Telegram-only:
 The V2 Telegram-number endpoint remains only as a fallback when the Callinoo
 application catalog is temporarily unavailable.
 
+### TGTools landed GRAM cost
+
+BlueBot prices TGTools products from the **landed** GRAM cost instead of the raw
+Nobitex quote. This includes the costs required to move GRAM from the Toman
+market into the TGTools wallet.
+
+Defaults are based on the operator's observed costs:
+
+- Nobitex Toman-market fee: `0.25%`
+- GRAM network transfer fee: `0.000562 GRAM`
+- Typical TGTools funding batch: `1 GRAM`
+
+The effective landed rate is calculated as:
+
+`landed_rate = market_rate × (1 / (1 - trade_fee)) × ((batch + network_fee) / batch)`
+
+The TGTools retail price remains:
+
+`retail = wholesale_ton × landed_rate × (1 + profit_percent)`
+
+BlueBot then applies its existing upward thousand-Toman rounding. The fee
+inputs are editable because exchange tiers, network fees, and funding batch
+sizes can change over time. Increasing the funding batch amortizes the fixed
+network fee across more GRAM.
+
+
 ### Callinoo application discovery diagnostics
 
 The documented Callinoo `/web/{token}/applications` and
