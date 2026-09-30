@@ -8160,6 +8160,8 @@ if ($text == "/start" || $datain == "start" || $text == "start") {
 
     $text_start = "";
     $text_porsant = "";
+    $tierInfo = referralTierForUser((string) $from_id, $setting);
+    $affiliatePercentage = (float) $tierInfo['percent'];
     $Percent_porsant = rtrim(rtrim(number_format($affiliatePercentage, 2, '.', ''), '0'), '.');
     $sum_order = number_format($earnedCommission, 0);
     if ($giftEnabled) {
@@ -8176,6 +8178,19 @@ if ($text == "/start" || $datain == "start" || $text == "start") {
         (int) ($inforefral['orders'] ?? 0),
         $sum_order
     );
+    if (!empty($tierInfo['config']['enabled'])) {
+        $textaffiliates .= "\n\n🏅 سطح شما: <b>" . $tierInfo['label'] . "</b>"
+            . "\n💸 نرخ فعلی: <b>" . $Percent_porsant . "%</b>";
+        $silverAt = (int) ($tierInfo['config']['silver_orders'] ?? 5);
+        $goldAt = (int) ($tierInfo['config']['gold_orders'] ?? 20);
+        if ($tierInfo['key'] === 'bronze') {
+            $textaffiliates .= "\n🎯 تا نقره‌ای: <b>" . max(0, $silverAt - (int) $tierInfo['orders']) . " خرید</b>";
+        } elseif ($tierInfo['key'] === 'silver') {
+            $textaffiliates .= "\n🎯 تا طلایی: <b>" . max(0, $goldAt - (int) $tierInfo['orders']) . " خرید</b>";
+        } else {
+            $textaffiliates .= "\n👑 بالاترین سطح فعال است.";
+        }
+    }
 
     sendmessage($from_id, $textaffiliates, $keyboard_share, 'HTML');
 } elseif (preg_match('/^affiliate_(history|members)(?:_(\\d+))?$/', (string) $datain, $affiliatePageMatch)) {
