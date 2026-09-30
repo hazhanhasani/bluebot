@@ -582,12 +582,21 @@ final class BluebotProviderCatalogService
             $minQuantity = null;
             $maxQuantity = null;
             $ratePerThousand = null;
+            $providerDescription = '';
+            $providerType = '';
+            $dripfeed = null;
             if ($smmStyle) {
                 $minRaw = self::firstNumericValue($item, ['min', 'minimum', 'min_quantity', 'minQuantity']);
                 $maxRaw = self::firstNumericValue($item, ['max', 'maximum', 'max_quantity', 'maxQuantity']);
                 $minQuantity = $minRaw !== null ? max(1, (int) floor($minRaw)) : 1;
                 $maxQuantity = $maxRaw !== null ? max($minQuantity, (int) floor($maxRaw)) : null;
                 $serviceValue = $minQuantity;
+                $providerDescription = trim((string) self::valueAtPath($item, 'desc'));
+                $providerType = trim((string) self::valueAtPath($item, 'type'));
+                $dripfeedRaw = self::valueAtPath($item, 'dripfeed');
+                if (is_bool($dripfeedRaw) || is_numeric($dripfeedRaw)) {
+                    $dripfeed = (bool) $dripfeedRaw;
+                }
 
                 // Standard SMM APIs publish "rate" per 1000 units. Import a
                 // safe fixed package using the provider's minimum quantity so
@@ -634,9 +643,20 @@ final class BluebotProviderCatalogService
                 $metadata['maximum_quantity'] = $maxQuantity;
                 $metadata['wholesale_rate_per_1000'] = $ratePerThousand;
                 $metadata['price_basis'] = 'minimum-package';
+                if ($providerDescription !== '') {
+                    $metadata['provider_description'] = $providerDescription;
+                }
+                if ($providerType !== '') {
+                    $metadata['provider_type'] = $providerType;
+                }
+                if ($dripfeed !== null) {
+                    $metadata['dripfeed'] = $dripfeed;
+                }
             }
             $metadataJson = json_encode($metadata, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
-            $description = 'محصول همگام‌شده از ' . (string) $provider['name'];
+            $description = $providerDescription !== ''
+                ? $providerDescription
+                : 'محصول همگام‌شده از ' . (string) $provider['name'];
 
             $find->execute([$providerKey, $providerId]);
             $row = $find->fetch(PDO::FETCH_ASSOC);
