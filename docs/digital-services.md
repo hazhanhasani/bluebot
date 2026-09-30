@@ -16,6 +16,11 @@ Digital-service administration is intentionally split across the existing BlueBo
 This avoids duplicate product/order management screens and keeps each resource in the panel section where administrators already expect it.
 
 ### Live TON/GRAM pricing from Nobitex
+> **Currency unit note:** Nobitex orderbook prices are consumed as Rial-denominated
+> values by BlueBot. Before TGTools pricing, `lastTradePrice` is divided by
+> `10` to obtain Toman. For example, a raw quote of `3,905,670` becomes
+> `390,567 Toman`.
+
 
 TGTools wholesale prices are denominated in TON. BlueBot no longer requires an
 administrator to maintain a manual TON/Toman conversion rate.
