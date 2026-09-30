@@ -14,6 +14,8 @@ $checks=[
  [str_contains($fn,'reverseReferralCommission'),'commission reversal missing'],
  [str_contains($manager,"'digital_service_refund'"),'digital refunds are not ledgered'],
  [!str_contains($manager,'UPDATE user SET Balance = Balance + ?'),'digital service direct refund mutation remains'],
+ [!str_contains($manager,'UPDATE user SET Balance = Balance - ?'),'digital service direct purchase mutation remains'],
+ [str_contains($manager,"'digital_service_purchase'"),'digital purchase debit is not ledgered'],
  [str_contains($api,'requireApiRateLimit'),'API rate limiting missing'],
  [str_contains($verify,"requireApiRateLimit('telegram-verify'"),'Telegram verify throttling missing'],
  [str_contains($cache,'max-age=31536000, immutable'),'hashed Mini App caching missing'],
