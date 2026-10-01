@@ -331,6 +331,18 @@ processing orders that have not changed for more than 30 minutes. These stale-or
 signals are diagnostic only; BlueBot does not blindly refund an unknown provider
 state.
 
+## Provider circuit breaker
+
+Automatic providers keep a per-provider failure counter. Three consecutive
+retryable failures pause new automatic calls for ten minutes by default, preventing
+a failing upstream API from receiving repeated duplicate attempts. Orders remain
+registered for administrator review; provider/API details are not exposed to the
+customer. A successful automatic delivery resets the counter.
+
+The defaults can be tuned with `provider_circuit_threshold` and
+`provider_circuit_cooldown_minutes` in `digital_service_settings`. The admin
+`/debug` report labels affected providers as `circuit-open`.
+
 ## Runtime diagnostics
 
 The admin-only Telegram `/debug` report includes a Digital Services health

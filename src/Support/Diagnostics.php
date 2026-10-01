@@ -99,16 +99,25 @@ function bluebotCollectDiagnostics(PDO $pdo, array $setting): array
             )->fetchAll(PDO::FETCH_ASSOC) ?: [];
 
             $approvalModes = [];
+            $circuitUntil = [];
             if ($settingsTable) {
                 $settingsStmt = $pdo->query(
                     "SELECT setting_key, setting_value
                      FROM digital_service_settings
-                     WHERE setting_key LIKE 'provider_approval_%'"
+                     WHERE setting_key LIKE 'provider_approval_%'
+                        OR setting_key LIKE 'provider_circuit_%_until'"
                 );
                 foreach ($settingsStmt->fetchAll(PDO::FETCH_ASSOC) ?: [] as $row) {
-                    $key = substr((string) ($row['setting_key'] ?? ''), strlen('provider_approval_'));
-                    if ($key !== '') {
-                        $approvalModes[$key] = (string) ($row['setting_value'] ?? 'manual');
+                    $settingKey = (string) ($row['setting_key'] ?? '');
+                    if (str_starts_with($settingKey, 'provider_approval_')) {
+                        $key = substr($settingKey, strlen('provider_approval_'));
+                        if ($key !== '') {
+                            $approvalModes[$key] = (string) ($row['setting_value'] ?? 'manual');
+                        }
+                        continue;
+                    }
+                    if (preg_match('/^provider_circuit_([a-z0-9_-]+)_until$/', $settingKey, $match)) {
+                        $circuitUntil[$match[1]] = max(0, (int) ($row['setting_value'] ?? 0));
                     }
                 }
             }
@@ -123,6 +132,7 @@ function bluebotCollectDiagnostics(PDO $pdo, array $setting): array
                     'name' => (string) ($row['name'] ?? $key),
                     'active' => (int) ($row['active'] ?? 0) === 1,
                     'mode' => strtolower((string) ($approvalModes[$key] ?? 'manual')),
+                    'circuit_open' => (int) ($circuitUntil[$key] ?? 0) > time(),
                     'last_sync_at' => (string) ($row['last_sync_at'] ?? ''),
                     'last_sync_status' => (string) ($row['last_sync_status'] ?? ''),
                 ];
@@ -191,9 +201,11 @@ function bluebotBuildDebugReport(PDO $pdo, array $setting, array $webhookSecret 
         $providerMode = (($provider['mode'] ?? 'manual') === 'automatic') ? 'auto' : 'manual';
         $providerState = !empty($provider['active']) ? 'on' : 'off';
         $syncState = trim((string) ($provider['last_sync_status'] ?? ''));
+        $circuitState = !empty($provider['circuit_open']) ? '/circuit-open' : '';
         $digitalProviders[] = $providerKey
             . ':' . $providerState
             . '/' . $providerMode
+            . $circuitState
             . ($syncState !== '' ? '/' . $escape($syncState) : '');
     }
     $digitalProviderText = $digitalProviders !== [] ? implode(', ', $digitalProviders) : 'none';
