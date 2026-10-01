@@ -46,12 +46,12 @@ $contracts = [
     ],
     'panels.php' => [
         "resetuserusagehi(\$username, \$panel['name_panel'])",
-        'max(0, (int) ceil(\$day / 86400))',
+        'max(0, (int) ceil($day / 86400))',
         "'Unable to delete Hiddify user'",
         "'Unable to update Hiddify user'",
     ],
     'admin.php' => [
-        'hiddifyDecodeResponse(\$System_Stats_Response)',
+        'hiddifyDecodeResponse($System_Stats_Response)',
         "\$System_Stats['stats']['system'] ?? null",
     ],
     'src/Panel/Adapters/SUI.php' => [
