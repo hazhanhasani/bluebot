@@ -48,6 +48,11 @@ $checks = [
     [str_contains($manager, "provider_reference = ?"), 'failed-order retry must clear/update provider reference atomically'],
     [str_contains($manager, "statusesNormalized"), 'generic SMM reconciliation must use batch status when available'],
     [str_contains($manager, "bulk_requests"), 'generic SMM batch reconciliation diagnostics missing'],
+    [str_contains($manager, "requestProviderCancel"), 'admin SMM provider-cancel action missing'],
+    [str_contains($manager, "requestProviderRefill"), 'admin SMM provider-refill action missing'],
+    [str_contains($manager, "smmClientForOrder"), 'provider order-action SMM client resolver missing'],
+    [str_contains($manager, "provider_cancel_requested"), 'provider cancellation must be recorded without immediate refund'],
+
 
     [str_contains($manager, "providerApprovalMode"), 'per-provider approval mode reader missing'],
     [str_contains($manager, "setProviderApprovalMode"), 'per-provider approval mode writer missing'],
@@ -409,6 +414,10 @@ $checks = [
     [str_contains($invoicePanel, "digital_approve"), 'digital order approval must live under Orders'],
     [str_contains($invoicePanel, "digital_reject"), 'digital order rejection must live under Orders'],
     [str_contains($invoicePanel, "digital_complete"), 'partial digital order completion action must live under Orders'],
+    [str_contains($invoicePanel, "digital_provider_cancel"), 'Orders panel provider-cancel action missing'],
+    [str_contains($invoicePanel, "digital_provider_refill"), 'Orders panel provider-refill action missing'],
+    [str_contains($invoicePanel, "بازگشت وجه فقط پس از تأیید وضعیت نهایی Provider"), 'provider cancel must not imply an immediate refund'],
+
     [str_contains($invoicePanel, "partial_review"), 'Orders panel partial-review state missing'],
     [str_contains($invoicePanel, "DATE_SUB(NOW(), INTERVAL 30 MINUTE)"), 'Orders panel stale-processing diagnostic missing'],
     [str_contains($invoicePanel, "پیگیری طولانی"), 'Orders panel must visibly flag stale processing orders'],

@@ -4136,6 +4136,138 @@ final class BluebotDigitalServices
         }
     }
 
+    private static function smmClientForOrder(PDO $pdo, array $order): ?SmmPanelClient
+    {
+        $providerKey = strtolower(trim((string) ($order['provider'] ?? '')));
+        if ($providerKey === '' || in_array($providerKey, ['manual', 'tgtools', 'ozvinoo', 'telegram_bot'], true)) {
+            return null;
+        }
+
+        $provider = BluebotProviderCatalogService::findProvider($pdo, $providerKey);
+        if (!is_array($provider)
+            || (int) ($provider['active'] ?? 0) !== 1
+            || !self::isSmmProductsPath((string) ($provider['products_path'] ?? ''))
+            || trim((string) ($provider['api_key'] ?? '')) === '') {
+            return null;
+        }
+
+        return new SmmPanelClient(
+            (string) ($provider['catalog_url'] ?? ''),
+            (string) ($provider['api_key'] ?? ''),
+            $providerKey,
+            self::smmTransportFromProvider($provider)
+        );
+    }
+
+    public static function requestProviderCancel(PDO $pdo, int $orderId, string $adminId): array
+    {
+        $order = self::findOrder($pdo, $orderId);
+        if (!is_array($order)) {
+            throw new RuntimeException('Order not found.');
+        }
+        if ((string) ($order['status'] ?? '') !== self::STATUS_PROCESSING
+            || (int) ($order['refunded'] ?? 0) === 1) {
+            throw new DomainException('PROVIDER_CANCEL_UNAVAILABLE');
+        }
+
+        $reference = trim((string) ($order['provider_reference'] ?? ''));
+        if ($reference === '') {
+            throw new RuntimeException('Provider reference is missing.');
+        }
+
+        $client = self::smmClientForOrder($pdo, $order);
+        if (!$client instanceof SmmPanelClient) {
+            throw new RuntimeException('This provider does not expose the SMM cancel action.');
+        }
+
+        $response = $client->cancel([$reference]);
+        if (empty($response['ok'])) {
+            throw new RuntimeException(
+                trim((string) ($response['message'] ?? '')) ?: 'Provider cancel request failed.'
+            );
+        }
+
+        $payload = json_encode([
+            'provider_cancel_requested' => true,
+            'provider_cancel_requested_by' => $adminId,
+            'provider_cancel_requested_at' => date(DATE_ATOM),
+            'response' => $response,
+        ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+        $stmt = $pdo->prepare(
+            "UPDATE digital_service_orders
+             SET provider_response = ?, updated_at = NOW()
+             WHERE id = ? AND status = ?"
+        );
+        $stmt->execute([
+            is_string($payload) ? $payload : (string) ($order['provider_response'] ?? ''),
+            $orderId,
+            self::STATUS_PROCESSING,
+        ]);
+
+        return [
+            'ok' => true,
+            'pending' => true,
+            'order' => self::findOrder($pdo, $orderId) ?? $order,
+            'response' => $response,
+        ];
+    }
+
+    public static function requestProviderRefill(PDO $pdo, int $orderId, string $adminId): array
+    {
+        $order = self::findOrder($pdo, $orderId);
+        if (!is_array($order)) {
+            throw new RuntimeException('Order not found.');
+        }
+        if ((string) ($order['status'] ?? '') !== self::STATUS_DELIVERED
+            || (int) ($order['refunded'] ?? 0) === 1) {
+            throw new DomainException('PROVIDER_REFILL_UNAVAILABLE');
+        }
+
+        $reference = trim((string) ($order['provider_reference'] ?? ''));
+        if ($reference === '') {
+            throw new RuntimeException('Provider reference is missing.');
+        }
+
+        $client = self::smmClientForOrder($pdo, $order);
+        if (!$client instanceof SmmPanelClient) {
+            throw new RuntimeException('This provider does not expose the SMM refill action.');
+        }
+
+        $response = $client->refill($reference);
+        if (empty($response['ok'])) {
+            throw new RuntimeException(
+                trim((string) ($response['message'] ?? '')) ?: 'Provider refill request failed.'
+            );
+        }
+
+        $existing = json_decode((string) ($order['provider_response'] ?? ''), true);
+        $existing = is_array($existing) ? $existing : [];
+        $existing['refill'] = [
+            'id' => (string) ($response['refill'] ?? ''),
+            'requested_by' => $adminId,
+            'requested_at' => date(DATE_ATOM),
+            'response' => $response,
+        ];
+        $payload = json_encode($existing, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+        $stmt = $pdo->prepare(
+            "UPDATE digital_service_orders
+             SET provider_response = ?, updated_at = NOW()
+             WHERE id = ? AND status = ?"
+        );
+        $stmt->execute([
+            is_string($payload) ? $payload : (string) ($order['provider_response'] ?? ''),
+            $orderId,
+            self::STATUS_DELIVERED,
+        ]);
+
+        return [
+            'ok' => true,
+            'refill' => (string) ($response['refill'] ?? ''),
+            'order' => self::findOrder($pdo, $orderId) ?? $order,
+            'response' => $response,
+        ];
+    }
+
     private static function deliver(PDO $pdo, array $order, array $product): array
     {
         $provider = (string) ($product['provider'] ?? 'manual');
