@@ -309,7 +309,7 @@ class ManagePanel
             if ($expire != 0) {
                 $current_timestamp = time();
                 $diff_seconds = $expire - $current_timestamp;
-                $diff_days = ceil($diff_seconds / (60 * 60 * 24));
+                $diff_days = max(0, (int) ceil($diff_seconds / (60 * 60 * 24)));
             } else {
                 $diff_days = 111111;
             }
@@ -318,24 +318,19 @@ class ManagePanel
                 "uuid" => $uuid,
                 "name" => $usernameC,
                 "added_by_uuid" => $Get_Data_Panel['secret_code'],
-                "current_usage_GB" => "0",
-                "usage_limit_GB" => $data_limit / pow(1024, 3),
-                "package_days" => $diff_days,
+                "current_usage_GB" => 0.0,
+                "usage_limit_GB" => (float) $data_limit / pow(1024, 3),
+                "package_days" => (int) $diff_days,
                 "comment" => $note,
             );
             $data_Output = adduserhi($Get_Data_Panel['name_panel'], $data);
-            if (!empty($data_Output['error'])) {
+            if (!hiddifyIsSuccessfulResponse($data_Output)) {
                 return array(
                     'status' => 'Unsuccessful',
-                    'msg' => $data_Output['error']
-                );
-            } elseif (!empty($data_Output['status']) && $data_Output['status'] != 200) {
-                return array(
-                    'status' => 'Unsuccessful',
-                    'msg' => $data_Output['status']
+                    'msg' => hiddifyResponseError($data_Output, 'Unable to create Hiddify user')
                 );
             }
-            $data_Output = json_decode((string) ($data_Output['body'] ?? ''), true);
+            $data_Output = hiddifyDecodeResponse($data_Output);
             if (!is_array($data_Output)) {
                 return [
                     'status' => 'Unsuccessful',
@@ -1624,11 +1619,18 @@ class ManagePanel
                     'msg' => 'user not found on panel'
                 );
             } else {
-                removeuserhi($name_panel, $data_user['uuid']);
-                $Output = array(
-                    'status' => 'successful',
-                    'msg' => ""
-                );
+                $remove = removeuserhi($name_panel, $data_user['uuid']);
+                if (!hiddifyIsSuccessfulResponse($remove)) {
+                    $Output = array(
+                        'status' => 'Unsuccessful',
+                        'msg' => hiddifyResponseError($remove, 'Unable to delete Hiddify user')
+                    );
+                } else {
+                    $Output = array(
+                        'status' => 'successful',
+                        'msg' => ""
+                    );
+                }
             }
         } elseif ($Get_Data_Panel['type'] == "Manualsale") {
             update("manualsell", "status", "delete", "username", $username);
@@ -1927,18 +1929,13 @@ class ManagePanel
             );
         } elseif ($Get_Data_Panel['type'] == "hiddify") {
             $modify = updateuserhi($username, $name_panel, $config);
-            if (!empty($modify['error'])) {
+            if (!hiddifyIsSuccessfulResponse($modify)) {
                 return array(
                     'status' => false,
-                    'msg' => $modify['error']
-                );
-            } elseif (!empty($modify['status']) && $modify['status'] != 200) {
-                return array(
-                    'status' => false,
-                    'msg' => 'error code : ' . $modify['status']
+                    'msg' => hiddifyResponseError($modify, 'Unable to update Hiddify user')
                 );
             }
-            $modify = bluebotJsonArray($modify['body'] ?? '');
+            $modify = hiddifyDecodeResponse($modify);
             return array(
                 'status' => true,
                 'data' => $modify
@@ -2286,8 +2283,16 @@ class ManagePanel
                 'data' => $reset
             );
         } elseif ($panel['type'] == "hiddify") {
+            $reset = resetuserusagehi($username, $panel['name_panel']);
+            if (!hiddifyIsSuccessfulResponse($reset)) {
+                return array(
+                    'status' => false,
+                    'msg' => hiddifyResponseError($reset, 'Unable to reset Hiddify user usage')
+                );
+            }
             return array(
-                'status' => true
+                'status' => true,
+                'data' => hiddifyDecodeResponse($reset)
             );
         } elseif ($panel['type'] == "s_ui") {
             ResetUserDataUsages_ui($username, $name_panel);
@@ -2495,12 +2500,12 @@ class ManagePanel
         } elseif ($panel['type'] == "hiddify") {
             $day = $time_new - time();
             $data = array(
-                "package_days" => $day / 86400,
-                "usage_limit_GB" => $data_limit_new / pow(1024, 3),
+                "package_days" => max(0, (int) ceil($day / 86400)),
+                "usage_limit_GB" => (float) $data_limit_new / pow(1024, 3),
                 "start_date" => null
             );
             if (in_array($Method_extend, ["resetVolumeTime", "resetVolumeAddTime", "addTimeConvertVolume"], true)) {
-                $data['current_usage_GB'] = "0";
+                $data['current_usage_GB'] = 0.0;
             }
         } elseif ($panel['type'] == "s_ui") {
             $data = array(
@@ -2613,9 +2618,17 @@ class ManagePanel
             );
         } elseif ($panel['type'] == "hiddify") {
             $datauser = getdatauser($username_account, $panel['name_panel']);
+            if (!is_array($datauser) || empty($datauser['uuid'])) {
+                return array(
+                    'status' => false,
+                    'msg' => is_array($datauser) && !empty($datauser['message'])
+                        ? (string) $datauser['message']
+                        : 'Hiddify user not found'
+                );
+            }
             $data = array(
-                "current_usage_GB" => $datauser['current_usage_GB'],
-                "usage_limit_GB" => $new_limit / pow(1024, 3),
+                "current_usage_GB" => (float) ($datauser['current_usage_GB'] ?? 0),
+                "usage_limit_GB" => (float) $new_limit / pow(1024, 3),
             );
         } elseif ($panel['type'] == "WGDashboard") {
             allowAccessPeers($panel['name_panel'], $username_account);
@@ -2754,10 +2767,20 @@ class ManagePanel
             );
         } elseif ($panel['type'] == "hiddify") {
             $datauser = getdatauser($username_account, $panel['name_panel']);
+            if (!is_array($datauser) || empty($datauser['uuid'])) {
+                return array(
+                    'status' => false,
+                    'msg' => is_array($datauser) && !empty($datauser['message'])
+                        ? (string) $datauser['message']
+                        : 'Hiddify user not found'
+                );
+            }
             $data = array(
-                "current_usage_GB" => $datauser['current_usage_GB'],
-                "usage_limit_GB" => $datauser['usage_limit_GB'],
-                "package_days" => $limit_time_new == 0 ? 0 : ($new_limit - time()) / 86400,
+                "current_usage_GB" => (float) ($datauser['current_usage_GB'] ?? 0),
+                "usage_limit_GB" => isset($datauser['usage_limit_GB']) ? (float) $datauser['usage_limit_GB'] : null,
+                "package_days" => $limit_time_new == 0
+                    ? 0
+                    : max(0, (int) ceil(($new_limit - time()) / 86400)),
                 "start_date" => null
             );
         } elseif ($panel['type'] == "WGDashboard") {
