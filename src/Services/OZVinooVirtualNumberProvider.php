@@ -45,10 +45,12 @@ final class OZVinooVirtualNumberProvider implements BluebotVirtualNumberProvider
 
         if (empty($response['ok'])) {
             $http = (int) ($response['http_status'] ?? 0);
+            $message = trim((string) ($response['message'] ?? '')) ?: 'درخواست شماره مجازی ناموفق بود.';
             return [
                 'ok' => false,
                 'retryable' => self::retryableHttp($http),
-                'message' => trim((string) ($response['message'] ?? '')) ?: 'درخواست شماره مجازی ناموفق بود.',
+                'failure_type' => self::failureType($http, $message),
+                'message' => $message,
                 'response' => $response,
             ];
         }
@@ -101,10 +103,12 @@ final class OZVinooVirtualNumberProvider implements BluebotVirtualNumberProvider
             ];
         }
         if (empty($response['ok'])) {
+            $message = trim((string) ($response['message'] ?? '')) ?: 'دریافت وضعیت شماره ناموفق بود.';
             return [
                 'ok' => false,
                 'retryable' => self::retryableHttp($http),
-                'message' => trim((string) ($response['message'] ?? '')) ?: 'دریافت وضعیت شماره ناموفق بود.',
+                'failure_type' => self::failureType($http, $message),
+                'message' => $message,
                 'response' => $response,
             ];
         }
@@ -194,6 +198,33 @@ final class OZVinooVirtualNumberProvider implements BluebotVirtualNumberProvider
     {
         $body = is_array($response['body'] ?? null) ? $response['body'] : [];
         return is_array($body['data'] ?? null) ? $body['data'] : $body;
+    }
+
+    private static function failureType(int $http, string $message): string
+    {
+        $message = strtolower(trim($message));
+        if (in_array($http, [408, 504], true)
+            || str_contains($message, 'timeout')
+            || str_contains($message, 'timed out')
+            || str_contains($message, 'زمان درخواست')) {
+            return 'timeout';
+        }
+
+        foreach ([
+            'no number',
+            'no numbers',
+            'out of stock',
+            'not available',
+            'temporarily unavailable',
+            'ناموجود',
+            'موجود نیست',
+        ] as $needle) {
+            if (str_contains($message, $needle)) {
+                return 'availability';
+            }
+        }
+
+        return '';
     }
 
     private static function retryableHttp(int $http): bool

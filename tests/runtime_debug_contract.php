@@ -132,6 +132,9 @@ $mustContain = [
     [$diagnostics, "orders_stale_processing", 'Runtime /debug must report stale processing digital orders.'],
     [$diagnostics, "Partial review:", 'Runtime /debug partial-order line missing.'],
     [$diagnostics, "Stale processing (>30m):", 'Runtime /debug stale-processing line missing.'],
+    [$diagnostics, "provider_health_suspended", 'Runtime /debug must count active provider health suspensions.'],
+    [$diagnostics, "Provider health suspensions:", 'Runtime /debug provider health line missing.'],
+    [$diagnostics, "Order rate limit/min:", 'Runtime /debug order rate-limit line missing.'],
 
 
 ];

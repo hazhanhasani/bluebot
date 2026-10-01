@@ -54,6 +54,8 @@ function bluebotCollectDiagnostics(PDO $pdo, array $setting): array
         'orders_partial_review' => 0,
         'orders_stale_processing' => 0,
         'orders_delivered' => 0,
+        'provider_health_suspended' => 0,
+        'order_rate_limit_per_minute' => 10,
         'providers' => [],
     ];
     try {
@@ -61,6 +63,7 @@ function bluebotCollectDiagnostics(PDO $pdo, array $setting): array
         $productsTable = (bool) $pdo->query("SHOW TABLES LIKE 'digital_service_products'")->fetchColumn();
         $providersTable = (bool) $pdo->query("SHOW TABLES LIKE 'digital_service_providers'")->fetchColumn();
         $settingsTable = (bool) $pdo->query("SHOW TABLES LIKE 'digital_service_settings'")->fetchColumn();
+        $providerHealthTable = (bool) $pdo->query("SHOW TABLES LIKE 'digital_service_provider_health'")->fetchColumn();
 
         $digitalServices['available'] = $ordersTable && $productsTable;
         if ($productsTable) {
@@ -89,6 +92,26 @@ function bluebotCollectDiagnostics(PDO $pdo, array $setting): array
             $digitalServices['orders_delivered'] = (int) $pdo
                 ->query("SELECT COUNT(*) FROM digital_service_orders WHERE status = 'delivered'")
                 ->fetchColumn();
+        }
+
+        if ($providerHealthTable) {
+            $digitalServices['provider_health_suspended'] = (int) $pdo
+                ->query("SELECT COUNT(*) FROM digital_service_provider_health
+                         WHERE suspended_until IS NOT NULL AND suspended_until > NOW()")
+                ->fetchColumn();
+        }
+
+        if ($settingsTable) {
+            $rateLimitStmt = $pdo->prepare(
+                "SELECT setting_value FROM digital_service_settings
+                 WHERE setting_key = 'digital_order_rate_limit_per_minute'
+                 LIMIT 1"
+            );
+            $rateLimitStmt->execute();
+            $rateLimit = $rateLimitStmt->fetchColumn();
+            if ($rateLimit !== false && is_numeric($rateLimit)) {
+                $digitalServices['order_rate_limit_per_minute'] = max(0, (int) $rateLimit);
+            }
         }
 
         if ($providersTable) {
@@ -222,6 +245,8 @@ function bluebotBuildDebugReport(PDO $pdo, array $setting, array $webhookSecret 
         . 'Partial review: <code>' . number_format((int) ($digital['orders_partial_review'] ?? 0)) . "</code>\n"
         . 'Stale processing (>30m): <code>' . number_format((int) ($digital['orders_stale_processing'] ?? 0)) . "</code>\n"
         . 'Delivered: <code>' . number_format((int) ($digital['orders_delivered'] ?? 0)) . "</code>\n"
+        . 'Provider health suspensions: <code>' . number_format((int) ($digital['provider_health_suspended'] ?? 0)) . "</code>\n"
+        . 'Order rate limit/min: <code>' . number_format((int) ($digital['order_rate_limit_per_minute'] ?? 0)) . "</code>\n"
         . 'Providers: <code>' . $digitalProviderText . "</code>\n\n"
         . '<i>No secrets are included in this report.</i>';
 }

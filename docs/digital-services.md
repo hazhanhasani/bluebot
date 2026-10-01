@@ -350,6 +350,36 @@ reported remaining quantity, and flags them for manual review. The customer sees
 a neutral **تحویل جزئی / در حال بررسی** status and, when available, the remaining
 quantity without seeing provider references or raw API errors.
 
+## Provider health guard and checkout anti-spam
+
+BlueBot keeps automatic delivery from repeatedly hammering a temporarily unhealthy
+service. The health guard is scoped to the Provider + BlueBot product, so one
+unavailable country/package does not disable unrelated products from the same
+Provider.
+
+The guard records successful automatic hand-offs and two transient failure classes:
+
+- **availability** — for example a virtual-number Provider reporting that no number
+  is currently available. The default policy pauses automatic delivery after 10
+  consecutive availability failures for 30 minutes.
+- **timeout** — request timeouts and equivalent gateway timeouts. The default policy
+  pauses automatic delivery after 3 consecutive timeout failures for 120 minutes.
+
+During a pause the customer's order is still created normally. BlueBot simply
+skips the automatic Provider call, keeps the order in the normal administrator
+queue and does not expose the Provider health state to the customer. A successful
+automatic hand-off resets the failure counters and clears any suspension.
+
+The defaults and active suspensions are visible under **Digital Services → Safety**.
+The same screen also controls the checkout rate guard. By default a customer may
+create up to 10 Digital Service orders in a rolling 60-second window; the rejected
+attempt does not debit the wallet. Setting this value to 0 disables the rate guard.
+The existing exact duplicate-order guard remains independent and always prevents
+an active identical order from being charged twice.
+
+These policies were adapted to BlueBot's transactional order model rather than
+copying the reference implementations directly.
+
 ## Background reconciliation
 
 `cronbot/digital_services.php` refreshes provider catalogs and reconciles

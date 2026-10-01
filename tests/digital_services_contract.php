@@ -23,6 +23,7 @@ $digitalServicesCron = file_get_contents($root . '/cronbot/digital_services.php'
 $settings = file_get_contents($root . '/db/tables/digital_service_settings.php');
 $langFa = file_get_contents($root . '/lang/fa.php');
 $favoriteTable = file_get_contents($root . '/db/tables/digital_service_favorites.php');
+$providerHealthTable = file_get_contents($root . '/db/tables/digital_service_provider_health.php');
 $tablesRegistry = file_get_contents($root . '/db/tables.php');
 $virtualNumberInterface = file_get_contents($root . '/src/Services/VirtualNumberProviderInterface.php');
 $ozvinooNumberProvider = file_get_contents($root . '/src/Services/OZVinooVirtualNumberProvider.php');
@@ -48,6 +49,24 @@ $checks = [
     [str_contains($manager, "provider_reference = ?"), 'failed-order retry must clear/update provider reference atomically'],
     [str_contains($manager, "statusesNormalized"), 'generic SMM reconciliation must use batch status when available'],
     [str_contains($manager, "bulk_requests"), 'generic SMM batch reconciliation diagnostics missing'],
+
+    [str_contains($manager, "providerHealthGuard"), 'automatic provider health circuit breaker missing'],
+    [str_contains($manager, "recordProviderHealth"), 'provider health result recorder missing'],
+    [str_contains($manager, "provider_health_availability_threshold"), 'provider availability threshold setting missing'],
+    [str_contains($manager, "provider_health_timeout_threshold"), 'provider timeout threshold setting missing'],
+    [str_contains($manager, "suspended_until"), 'provider health suspension state missing'],
+    [str_contains($manager, "digital_order_rate_limit_per_minute"), 'digital checkout rate-limit setting missing'],
+    [str_contains($manager, "ORDER_RATE_LIMITED"), 'digital checkout rate-limit domain guard missing'],
+    [str_contains($index, "ORDER_RATE_LIMITED"), 'customer-safe digital order rate-limit UX missing'],
+    [str_contains($panel, "save_digital_safety"), 'Digital Services safety settings action missing'],
+    [str_contains($panel, 'id="safety"'), 'Digital Services safety card missing'],
+    [str_contains($panel, "activeProviderHealthSuspensions"), 'active provider health suspensions must be visible in panel'],
+    [str_contains($ozvinooNumberProvider, "failure_type"), 'virtual-number adapter failure classification missing'],
+    [str_contains($ozvinooNumberProvider, "failureType"), 'virtual-number health failure classifier missing'],
+    [str_contains($providerHealthTable, "UNIQUE KEY uniq_digital_provider_health"), 'provider health uniqueness constraint missing'],
+    [str_contains($providerHealthTable, "availability_failures"), 'provider health availability counter missing'],
+    [str_contains($providerHealthTable, "timeout_failures"), 'provider health timeout counter missing'],
+    [str_contains($tablesRegistry, "'digital_service_provider_health'"), 'provider health table is not registered in database bootstrap'],
 
     [str_contains($manager, "providerApprovalMode"), 'per-provider approval mode reader missing'],
     [str_contains($manager, "setProviderApprovalMode"), 'per-provider approval mode writer missing'],
