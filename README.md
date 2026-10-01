@@ -99,7 +99,7 @@ BlueBot از چند Adapter مستقل برای اتصال به پنل‌های 
 | **SolidLayer / GoGuard** | **Swagger API 1.0** | ✅ Native | اتصال مستقیم با <code>X-API-Key</code> و API اشتراک‌ها |
 | **3x-ui / Sanaei** | **v3.8.5** | ✅ Native | Client API، Traffic، Attach و Delete جدید |
 | **Alireza X-UI** | **v1.12.0** | ✅ Native | شناسه Client سازگار با VMess/VLESS/Trojan/SS |
-| **Hiddify Manager** | **v12.3.3 stable** | ✅ Native | API v2 و <code>Hiddify-API-Key</code> |
+| **Hiddify Manager** | **v13.0.3 stable** | ✅ Native | API v2، typed payloads و <code>Hiddify-API-Key</code> |
 | **S-UI** | **v1.6.3** | ✅ Native | <code>/apiv2</code> و قرارداد جدید Save |
 | **WGDashboard** | **v4.3.3** | ✅ Native | WireGuard Peer API v4 |
 | **MikroTik** | **RouterOS v7 REST** | ✅ Integrated | REST CRUD + User Manager |

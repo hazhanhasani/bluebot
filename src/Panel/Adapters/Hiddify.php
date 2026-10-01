@@ -2,6 +2,59 @@
 require_once dirname(__DIR__, 3) . '/config.php';
 require_once dirname(__DIR__, 3) . '/request.php';
 
+function hiddifyIsSuccessfulResponse(array $response): bool
+{
+    $status = (int) ($response['status'] ?? 0);
+
+    return $status >= 200 && $status < 300;
+}
+
+function hiddifyDecodeResponse(array $response): array
+{
+    $decoded = json_decode((string) ($response['body'] ?? ''), true);
+
+    return is_array($decoded) ? $decoded : [];
+}
+
+function hiddifyResponseError(array $response, string $fallback = 'Hiddify API request failed'): string
+{
+    if (!empty($response['error'])) {
+        return (string) $response['error'];
+    }
+
+    $decoded = hiddifyDecodeResponse($response);
+    foreach (['message', 'error'] as $key) {
+        if (isset($decoded[$key]) && is_scalar($decoded[$key])) {
+            return trim((string) $decoded[$key]);
+        }
+    }
+
+    if (isset($decoded['detail'])) {
+        if (is_scalar($decoded['detail'])) {
+            return trim((string) $decoded['detail']);
+        }
+
+        if (is_array($decoded['detail'])) {
+            $messages = [];
+            array_walk_recursive($decoded['detail'], static function ($value) use (&$messages): void {
+                if (is_scalar($value)) {
+                    $message = trim((string) $value);
+                    if ($message !== '' && !in_array($message, $messages, true)) {
+                        $messages[] = $message;
+                    }
+                }
+            });
+            if ($messages !== []) {
+                return implode(' | ', array_slice($messages, 0, 4));
+            }
+        }
+    }
+
+    $status = (int) ($response['status'] ?? 0);
+
+    return $status > 0 ? $fallback . ' (HTTP ' . $status . ')' : $fallback;
+}
+
 function hiddifyRequest(string $location, string $method, string $path, ?array $payload = null): array
 {
     $panel = select("marzban_panel", "*", "name_panel", $location, "select");
@@ -10,9 +63,17 @@ function hiddifyRequest(string $location, string $method, string $path, ?array $
     }
 
     $url = rtrim((string) $panel['url_panel'], '/') . '/' . ltrim($path, '/');
-    $json = $payload === null
-        ? null
-        : json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+    $json = null;
+    if ($payload !== null) {
+        $json = json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+        if ($json === false) {
+            return [
+                'status' => null,
+                'body' => null,
+                'error' => 'Unable to encode Hiddify request payload: ' . json_last_error_msg(),
+            ];
+        }
+    }
 
     $send = static function (array $headers) use ($url, $method, $json): array {
         $req = new CurlRequest($url);
@@ -31,7 +92,8 @@ function hiddifyRequest(string $location, string $method, string $path, ?array $
         }
     };
 
-    // Hiddify v2 documentation recommends the admin UUID in Hiddify-API-Key.
+    // Hiddify Manager v13 keeps the v2 admin API and authenticates using the
+    // admin UUID in Hiddify-API-Key.
     $headers = [
         'Accept: application/json',
         'Content-Type: application/json',
@@ -39,8 +101,8 @@ function hiddifyRequest(string $location, string $method, string $path, ?array $
     ];
     $response = $send($headers);
 
-    // Older Hiddify Manager builds accepted Basic auth on some GET endpoints.
-    // Keep a fallback so upgrading BlueBot does not break those installations.
+    // Preserve compatibility with older Hiddify installations that accepted
+    // the admin UUID through HTTP Basic authentication.
     if (in_array((int) ($response['status'] ?? 0), [401, 403], true)) {
         $response = $send([
             'Accept: application/json',
@@ -60,15 +122,19 @@ function getdatauser($username, $location)
             'panel' => (string) $location,
             'error' => (string) $response['error'],
         ]);
-        return [];
+        return ['message' => hiddifyResponseError($response)];
     }
 
-    $data = json_decode((string) ($response['body'] ?? ''), true);
-    if (!is_array($data)) {
-        return [];
+    if (!hiddifyIsSuccessfulResponse($response)) {
+        return ['message' => hiddifyResponseError($response)];
     }
-    if (isset($data['message'])) {
-        return $data;
+
+    $data = hiddifyDecodeResponse($response);
+    if ($data === []) {
+        return null;
+    }
+    if (isset($data['message']) || isset($data['detail'])) {
+        return ['message' => hiddifyResponseError($response)];
     }
 
     foreach ($data as $user) {
@@ -112,4 +178,11 @@ function removeuserhi($location, $uuid)
         'DELETE',
         '/api/v2/admin/user/' . rawurlencode((string) $uuid) . '/'
     );
+}
+
+function resetuserusagehi($username, $location): array
+{
+    return updateuserhi((string) $username, (string) $location, [
+        'current_usage_GB' => 0.0,
+    ]);
 }

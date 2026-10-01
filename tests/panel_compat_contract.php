@@ -40,6 +40,19 @@ $contracts = [
         "'Hiddify-API-Key: '",
         "'/api/v2/admin/user/'",
         "'Authorization: Basic '",
+        'function hiddifyIsSuccessfulResponse',
+        'function hiddifyResponseError',
+        'function resetuserusagehi',
+    ],
+    'panels.php' => [
+        "resetuserusagehi(\$username, \$panel['name_panel'])",
+        'max(0, (int) ceil($day / 86400))',
+        "'Unable to delete Hiddify user'",
+        "'Unable to update Hiddify user'",
+    ],
+    'admin.php' => [
+        'hiddifyDecodeResponse($System_Stats_Response)',
+        "\$System_Stats['stats']['system'] ?? null",
     ],
     'src/Panel/Adapters/SUI.php' => [
         "'/apiv2/save'",
@@ -103,7 +116,7 @@ if (!is_file($matrix)) {
         'Marzneshin v0.7.4',
         '3x-ui v3.8.5',
         'alireza0/x-ui v1.12.0',
-        'Hiddify Manager v12.3.3 stable',
+        'Hiddify Manager v13.0.3 stable',
         'S-UI v1.6.3',
         'WGDashboard v4.3.3',
         'RouterOS v7 REST API',
