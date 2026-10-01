@@ -3258,23 +3258,24 @@ elseif ($datain == "systemsms") {
             sendmessage($from_id, $text_marzban, $optionalireza_single, 'HTML');
         }
     } elseif ($marzban_list_get['type'] == "hiddify") {
-        $System_Stats = serverstatus($marzban_list_get['name_panel']);
-        if (!empty($System_Stats['status']) && $System_Stats['status'] != 200) {
-            $text_marzban = $textbotlang['Admin']['managepanel']['fetchErrorCode'] . $System_Stats['status'];
-            sendmessage($from_id, $text_marzban, $optionhiddfy, 'HTML');
-        } elseif (!empty($System_Stats['error'])) {
-            $text_marzban = panelErrorText($System_Stats['error']);
+        $System_Stats_Response = serverstatus($marzban_list_get['name_panel']);
+        if (!hiddifyIsSuccessfulResponse($System_Stats_Response)) {
+            $text_marzban = panelErrorText(
+                hiddifyResponseError($System_Stats_Response, $textbotlang['Admin']['managepanel']['notConnected'])
+            );
             sendmessage($from_id, $text_marzban, $optionhiddfy, 'HTML');
         } else {
-            $System_Stats = bluebotJsonArray($System_Stats['body'] ?? '');
-            if (isset($System_Stats['stats'])) {
-                $mem_total = round($System_Stats['stats']['system']['ram_total'], 2);
-                $mem_used = round($System_Stats['stats']['system']['ram_used'], 2);
-                $bandwidth = formatBytes($System_Stats['outgoing_bandwidth'] + $System_Stats['incoming_bandwidth']);
-                $text_marzban = sprintf($textbotlang['Admin']['stats']['panelServer'], $mem_total, $mem_used, $marzban_list_get['agent']);
-                sendmessage($from_id, $text_marzban, $optionhiddfy, 'HTML');
-            } elseif (isset($System_Stats['message']) && $System_Stats['message'] == "Unathorized") {
-                $text_marzban = $textbotlang['Admin']['managepanel']['invalidUrl'];
+            $System_Stats = hiddifyDecodeResponse($System_Stats_Response);
+            $system = $System_Stats['stats']['system'] ?? null;
+            if (is_array($system)) {
+                $mem_total = round((float) ($system['ram_total'] ?? 0), 2);
+                $mem_used = round((float) ($system['ram_used'] ?? 0), 2);
+                $text_marzban = sprintf(
+                    $textbotlang['Admin']['stats']['panelServer'],
+                    $mem_total,
+                    $mem_used,
+                    $marzban_list_get['agent']
+                );
                 sendmessage($from_id, $text_marzban, $optionhiddfy, 'HTML');
             } else {
                 sendmessage($from_id, $textbotlang['Admin']['managepanel']['notConnected'], $optionhiddfy, 'HTML');
