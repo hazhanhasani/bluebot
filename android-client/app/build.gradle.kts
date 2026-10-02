@@ -141,8 +141,10 @@ tasks.named("preBuild").configure {
     dependsOn(prepareLibXray)
 }
 
-tasks.named("preReleaseBuild").configure {
-    dependsOn(verifyReleaseSigning)
+tasks.configureEach {
+    if (name == "preReleaseBuild") {
+        dependsOn(verifyReleaseSigning)
+    }
 }
 
 dependencies {
