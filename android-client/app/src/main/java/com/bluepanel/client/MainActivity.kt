@@ -377,7 +377,7 @@ private fun LoginScreen(
                     contentColor = Color.White,
                 ),
             ) {
-                Text("▣  اسکن QR سرویس", fontWeight = FontWeight.ExtraBold)
+                Text("اسکن QR سرویس", fontWeight = FontWeight.ExtraBold)
             }
 
             Spacer(Modifier.height(12.dp))
