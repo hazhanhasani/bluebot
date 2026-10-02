@@ -14,6 +14,17 @@ val libXraySha256 = "4998a8b56e4a78a164b5359d5690036f83da3b575465cea57ddf29c0149
 val libXrayArchive = layout.buildDirectory.file("downloads/libxray-android.zip")
 val libXrayAar = layout.projectDirectory.file("libs/libXray.aar")
 
+val releaseKeystoreFile = System.getenv("ANDROID_KEYSTORE_FILE")
+val releaseKeystorePassword = System.getenv("ANDROID_KEYSTORE_PASSWORD")
+val releaseKeyAlias = System.getenv("ANDROID_KEY_ALIAS")
+val releaseKeyPassword = System.getenv("ANDROID_KEY_PASSWORD")
+val releaseSigningConfigured = listOf(
+    releaseKeystoreFile,
+    releaseKeystorePassword,
+    releaseKeyAlias,
+    releaseKeyPassword,
+).all { !it.isNullOrBlank() }
+
 val prepareLibXray by tasks.registering {
     outputs.file(libXrayAar)
     doLast {
@@ -57,11 +68,29 @@ android {
         applicationId = "com.bluepanel.client"
         minSdk = 26
         targetSdk = 37
-        versionCode = 3
-        versionName = "0.2.0"
+        versionCode = 4
+        versionName = "0.3.0"
 
         buildConfigField("String", "BLUEBOT_API_BASE", "\"${blueBotApi.get()}\"")
         buildConfigField("String", "XRAY_CORE_VERSION", "\"$libXrayVersion\"")
+    }
+
+    signingConfigs {
+        create("release") {
+            if (releaseSigningConfigured) {
+                storeFile = file(releaseKeystoreFile!!)
+                storePassword = releaseKeystorePassword
+                keyAlias = releaseKeyAlias
+                keyPassword = releaseKeyPassword
+            }
+        }
+    }
+
+    buildTypes {
+        getByName("release") {
+            signingConfig = signingConfigs.getByName("release")
+            isMinifyEnabled = false
+        }
     }
 
     buildFeatures {
@@ -83,7 +112,19 @@ android {
     }
 }
 
+val verifyReleaseSigning by tasks.registering {
+    doLast {
+        check(releaseSigningConfigured) {
+            "Release signing is not configured. Set ANDROID_KEYSTORE_FILE, ANDROID_KEYSTORE_PASSWORD, ANDROID_KEY_ALIAS and ANDROID_KEY_PASSWORD."
+        }
+        check(file(releaseKeystoreFile!!).isFile) {
+            "Release keystore file does not exist: $releaseKeystoreFile"
+        }
+    }
+}
+
 tasks.named("preBuild").configure { dependsOn(prepareLibXray) }
+tasks.named("preReleaseBuild").configure { dependsOn(verifyReleaseSigning) }
 
 dependencies {
     implementation(files("libs/libXray.aar"))
