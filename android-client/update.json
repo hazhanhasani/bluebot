@@ -1,8 +1,8 @@
 {
-  "latest_version_code": 6,
-  "latest_version_name": "0.3.2",
+  "latest_version_code": 7,
+  "latest_version_name": "0.3.3",
   "minimum_version_code": 4,
-  "download_url": "https://github.com/hazhanhasani/bluebot/releases/download/v0.6.5/blue-vpn-android-v0.6.5.apk",
-  "release_notes": "رفع باگ آیکن‌ها، Swipe واقعی برای اتصال و قطع، انیمیشن‌های نرم، چیدمان واکنش‌گرا، نمایش صحیح سرویس نامحدود و بروزرسانی زنده مصرف و زمان سرویس.",
+  "download_url": "https://github.com/hazhanhasani/bluebot/releases/download/v0.6.6/blue-vpn-android-v0.6.6.apk",
+  "release_notes": "تاریخ و ساعت شمسی با اعداد فارسی، ساعت زنده جلالی، انیمیشن‌های سه‌بعدی و Parallax، حلقه‌های Orbit، ذرات متحرک، عمق و Spring روی کنترل اتصال و حرکت زنده کارت‌ها.",
   "check_interval_seconds": 21600
 }
