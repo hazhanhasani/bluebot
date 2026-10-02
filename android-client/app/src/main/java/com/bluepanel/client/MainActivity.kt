@@ -401,6 +401,16 @@ private fun PremiumDashboard(
         }
     }
 
+    var nowEpochSeconds by remember {
+        mutableStateOf(System.currentTimeMillis() / 1_000L)
+    }
+    LaunchedEffect(Unit) {
+        while (true) {
+            nowEpochSeconds = System.currentTimeMillis() / 1_000L
+            delay(30_000L)
+        }
+    }
+
     val visualActive = isConnected || isConnecting
     val backgroundTop by animateColorAsState(
         targetValue = when {
@@ -481,6 +491,11 @@ private fun PremiumDashboard(
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Text("Blue VPN", fontWeight = FontWeight.Black, fontSize = 18.sp)
                     Text(username, color = Color.White.copy(alpha = 0.54f), fontSize = 10.sp)
+                    Text(
+                        PersianDateTime.formatEpochSeconds(nowEpochSeconds, includeTime = true),
+                        color = Color.White.copy(alpha = 0.34f),
+                        fontSize = 8.sp,
+                    )
                 }
 
                 Box(
@@ -1219,7 +1234,7 @@ private fun LivingBackground(
         repeat(18) { index ->
             val seed = index * 0.61803398875
             val baseX = ((seed % 1.0) * size.width).toFloat()
-            val wave = sin((phase * 2f * PI + index * 0.73f).toDouble()).toFloat()
+            val wave = sin(phase.toDouble() * 2.0 * PI + index * 0.73).toFloat()
             val x = (baseX + wave * size.width * 0.035f)
                 .coerceIn(0f, size.width)
             val yCycle = (phase + (index / 18f)) % 1f
