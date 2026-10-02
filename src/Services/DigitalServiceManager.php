@@ -121,7 +121,7 @@ final class BluebotDigitalServices
     public static function providerSupportsAutomaticDelivery(PDO $pdo, string $providerKey): bool
     {
         $providerKey = strtolower(trim($providerKey));
-        if ($providerKey === '' || !self::providerEnabled($pdo, $providerKey)) {
+        if ($providerKey === '') {
             return false;
         }
 
