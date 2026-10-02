@@ -13,10 +13,12 @@ import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
@@ -76,6 +78,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.rotate
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
@@ -95,13 +98,14 @@ import com.bluepanel.client.data.BluePanelApi
 import com.bluepanel.client.data.ServiceSummary
 import com.bluepanel.client.data.SessionStore
 import com.bluepanel.client.data.TrafficInfo
+import com.bluepanel.client.util.PersianDateTime
 import com.bluepanel.client.vpn.BluePanelVpnService
 import com.bluepanel.client.vpn.VpnConnectionState
-import java.time.Instant
-import java.time.ZoneId
-import java.time.format.DateTimeFormatter
 import java.util.Locale
+import kotlin.math.PI
+import kotlin.math.cos
 import kotlin.math.roundToInt
+import kotlin.math.sin
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -397,6 +401,16 @@ private fun PremiumDashboard(
         }
     }
 
+    var nowEpochSeconds by remember {
+        mutableStateOf(System.currentTimeMillis() / 1_000L)
+    }
+    LaunchedEffect(Unit) {
+        while (true) {
+            nowEpochSeconds = System.currentTimeMillis() / 1_000L
+            delay(30_000L)
+        }
+    }
+
     val visualActive = isConnected || isConnecting
     val backgroundTop by animateColorAsState(
         targetValue = when {
@@ -427,6 +441,8 @@ private fun PremiumDashboard(
             .background(background)
             .statusBarsPadding(),
     ) {
+        LivingBackground(active = visualActive)
+
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -475,6 +491,11 @@ private fun PremiumDashboard(
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Text("Blue VPN", fontWeight = FontWeight.Black, fontSize = 18.sp)
                     Text(username, color = Color.White.copy(alpha = 0.54f), fontSize = 10.sp)
+                    Text(
+                        PersianDateTime.formatEpochSeconds(nowEpochSeconds, includeTime = true),
+                        color = Color.White.copy(alpha = 0.34f),
+                        fontSize = 8.sp,
+                    )
                 }
 
                 Box(
@@ -623,8 +644,24 @@ private fun ServiceSelectorPill(
         else -> Color.Black.copy(alpha = 0.18f)
     }
 
+    val pillScale by animateFloatAsState(
+        targetValue = if (selected || connected) 1.035f else 1f,
+        animationSpec = spring(
+            dampingRatio = Spring.DampingRatioMediumBouncy,
+            stiffness = Spring.StiffnessMediumLow,
+        ),
+        label = "servicePillScale",
+    )
+
     Row(
         modifier = Modifier
+            .graphicsLayer {
+                scaleX = pillScale
+                scaleY = pillScale
+                rotationX = if (selected || connected) -2.5f else 0f
+                shadowElevation = if (selected || connected) 10f else 0f
+                cameraDistance = 18f * density
+            }
             .clip(RoundedCornerShape(50))
             .background(background)
             .clickable(onClick = onClick)
@@ -668,6 +705,34 @@ private fun ConnectionStage(
         animationSpec = tween(320),
         label = "stageContent",
     )
+    val stageMotion = rememberInfiniteTransition(label = "stage3dMotion")
+    val tiltX by stageMotion.animateFloat(
+        initialValue = -4.5f,
+        targetValue = 4.5f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(3_200),
+            repeatMode = RepeatMode.Reverse,
+        ),
+        label = "stageTiltX",
+    )
+    val tiltY by stageMotion.animateFloat(
+        initialValue = 7f,
+        targetValue = -7f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(4_200),
+            repeatMode = RepeatMode.Reverse,
+        ),
+        label = "stageTiltY",
+    )
+    val floatY by stageMotion.animateFloat(
+        initialValue = -4f,
+        targetValue = 5f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(2_700),
+            repeatMode = RepeatMode.Reverse,
+        ),
+        label = "stageFloatY",
+    )
 
     BoxWithConstraints(
         modifier = modifier,
@@ -682,7 +747,15 @@ private fun ConnectionStage(
 
         GlobeBackdrop(
             active = active,
-            modifier = Modifier.size(globeSize),
+            modifier = Modifier
+                .size(globeSize)
+                .graphicsLayer {
+                    rotationX = tiltX
+                    rotationY = tiltY
+                    translationY = floatY
+                    cameraDistance = 26f * density
+                    shadowElevation = if (active) 14f else 5f
+                },
         )
 
         Column(
@@ -745,6 +818,15 @@ private fun GlobeBackdrop(
             repeatMode = RepeatMode.Reverse,
         ),
         label = "globePulseValue",
+    )
+    val orbitPhase by pulseTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = 360f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(if (active) 8_500 else 14_000),
+            repeatMode = RepeatMode.Restart,
+        ),
+        label = "globeOrbit",
     )
 
     Canvas(modifier = modifier) {
@@ -812,6 +894,23 @@ private fun GlobeBackdrop(
                 center = Offset(center.x + radius * dot.x, center.y + radius * dot.y),
             )
         }
+
+        repeat(9) { index ->
+            val radians = Math.toRadians(
+                orbitPhase.toDouble() + (index * 40.0),
+            )
+            val depth = ((sin(radians) + 1.0) / 2.0).toFloat()
+            val orbitX = cos(radians).toFloat() * radius * (0.88f - index * 0.018f)
+            val orbitY = sin(radians).toFloat() * radius * 0.24f
+            val particleRadius = 1.8f + depth * 3.2f
+            drawCircle(
+                color = glow.copy(
+                    alpha = (if (active) 0.24f else 0.10f) + depth * 0.34f,
+                ),
+                radius = particleRadius,
+                center = Offset(center.x + orbitX, center.y + orbitY),
+            )
+        }
     }
 }
 
@@ -834,10 +933,10 @@ private fun PowerControl(
     enabled: Boolean,
     onToggle: () -> Unit,
 ) {
-    val density = LocalDensity.current
+    val localDensity = LocalDensity.current
     val travelDp = 56.dp
-    val travelPx = with(density) { travelDp.toPx() }
-    val topPaddingPx = with(density) { 8.dp.toPx() }
+    val travelPx = with(localDensity) { travelDp.toPx() }
+    val topPaddingPx = with(localDensity) { 8.dp.toPx() }
 
     var dragDeltaPx by remember { mutableFloatStateOf(0f) }
     var dragging by remember { mutableStateOf(false) }
@@ -849,7 +948,10 @@ private fun PowerControl(
     }
     val animatedBasePx by animateFloatAsState(
         targetValue = stateTargetPx,
-        animationSpec = tween(360),
+        animationSpec = spring(
+            dampingRatio = Spring.DampingRatioMediumBouncy,
+            stiffness = Spring.StiffnessMediumLow,
+        ),
         label = "powerThumbOffset",
     )
     val visualOffsetPx = if (dragging) {
@@ -924,6 +1026,15 @@ private fun PowerControl(
                     .align(Alignment.TopCenter)
                     .width(90.dp)
                     .height(104.dp)
+                    .graphicsLayer {
+                        val fraction = if (travelPx > 0f) visualOffsetPx / travelPx else 0f
+                        rotationX = (0.5f - fraction) * 14f
+                        rotationY = if (dragging) dragDeltaPx.coerceIn(-20f, 20f) * 0.18f else 0f
+                        scaleX = if (dragging) 1.04f else 1f
+                        scaleY = if (dragging) 1.04f else 1f
+                        shadowElevation = if (connected) 24f else 16f
+                        cameraDistance = 20f * density
+                    }
                     .clip(RoundedCornerShape(47.dp))
                     .background(Brush.verticalGradient(listOf(topColor, bottomColor))),
                 contentAlignment = Alignment.Center,
@@ -1013,8 +1124,35 @@ private fun TrafficDock(
     )
     val unlimited = traffic != null && total <= 0L
 
+    val dockMotion = rememberInfiniteTransition(label = "trafficDockMotion")
+    val dockTilt by dockMotion.animateFloat(
+        initialValue = -1.2f,
+        targetValue = 1.2f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(3_600),
+            repeatMode = RepeatMode.Reverse,
+        ),
+        label = "trafficDockTilt",
+    )
+    val dockFloat by dockMotion.animateFloat(
+        initialValue = -1.5f,
+        targetValue = 1.5f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(2_800),
+            repeatMode = RepeatMode.Reverse,
+        ),
+        label = "trafficDockFloat",
+    )
+
     Card(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .graphicsLayer {
+                rotationX = dockTilt
+                translationY = dockFloat
+                shadowElevation = 18f
+                cameraDistance = 24f * density
+            },
         shape = RoundedCornerShape(24.dp),
         colors = CardDefaults.cardColors(containerColor = Color(0xAA101317)),
     ) {
@@ -1073,6 +1211,58 @@ private fun TrafficDock(
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun LivingBackground(
+    active: Boolean,
+    modifier: Modifier = Modifier.fillMaxSize(),
+) {
+    val transition = rememberInfiniteTransition(label = "livingBackground")
+    val phase by transition.animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(if (active) 12_000 else 18_000),
+            repeatMode = RepeatMode.Restart,
+        ),
+        label = "livingBackgroundPhase",
+    )
+
+    Canvas(modifier = modifier) {
+        repeat(18) { index ->
+            val seed = index * 0.61803398875
+            val baseX = ((seed % 1.0) * size.width).toFloat()
+            val wave = sin(phase.toDouble() * 2.0 * PI + index * 0.73).toFloat()
+            val x = (baseX + wave * size.width * 0.035f)
+                .coerceIn(0f, size.width)
+            val yCycle = (phase + (index / 18f)) % 1f
+            val y = size.height * (1.08f - yCycle * 1.16f)
+            val depth = 0.35f + ((index % 5) / 5f)
+            val radius = 1.2f + depth * 3.4f
+            drawCircle(
+                color = (if (active) Accent else Color.White).copy(
+                    alpha = (0.025f + depth * if (active) 0.085f else 0.035f),
+                ),
+                radius = radius,
+                center = Offset(x, y),
+            )
+        }
+
+        val glowX = size.width * (0.25f + 0.5f * phase)
+        drawCircle(
+            brush = Brush.radialGradient(
+                colors = listOf(
+                    (if (active) Accent else Color(0xFF547080)).copy(alpha = 0.07f),
+                    Color.Transparent,
+                ),
+                center = Offset(glowX, size.height * 0.34f),
+                radius = size.minDimension * 0.75f,
+            ),
+            radius = size.minDimension * 0.75f,
+            center = Offset(glowX, size.height * 0.34f),
+        )
     }
 }
 
@@ -1241,13 +1431,8 @@ private fun ErrorNotice(message: String) {
     )
 }
 
-private fun formatElapsed(seconds: Long): String {
-    val safe = seconds.coerceAtLeast(0L)
-    val hours = safe / 3_600L
-    val minutes = (safe % 3_600L) / 60L
-    val secs = safe % 60L
-    return String.format(Locale.US, "%02d:%02d:%02d", hours, minutes, secs)
-}
+private fun formatElapsed(seconds: Long): String =
+    PersianDateTime.formatDuration(seconds)
 
 private fun formatBytes(bytes: Long): String {
     val safe = bytes.coerceAtLeast(0L).toDouble()
@@ -1261,11 +1446,5 @@ private fun formatBytes(bytes: Long): String {
     }
 }
 
-private fun formatExpiry(expiresAt: Long?): String {
-    if (expiresAt == null || expiresAt <= 0L) return "نامحدود"
-    return runCatching {
-        val formatter = DateTimeFormatter.ofPattern("yyyy/MM/dd", Locale.US)
-            .withZone(ZoneId.systemDefault())
-        formatter.format(Instant.ofEpochSecond(expiresAt))
-    }.getOrDefault("—")
-}
+private fun formatExpiry(expiresAt: Long?): String =
+    PersianDateTime.formatEpochSeconds(expiresAt, includeTime = true)
