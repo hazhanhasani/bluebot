@@ -403,10 +403,11 @@ private fun PremiumDashboard(
     val visualConnected = visualState as? VpnConnectionState.Connected
     val visualIsConnected = visualConnected != null
     val visualIsConnecting = visualState is VpnConnectionState.Connecting
+    val stateTransitioning = visualState != vpnState
 
     var elapsedSeconds by remember { mutableStateOf(0L) }
-    LaunchedEffect(connected?.connectedAtElapsedRealtime) {
-        val startedAt = connected?.connectedAtElapsedRealtime
+    LaunchedEffect(visualConnected?.connectedAtElapsedRealtime) {
+        val startedAt = visualConnected?.connectedAtElapsedRealtime
         if (startedAt == null) {
             elapsedSeconds = 0L
             return@LaunchedEffect
@@ -537,8 +538,8 @@ private fun PremiumDashboard(
             Spacer(Modifier.height(14.dp))
 
             StatusStrip(
-                connected = isConnected,
-                connecting = isConnecting,
+                connected = visualIsConnected,
+                connecting = visualIsConnecting,
                 serviceCount = services.size,
             )
 
@@ -553,7 +554,7 @@ private fun PremiumDashboard(
                         ServiceSelectorPill(
                             service = service,
                             selected = service.id == selected?.id,
-                            connected = connected?.serviceId == service.id,
+                            connected = visualConnected?.serviceId == service.id,
                             onClick = {
                                 if (!isConnected && !isConnecting) selectedId = service.id
                             },
@@ -587,9 +588,10 @@ private fun PremiumDashboard(
             Spacer(Modifier.height(4.dp))
 
             PowerControl(
-                connected = isConnected,
-                connecting = isConnecting,
-                enabled = selected?.supported == true || isConnected || isConnecting,
+                connected = visualIsConnected,
+                connecting = visualIsConnecting,
+                enabled = !stateTransitioning &&
+                    (selected?.supported == true || isConnected || isConnecting),
                 onToggle = {
                     when {
                         isConnected || isConnecting -> onDisconnect()
