@@ -14,6 +14,17 @@ val libXraySha256 = "4998a8b56e4a78a164b5359d5690036f83da3b575465cea57ddf29c0149
 val libXrayArchive = layout.buildDirectory.file("downloads/libxray-android.zip")
 val libXrayAar = layout.projectDirectory.file("libs/libXray.aar")
 
+val releaseKeystoreFile = providers.environmentVariable("ANDROID_KEYSTORE_FILE").orNull?.trim().orEmpty()
+val releaseKeystorePassword = providers.environmentVariable("ANDROID_KEYSTORE_PASSWORD").orNull.orEmpty()
+val releaseKeyAlias = providers.environmentVariable("ANDROID_KEY_ALIAS").orNull?.trim().orEmpty()
+val releaseKeyPassword = providers.environmentVariable("ANDROID_KEY_PASSWORD").orNull.orEmpty()
+val releaseSigningConfigured = listOf(
+    releaseKeystoreFile,
+    releaseKeystorePassword,
+    releaseKeyAlias,
+    releaseKeyPassword,
+).all { it.isNotBlank() }
+
 val releaseKeystoreFile = System.getenv("ANDROID_KEYSTORE_FILE")
 val releaseKeystorePassword = System.getenv("ANDROID_KEYSTORE_PASSWORD")
 val releaseKeyAlias = System.getenv("ANDROID_KEY_ALIAS")
@@ -90,6 +101,26 @@ android {
         getByName("release") {
             signingConfig = signingConfigs.getByName("release")
             isMinifyEnabled = false
+        }
+    }
+
+    signingConfigs {
+        if (releaseSigningConfigured) {
+            create("release") {
+                storeFile = file(releaseKeystoreFile)
+                storePassword = releaseKeystorePassword
+                keyAlias = releaseKeyAlias
+                keyPassword = releaseKeyPassword
+            }
+        }
+    }
+
+    buildTypes {
+        getByName("release") {
+            isMinifyEnabled = false
+            if (releaseSigningConfigured) {
+                signingConfig = signingConfigs.getByName("release")
+            }
         }
     }
 
