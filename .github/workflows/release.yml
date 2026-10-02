@@ -107,29 +107,81 @@ jobs:
           echo "file=${FILE}" >> "$GITHUB_OUTPUT"
           unzip -l "${FILE}" | tail -1
 
+      - name: Check Android release signing
+        id: android_signing
+        shell: bash
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          if [ -n "$KEYSTORE_BASE64" ] \
+            && [ -n "$KEYSTORE_PASSWORD" ] \
+            && [ -n "$KEY_ALIAS" ] \
+            && [ -n "$KEY_PASSWORD" ]; then
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::Android release signing secrets are not configured. The hosting bundle will still be released, but no Android APK will be published."
+          fi
+
       - name: Set up JDK 17 for Android
+        if: steps.android_signing.outputs.configured == 'true'
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
 
       - name: Set up Gradle 9.6 for Android
+        if: steps.android_signing.outputs.configured == 'true'
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '9.6.0'
 
-      - name: Build installable Android APK
-        run: gradle -p android-client :app:assembleDebug --stacktrace
+      - name: Restore permanent Android signing keystore
+        if: steps.android_signing.outputs.configured == 'true'
+        shell: bash
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          KEYSTORE_FILE="$RUNNER_TEMP/blue-vpn-release.jks"
+          printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$KEYSTORE_FILE"
+          chmod 600 "$KEYSTORE_FILE"
+          echo "ANDROID_KEYSTORE_FILE=$KEYSTORE_FILE" >> "$GITHUB_ENV"
+          echo "ANDROID_KEYSTORE_PASSWORD=$KEYSTORE_PASSWORD" >> "$GITHUB_ENV"
+          echo "ANDROID_KEY_ALIAS=$KEY_ALIAS" >> "$GITHUB_ENV"
+          echo "ANDROID_KEY_PASSWORD=$KEY_PASSWORD" >> "$GITHUB_ENV"
+
+      - name: Build signed Android release APK
+        if: steps.android_signing.outputs.configured == 'true'
+        run: gradle -p android-client :app:assembleRelease --stacktrace
+
+      - name: Verify Android APK signature
+        if: steps.android_signing.outputs.configured == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK="android-client/app/build/outputs/apk/release/app-release.apk"
+          APKSIGNER="$(find "$ANDROID_HOME/build-tools" -type f -name apksigner | sort -V | tail -1)"
+          test -n "$APKSIGNER"
+          "$APKSIGNER" verify --verbose --print-certs "$APK"
 
       - name: Prepare Android release asset
+        if: steps.android_signing.outputs.configured == 'true'
         id: android
         shell: bash
         env:
           TAG: ${{ steps.version.outputs.tag }}
         run: |
           set -euo pipefail
-          APK="blue-panel-android-${TAG}.apk"
-          cp android-client/app/build/outputs/apk/debug/app-debug.apk "${APK}"
+          APK="blue-vpn-android-${TAG}.apk"
+          cp android-client/app/build/outputs/apk/release/app-release.apk "${APK}"
           echo "file=${APK}" >> "$GITHUB_OUTPUT"
           sha256sum "${APK}"
 
@@ -155,4 +207,8 @@ jobs:
               --latest
           fi
 
-          gh release upload "$TAG" "$FILE" "$APK" --clobber
+          FILES=("$FILE")
+          if [ -n "$APK" ] && [ -f "$APK" ]; then
+            FILES+=("$APK")
+          fi
+          gh release upload "$TAG" "${FILES[@]}" --clobber
