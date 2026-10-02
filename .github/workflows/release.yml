@@ -118,20 +118,68 @@ jobs:
         with:
           gradle-version: '9.6.0'
 
-      - name: Build installable Android APK
-        run: gradle -p android-client :app:assembleDebug --stacktrace
+      - name: Prepare permanent Android signing key
+        shell: bash
+        env:
+          KEYSTORE_B64: ${{ secrets.BLUE_PANEL_ANDROID_KEYSTORE_B64 }}
+          STORE_PASSWORD: ${{ secrets.BLUE_PANEL_ANDROID_KEYSTORE_PASSWORD }}
+          KEY_PASSWORD: ${{ secrets.BLUE_PANEL_ANDROID_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
 
-      - name: Prepare Android release asset
+          test -n "$KEYSTORE_B64" || { echo "Missing BLUE_PANEL_ANDROID_KEYSTORE_B64" >&2; exit 1; }
+          test -n "$STORE_PASSWORD" || { echo "Missing BLUE_PANEL_ANDROID_KEYSTORE_PASSWORD" >&2; exit 1; }
+          test -n "$KEY_PASSWORD" || { echo "Missing BLUE_PANEL_ANDROID_KEY_PASSWORD" >&2; exit 1; }
+
+          KEYSTORE_PATH="$RUNNER_TEMP/blue-panel-release.jks"
+          printf '%s' "$KEYSTORE_B64" | base64 --decode > "$KEYSTORE_PATH"
+          chmod 600 "$KEYSTORE_PATH"
+
+          EXPECTED="B45B0E46B1AF8A74EC6D4322C3D29FCD6130915D1F66EB83C7D72CAE29441204"
+          ACTUAL="$(keytool -list -v             -keystore "$KEYSTORE_PATH"             -storepass "$STORE_PASSWORD"             -alias blue-panel-release             | awk -F': ' '/SHA256:/{gsub(":","",$2); print toupper($2); exit}')"
+
+          if [ "$ACTUAL" != "$EXPECTED" ]; then
+            echo "Unexpected Blue Panel signing certificate: $ACTUAL" >&2
+            exit 1
+          fi
+
+          echo "BLUE_PANEL_KEYSTORE_PATH=$KEYSTORE_PATH" >> "$GITHUB_ENV"
+
+      - name: Build signed Android release APK
+        env:
+          BLUE_PANEL_KEYSTORE_PASSWORD: ${{ secrets.BLUE_PANEL_ANDROID_KEYSTORE_PASSWORD }}
+          BLUE_PANEL_KEY_PASSWORD: ${{ secrets.BLUE_PANEL_ANDROID_KEY_PASSWORD }}
+        run: gradle -p android-client :app:assembleRelease --stacktrace
+
+      - name: Prepare and verify Android release asset
         id: android
         shell: bash
         env:
           TAG: ${{ steps.version.outputs.tag }}
         run: |
           set -euo pipefail
+
+          SOURCE="android-client/app/build/outputs/apk/release/app-release.apk"
+          test -f "$SOURCE"
+
           APK="blue-panel-android-${TAG}.apk"
-          cp android-client/app/build/outputs/apk/debug/app-debug.apk "${APK}"
+          cp "$SOURCE" "$APK"
+
+          APKSIGNER="$(find "$ANDROID_HOME/build-tools" -type f -name apksigner | sort -V | tail -n 1)"
+          test -x "$APKSIGNER"
+
+          "$APKSIGNER" verify --verbose --print-certs "$APK"
+
+          EXPECTED="B45B0E46B1AF8A74EC6D4322C3D29FCD6130915D1F66EB83C7D72CAE29441204"
+          ACTUAL="$("$APKSIGNER" verify --print-certs "$APK"             | awk -F': ' '/Signer #1 certificate SHA-256 digest:/{gsub(":","",$2); print toupper($2); exit}')"
+
+          if [ "$ACTUAL" != "$EXPECTED" ]; then
+            echo "Published APK certificate mismatch: $ACTUAL" >&2
+            exit 1
+          fi
+
           echo "file=${APK}" >> "$GITHUB_OUTPUT"
-          sha256sum "${APK}"
+          sha256sum "$APK"
 
       - name: Publish stable GitHub release
         env:
