@@ -49,6 +49,15 @@ $checks = [
     [str_contains($manager, "statusesNormalized"), 'generic SMM reconciliation must use batch status when available'],
     [str_contains($manager, "bulk_requests"), 'generic SMM batch reconciliation diagnostics missing'],
 
+    [str_contains($manager, "providerEnabled"), 'per-provider enable-state reader missing'],
+    [str_contains($manager, "setProviderEnabled"), 'per-provider enable-state writer missing'],
+    [str_contains($manager, "provider_enabled_"), 'provider enable-state storage key missing'],
+    [str_contains($manager, "WHERE provider = ?"), 'provider disable must deactivate provider products'],
+    [str_contains($manager, "!self::providerEnabled($pdo, $provider)"), 'active product lookup must reject disabled providers'],
+    [str_contains($panel, "toggle_provider_enabled"), 'provider enable/disable panel action missing'],
+    [str_contains($digitalServicesCron, "providerEnabled($pdo, 'tgtools')"), 'disabled TGTools must skip catalog cron traffic'],
+    [str_contains($providerCatalog, "SET active = 0, updated_at = NOW()"), 'provider catalog disable must hide products'],
+
     [str_contains($manager, "providerApprovalMode"), 'per-provider approval mode reader missing'],
     [str_contains($manager, "setProviderApprovalMode"), 'per-provider approval mode writer missing'],
     [str_contains($manager, "provider_approval_"), 'provider approval mode storage key missing'],
