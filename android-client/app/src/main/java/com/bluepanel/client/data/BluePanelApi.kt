@@ -12,6 +12,7 @@ import java.net.URLEncoder
 class BluePanelApi(private val sessionStore: SessionStore) {
     suspend fun login(username: String, password: String): LoginResult = withContext(Dispatchers.IO) {
         val body = JSONObject()
+            .put("action", "login")
             .put("username", username.trim())
             .put("password", password)
             .put("device_id", sessionStore.deviceId)
@@ -67,7 +68,14 @@ class BluePanelApi(private val sessionStore: SessionStore) {
     }
 
     suspend fun logout() = withContext(Dispatchers.IO) {
-        runCatching { request("logout", "POST", JSONObject(), authenticated = true) }
+        runCatching {
+            request(
+                action = "logout",
+                method = "POST",
+                body = JSONObject().put("action", "logout"),
+                authenticated = true,
+            )
+        }
         sessionStore.clear()
     }
 
@@ -96,38 +104,132 @@ class BluePanelApi(private val sessionStore: SessionStore) {
         authenticated: Boolean,
         params: Map<String, String> = emptyMap(),
     ): JSONObject {
-        val query = buildString {
-            append("action=").append(encode(action))
-            params.forEach { (key, value) -> append('&').append(encode(key)).append('=').append(encode(value)) }
+        val normalizedMethod = method.uppercase()
+        val requestBody = if (normalizedMethod == "POST") {
+            JSONObject((body ?: JSONObject()).toString()).apply {
+                if (!has("action")) put("action", action)
+            }
+        } else {
+            body
         }
-        val separator = if (BuildConfig.BLUEBOT_API_BASE.contains('?')) '&' else '?'
-        val url = URI(BuildConfig.BLUEBOT_API_BASE + separator + query).toURL()
-        val connection = url.openConnection() as HttpURLConnection
-        try {
-            connection.requestMethod = method
-            connection.connectTimeout = 12_000
-            connection.readTimeout = 15_000
-            connection.setRequestProperty("Accept", "application/json")
-            connection.setRequestProperty("X-Device-Id", sessionStore.deviceId)
-            if (authenticated) {
-                val token = sessionStore.token() ?: error("Session expired")
-                connection.setRequestProperty("Authorization", "Bearer $token")
+
+        val query = buildList {
+            if (normalizedMethod != "POST") add("action=${encode(action)}")
+            params.forEach { (key, value) -> add("${encode(key)}=${encode(value)}") }
+        }.joinToString("&")
+
+        val initialUri = if (query.isBlank()) {
+            URI(BuildConfig.BLUEBOT_API_BASE)
+        } else {
+            val separator = if (BuildConfig.BLUEBOT_API_BASE.contains('?')) '&' else '?'
+            URI(BuildConfig.BLUEBOT_API_BASE + separator + query)
+        }
+
+        return executeJsonRequest(
+            initialUri = initialUri,
+            method = normalizedMethod,
+            body = requestBody,
+            authenticated = authenticated,
+        )
+    }
+
+    private fun executeJsonRequest(
+        initialUri: URI,
+        method: String,
+        body: JSONObject?,
+        authenticated: Boolean,
+    ): JSONObject {
+        val apiOrigin = URI(BuildConfig.BLUEBOT_API_BASE)
+        var currentUri = initialUri
+
+        repeat(MAX_REDIRECTS + 1) { attempt ->
+            val connection = currentUri.toURL().openConnection() as HttpURLConnection
+            try {
+                connection.instanceFollowRedirects = false
+                connection.requestMethod = method
+                connection.connectTimeout = 12_000
+                connection.readTimeout = 15_000
+                connection.setRequestProperty("Accept", "application/json")
+                connection.setRequestProperty("User-Agent", "BluePanel-Android/${BuildConfig.VERSION_NAME}")
+                connection.setRequestProperty("X-BluePanel-Client", "android")
+                connection.setRequestProperty("X-Device-Id", sessionStore.deviceId)
+
+                if (authenticated) {
+                    val token = sessionStore.token() ?: error("Session expired")
+                    connection.setRequestProperty("Authorization", "Bearer $token")
+                }
+
+                if (body != null) {
+                    connection.doOutput = true
+                    connection.setRequestProperty("Content-Type", "application/json; charset=utf-8")
+                    connection.outputStream.use {
+                        it.write(body.toString().toByteArray(Charsets.UTF_8))
+                    }
+                }
+
+                val status = connection.responseCode
+
+                if (status in REDIRECT_CODES) {
+                    if (attempt >= MAX_REDIRECTS) error("Too many API redirects")
+                    val location = connection.getHeaderField("Location")
+                        ?.trim()
+                        ?.takeIf { it.isNotEmpty() }
+                        ?: error("API redirect did not provide a Location header")
+
+                    val nextUri = currentUri.resolve(location)
+                    validateRedirect(apiOrigin, nextUri)
+                    currentUri = nextUri
+                    return@repeat
+                }
+
+                val raw = (if (status in 200..299) connection.inputStream else connection.errorStream)
+                    ?.bufferedReader()
+                    ?.use { it.readText() }
+                    .orEmpty()
+
+                val root = runCatching { JSONObject(raw) }
+                    .getOrElse {
+                        error(
+                            if (status == 405) {
+                                "ورود توسط وب‌سرور با روش اشتباه دریافت شد (HTTP 405)."
+                            } else {
+                                "Invalid server response (HTTP $status)"
+                            },
+                        )
+                    }
+
+                if (!root.optBoolean("success", false)) {
+                    error(root.optString("message", "Request failed"))
+                }
+
+                return root.optJSONObject("data") ?: JSONObject()
+            } finally {
+                connection.disconnect()
             }
-            if (body != null) {
-                connection.doOutput = true
-                connection.setRequestProperty("Content-Type", "application/json; charset=utf-8")
-                connection.outputStream.use { it.write(body.toString().toByteArray(Charsets.UTF_8)) }
-            }
-            val status = connection.responseCode
-            val raw = (if (status in 200..299) connection.inputStream else connection.errorStream)
-                ?.bufferedReader()?.use { it.readText() }.orEmpty()
-            val root = runCatching { JSONObject(raw) }.getOrElse { error("Invalid server response") }
-            if (!root.optBoolean("success", false)) error(root.optString("message", "Request failed"))
-            return root.optJSONObject("data") ?: JSONObject()
-        } finally {
-            connection.disconnect()
+        }
+
+        error("API request failed")
+    }
+
+    private fun validateRedirect(apiOrigin: URI, target: URI) {
+        require(target.scheme.equals("https", ignoreCase = true)) {
+            "Unsafe API redirect blocked"
+        }
+        require(target.host.equals(apiOrigin.host, ignoreCase = true)) {
+            "Cross-domain API redirect blocked"
         }
     }
 
     private fun encode(value: String): String = URLEncoder.encode(value, Charsets.UTF_8.name())
+
+    private companion object {
+        const val MAX_REDIRECTS = 3
+        val REDIRECT_CODES = setOf(
+            HttpURLConnection.HTTP_MOVED_PERM,
+            HttpURLConnection.HTTP_MOVED_TEMP,
+            HttpURLConnection.HTTP_SEE_OTHER,
+            307,
+            308,
+        )
+    }
 }
