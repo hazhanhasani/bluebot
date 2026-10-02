@@ -41,8 +41,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
@@ -543,25 +541,7 @@ private fun PremiumDashboard(
                 serviceCount = services.size,
             )
 
-            Spacer(Modifier.height(14.dp))
-
-            if (services.isNotEmpty()) {
-                LazyRow(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    items(services, key = { it.id }) { service ->
-                        ServiceSelectorPill(
-                            service = service,
-                            selected = service.id == selected?.id,
-                            connected = visualConnected?.serviceId == service.id,
-                            onClick = {
-                                if (!isConnected && !isConnecting) selectedId = service.id
-                            },
-                        )
-                    }
-                }
-            }
+            Spacer(Modifier.height(8.dp))
 
             if (updateInfo != null) {
                 Spacer(Modifier.height(10.dp))
@@ -652,65 +632,6 @@ private fun StatusStrip(
             color = Color.White.copy(alpha = 0.60f),
             fontWeight = FontWeight.Bold,
             fontSize = 12.sp,
-        )
-    }
-}
-
-@Composable
-private fun ServiceSelectorPill(
-    service: ServiceSummary,
-    selected: Boolean,
-    connected: Boolean,
-    onClick: () -> Unit,
-) {
-    val label = service.productName.ifBlank { service.username }
-    val background = when {
-        connected -> Accent.copy(alpha = 0.20f)
-        selected -> Color.White.copy(alpha = 0.16f)
-        else -> Color.Black.copy(alpha = 0.18f)
-    }
-
-    val pillScale by animateFloatAsState(
-        targetValue = if (selected || connected) 1.018f else 1f,
-        animationSpec = spring(
-            dampingRatio = Spring.DampingRatioMediumBouncy,
-            stiffness = Spring.StiffnessMediumLow,
-        ),
-        label = "servicePillScale",
-    )
-
-    Row(
-        modifier = Modifier
-            .graphicsLayer {
-                scaleX = pillScale
-                scaleY = pillScale
-                shadowElevation = if (selected || connected) 5f else 0f
-            }
-            .clip(RoundedCornerShape(50))
-            .background(background)
-            .clickable(onClick = onClick)
-            .padding(horizontal = 13.dp, vertical = 9.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Box(
-            modifier = Modifier
-                .size(9.dp)
-                .background(
-                    if (service.supported) {
-                        if (connected) Accent else Color(0xFF7E8B96)
-                    } else {
-                        Color(0xFFFFA65C)
-                    },
-                    CircleShape,
-                ),
-        )
-        Spacer(Modifier.width(7.dp))
-        Text(
-            label,
-            color = Color.White.copy(alpha = if (selected || connected) 1f else 0.68f),
-            fontWeight = if (selected || connected) FontWeight.ExtraBold else FontWeight.Medium,
-            fontSize = 11.sp,
-            maxLines = 1,
         )
     }
 }
