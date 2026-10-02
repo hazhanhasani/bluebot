@@ -459,8 +459,14 @@ final class BluebotProviderCatalogService
             $deleteProvider = $pdo->prepare("DELETE FROM digital_service_providers WHERE provider_key = ?");
             $deleteProvider->execute([$providerKey]);
 
-            $deleteApproval = $pdo->prepare("DELETE FROM digital_service_settings WHERE setting_key = ?");
-            $deleteApproval->execute(['provider_approval_' . $providerKey]);
+            $deleteSettings = $pdo->prepare(
+                "DELETE FROM digital_service_settings
+                 WHERE setting_key IN (?, ?)"
+            );
+            $deleteSettings->execute([
+                'provider_approval_' . $providerKey,
+                'provider_enabled_' . $providerKey,
+            ]);
 
             $pdo->commit();
             return true;
