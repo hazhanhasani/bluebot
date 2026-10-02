@@ -933,10 +933,10 @@ private fun PowerControl(
     enabled: Boolean,
     onToggle: () -> Unit,
 ) {
-    val density = LocalDensity.current
+    val localDensity = LocalDensity.current
     val travelDp = 56.dp
-    val travelPx = with(density) { travelDp.toPx() }
-    val topPaddingPx = with(density) { 8.dp.toPx() }
+    val travelPx = with(localDensity) { travelDp.toPx() }
+    val topPaddingPx = with(localDensity) { 8.dp.toPx() }
 
     var dragDeltaPx by remember { mutableFloatStateOf(0f) }
     var dragging by remember { mutableStateOf(false) }
