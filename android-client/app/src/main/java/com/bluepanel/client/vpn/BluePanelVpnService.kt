@@ -82,7 +82,7 @@ class BluePanelVpnService : VpnService() {
                 val sourceText = api.connectionText(profile)
 
                 val tun = Builder()
-                    .setSession("Blue Panel")
+                    .setSession("Blue VPN")
                     .setMtu(1500)
                     .addAddress("172.19.0.1", 30)
                     .addAddress("fdfe:dcba:9876::1", 126)
@@ -133,10 +133,10 @@ class BluePanelVpnService : VpnService() {
             manager.createNotificationChannel(
                 NotificationChannel(
                     CHANNEL_ID,
-                    "Blue Panel Connection",
+                    "Blue VPN Connection",
                     NotificationManager.IMPORTANCE_LOW,
                 ).apply {
-                    description = "وضعیت اتصال امن Blue Panel"
+                    description = "وضعیت اتصال امن Blue VPN"
                     setShowBadge(false)
                 },
             )

@@ -9,13 +9,26 @@ plugins {
 
 val blueBotApi = providers.gradleProperty("BLUEBOT_API_BASE")
     .orElse("https://bot.blluepanel.ir/api/client.php")
+
 val libXrayVersion = "26.9.9"
 val libXraySha256 = "4998a8b56e4a78a164b5359d5690036f83da3b575465cea57ddf29c0149c345f"
 val libXrayArchive = layout.buildDirectory.file("downloads/libxray-android.zip")
 val libXrayAar = layout.projectDirectory.file("libs/libXray.aar")
 
+val releaseKeystoreFile = System.getenv("ANDROID_KEYSTORE_FILE")?.trim()
+val releaseKeystorePassword = System.getenv("ANDROID_KEYSTORE_PASSWORD")
+val releaseKeyAlias = System.getenv("ANDROID_KEY_ALIAS")?.trim()
+val releaseKeyPassword = System.getenv("ANDROID_KEY_PASSWORD")
+val releaseSigningConfigured = listOf(
+    releaseKeystoreFile,
+    releaseKeystorePassword,
+    releaseKeyAlias,
+    releaseKeyPassword,
+).all { !it.isNullOrBlank() }
+
 val prepareLibXray by tasks.registering {
     outputs.file(libXrayAar)
+
     doLast {
         val archive = libXrayArchive.get().asFile
         val aar = libXrayAar.asFile
@@ -23,8 +36,12 @@ val prepareLibXray by tasks.registering {
         aar.parentFile.mkdirs()
 
         if (!archive.exists()) {
-            val url = URI("https://github.com/XTLS/libXray/releases/download/v$libXrayVersion/libxray-android.zip").toURL()
-            url.openStream().use { input -> archive.outputStream().use { input.copyTo(it) } }
+            val url = URI(
+                "https://github.com/XTLS/libXray/releases/download/v$libXrayVersion/libxray-android.zip"
+            ).toURL()
+            url.openStream().use { input ->
+                archive.outputStream().use { output -> input.copyTo(output) }
+            }
         }
 
         val digest = MessageDigest.getInstance("SHA-256")
@@ -36,15 +53,20 @@ val prepareLibXray by tasks.registering {
                 digest.update(buffer, 0, read)
             }
         }
+
         val actual = digest.digest().joinToString("") { "%02x".format(it) }
         check(actual == libXraySha256) {
             "libXray checksum mismatch: expected $libXraySha256, got $actual"
         }
 
         ZipFile(archive).use { zip ->
-            val entry = zip.entries().asSequence().firstOrNull { !it.isDirectory && it.name.endsWith(".aar") }
+            val entry = zip.entries().asSequence()
+                .firstOrNull { !it.isDirectory && it.name.endsWith(".aar") }
                 ?: error("No AAR found inside libxray-android.zip")
-            zip.getInputStream(entry).use { input -> aar.outputStream().use { input.copyTo(it) } }
+
+            zip.getInputStream(entry).use { input ->
+                aar.outputStream().use { output -> input.copyTo(output) }
+            }
         }
     }
 }
@@ -57,11 +79,29 @@ android {
         applicationId = "com.bluepanel.client"
         minSdk = 26
         targetSdk = 37
-        versionCode = 3
-        versionName = "0.2.0"
+        versionCode = 4
+        versionName = "0.3.0"
 
         buildConfigField("String", "BLUEBOT_API_BASE", "\"${blueBotApi.get()}\"")
         buildConfigField("String", "XRAY_CORE_VERSION", "\"$libXrayVersion\"")
+    }
+
+    signingConfigs {
+        create("release") {
+            if (releaseSigningConfigured) {
+                storeFile = file(releaseKeystoreFile!!)
+                storePassword = releaseKeystorePassword
+                keyAlias = releaseKeyAlias
+                keyPassword = releaseKeyPassword
+            }
+        }
+    }
+
+    buildTypes {
+        getByName("release") {
+            signingConfig = signingConfigs.getByName("release")
+            isMinifyEnabled = false
+        }
     }
 
     buildFeatures {
@@ -78,12 +118,34 @@ android {
         resources.excludes += setOf(
             "META-INF/DEPENDENCIES",
             "META-INF/LICENSE*",
-            "META-INF/NOTICE*"
+            "META-INF/NOTICE*",
         )
     }
 }
 
-tasks.named("preBuild").configure { dependsOn(prepareLibXray) }
+val verifyReleaseSigning by tasks.registering {
+    doLast {
+        check(releaseSigningConfigured) {
+            "Release signing is not configured. Set ANDROID_KEYSTORE_FILE, " +
+                "ANDROID_KEYSTORE_PASSWORD, ANDROID_KEY_ALIAS and ANDROID_KEY_PASSWORD."
+        }
+
+        val keystore = file(releaseKeystoreFile!!)
+        check(keystore.isFile) {
+            "Release keystore file does not exist: $releaseKeystoreFile"
+        }
+    }
+}
+
+tasks.named("preBuild").configure {
+    dependsOn(prepareLibXray)
+}
+
+tasks.configureEach {
+    if (name == "preReleaseBuild") {
+        dependsOn(verifyReleaseSigning)
+    }
+}
 
 dependencies {
     implementation(files("libs/libXray.aar"))

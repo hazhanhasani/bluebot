@@ -90,7 +90,7 @@ function bluebotAppClientServiceMarkup(string $invoiceId): string
 
 function bluebotAppClientListText(int $count): string
 {
-    return "📱 <b>ورود به اپلیکیشن Blue Panel</b>\n\n"
+    return "📱 <b>ورود به اپلیکیشن Blue VPN</b>\n\n"
         . "هر اشتراک، <b>نام کاربری و رمز مستقل</b> دارد. "
         . "با اطلاعات یک سرویس، فقط همان سرویس در اپ نمایش داده می‌شود.\n\n"
         . "یکی از {$count} اشتراک زیر را انتخاب کنید:";
@@ -115,7 +115,7 @@ function bluebotAppClientExistingText(array $account, array $service): string
     $username = bluebotAppClientEscape((string) ($account['username'] ?? ''));
     $serviceTitle = bluebotAppClientEscape(bluebotAppClientServiceTitle($service));
 
-    return "📱 <b>حساب اختصاصی Blue Panel</b>\n\n"
+    return "📱 <b>حساب اختصاصی Blue VPN</b>\n\n"
         . "🛍 سرویس: <b>{$serviceTitle}</b>\n\n"
         . "👤 نام کاربری:\n<code>{$username}</code>\n\n"
         . "🔐 رمز قبلی به دلایل امنیتی قابل مشاهده نیست. "
@@ -187,7 +187,7 @@ function bluebotHandleAppClientEntry(): bool
         $services = AppClientAuth::servicesForUser($pdo, $userId);
 
         if (empty($services)) {
-            $body = "📱 <b>Blue Panel</b>\n\n"
+            $body = "📱 <b>Blue VPN</b>\n\n"
                 . "در حال حاضر اشتراک فعالی برای ساخت حساب اپلیکیشن پیدا نشد.";
             if (!$isCommand && !empty($message_id)) {
                 Editmessagetext($userId, (int) $message_id, $body, null, 'HTML');

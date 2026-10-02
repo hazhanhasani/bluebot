@@ -97,6 +97,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
         BluebotDigitalServices::setProviderApprovalMode($pdo, 'tgtools', $approvalMode);
 
+        if (!BluebotDigitalServices::providerEnabled($pdo, 'tgtools')) {
+            flash('success', 'تنظیمات TGTools ذخیره شد. ارائه‌دهنده غیرفعال است و تا زمان فعال‌سازی هیچ Sync یا سفارشی برای آن اجرا نمی‌شود.');
+            header('Location: digital_services.php#tgtools');
+            exit;
+        }
+
         $rateRefresh = BluebotDigitalServices::refreshTgToolsTonRateFromNobitex($pdo, true, 60);
 
         // TGTools owns only its own synchronized products. Other providers
@@ -133,6 +139,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 
     if ($action === 'refresh_tgtools_ton_rate') {
+        if (!BluebotDigitalServices::providerEnabled($pdo, 'tgtools')) {
+            flash('warning', 'دریافت نرخ انجام نشد؛ ابتدا این ارائه‌دهنده را فعال کنید.');
+            header('Location: digital_services.php#tgtools');
+            exit;
+        }
         $rate = BluebotDigitalServices::refreshTgToolsTonRateFromNobitex($pdo, true, 60);
         if (!empty($rate['ok'])) {
             flash(
@@ -155,6 +166,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 
     if ($action === 'sync_tgtools_catalog') {
+        if (!BluebotDigitalServices::providerEnabled($pdo, 'tgtools')) {
+            flash('warning', 'همگام‌سازی انجام نشد؛ ابتدا این ارائه‌دهنده را فعال کنید.');
+            header('Location: digital_services.php#tgtools');
+            exit;
+        }
         $catalog = BluebotDigitalServices::ensureTgToolsCatalog($pdo);
         if (!empty($catalog['ok'])) {
             $catalogMessage = 'محصولات Stars/Premium آماده شدند: '
@@ -192,6 +208,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         try {
             BluebotDigitalServices::saveTivaNovinProvider($pdo, $apiKey, $profitPercent, $syncInterval);
             BluebotDigitalServices::setProviderApprovalMode($pdo, 'tivanovin', $approvalMode);
+            if (!BluebotDigitalServices::providerEnabled($pdo, 'tivanovin')) {
+                flash('success', 'تنظیمات تیوا نوین ذخیره شد. ارائه‌دهنده غیرفعال است و تا زمان فعال‌سازی با API آن ارتباطی برقرار نمی‌شود.');
+                header('Location: digital_services.php#tivanovin');
+                exit;
+            }
             $sync = BluebotProviderCatalogService::syncProvider($pdo, 'tivanovin');
             $wallet = BluebotDigitalServices::tivaNovinWalletStatus($pdo);
 
@@ -230,6 +251,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 
     if ($action === 'sync_tivanovin_catalog') {
+        if (!BluebotDigitalServices::providerEnabled($pdo, 'tivanovin')) {
+            flash('warning', 'همگام‌سازی انجام نشد؛ ابتدا این ارائه‌دهنده را فعال کنید.');
+            header('Location: digital_services.php#tivanovin');
+            exit;
+        }
         try {
             $sync = BluebotProviderCatalogService::syncProvider($pdo, 'tivanovin');
             if (!empty($sync['ok'])) {
@@ -281,6 +307,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $syncInterval
             );
             BluebotDigitalServices::setProviderApprovalMode($pdo, 'panelbaz', $approvalMode);
+            if (!BluebotDigitalServices::providerEnabled($pdo, 'panelbaz')) {
+                flash('success', 'تنظیمات پنل باز ذخیره شد. ارائه‌دهنده غیرفعال است و تا زمان فعال‌سازی با API آن ارتباطی برقرار نمی‌شود.');
+                header('Location: digital_services.php#panelbaz');
+                exit;
+            }
             $sync = BluebotProviderCatalogService::syncProvider($pdo, 'panelbaz');
             $wallet = BluebotDigitalServices::panelBazWalletStatus($pdo);
 
@@ -315,6 +346,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 
     if ($action === 'sync_panelbaz_catalog') {
+        if (!BluebotDigitalServices::providerEnabled($pdo, 'panelbaz')) {
+            flash('warning', 'همگام‌سازی انجام نشد؛ ابتدا این ارائه‌دهنده را فعال کنید.');
+            header('Location: digital_services.php#panelbaz');
+            exit;
+        }
         try {
             $sync = BluebotProviderCatalogService::syncProvider($pdo, 'panelbaz');
             if (!empty($sync['ok'])) {
@@ -438,14 +474,44 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         exit;
     }
 
-    if ($action === 'toggle_provider_catalog') {
+    if (in_array($action, ['toggle_provider_catalog', 'toggle_provider_enabled'], true)) {
         $providerKey = strtolower(trim((string) ($_POST['provider_key'] ?? '')));
-        $provider = BluebotProviderCatalogService::findProvider($pdo, $providerKey);
-        if (is_array($provider)) {
-            BluebotProviderCatalogService::setActive($pdo, $providerKey, (int) ($provider['active'] ?? 0) !== 1);
-            flash('success', 'وضعیت ارائه‌دهنده تغییر کرد.');
+        $anchor = in_array($providerKey, ['tgtools', 'ozvinoo', 'tivanovin', 'panelbaz'], true)
+            ? $providerKey
+            : 'providers';
+
+        try {
+            $wasEnabled = BluebotDigitalServices::providerEnabled($pdo, $providerKey);
+            $enable = !$wasEnabled;
+            BluebotDigitalServices::setProviderEnabled($pdo, $providerKey, $enable);
+
+            $syncMessage = '';
+            if ($enable) {
+                if ($providerKey === 'tgtools') {
+                    $sync = BluebotDigitalServices::ensureTgToolsCatalog($pdo);
+                } elseif ($providerKey === 'ozvinoo') {
+                    $sync = BluebotDigitalServices::syncOZVinooCatalog($pdo);
+                } else {
+                    $sync = BluebotProviderCatalogService::syncProvider($pdo, $providerKey);
+                }
+
+                if (is_array($sync) && empty($sync['ok'])) {
+                    $syncMessage = ' اتصال فعال شد، اما همگام‌سازی فعلاً ناموفق بود: '
+                        . (string) ($sync['message'] ?? 'خطای نامشخص');
+                }
+            }
+
+            flash(
+                $syncMessage === '' ? 'success' : 'warning',
+                $enable
+                    ? 'ارائه‌دهنده فعال شد و محصولات قابل فروش آن دوباره آماده شدند.' . $syncMessage
+                    : 'ارائه‌دهنده غیرفعال شد؛ محصولات آن از فروش و نمایش کاربر خارج شدند.'
+            );
+        } catch (Throwable $e) {
+            flash('error', 'تغییر وضعیت ارائه‌دهنده انجام نشد: ' . $e->getMessage());
         }
-        header('Location: digital_services.php#providers');
+
+        header('Location: digital_services.php#' . $anchor);
         exit;
     }
 
@@ -504,6 +570,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         try {
             BluebotDigitalServices::setProviderApprovalMode($pdo, 'ozvinoo', $approvalMode);
+            if (!BluebotDigitalServices::providerEnabled($pdo, 'ozvinoo')) {
+                flash('success', 'تنظیمات عضوینو ذخیره شد. ارائه‌دهنده غیرفعال است و تا زمان فعال‌سازی با API آن ارتباطی برقرار نمی‌شود.');
+                header('Location: digital_services.php#ozvinoo');
+                exit;
+            }
             $sync = BluebotDigitalServices::syncOZVinooCatalog($pdo);
             if (!empty($sync['ok'])) {
                 $wallet = BluebotDigitalServices::ozvinooWalletStatus($pdo);
@@ -542,6 +613,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 
     if ($action === 'sync_ozvinoo_catalog') {
+        if (!BluebotDigitalServices::providerEnabled($pdo, 'ozvinoo')) {
+            flash('warning', 'همگام‌سازی انجام نشد؛ ابتدا این ارائه‌دهنده را فعال کنید.');
+            header('Location: digital_services.php#ozvinoo');
+            exit;
+        }
         try {
             $sync = BluebotDigitalServices::syncOZVinooCatalog($pdo);
             if (!empty($sync['ok'])) {
@@ -580,11 +656,12 @@ $nobitexPrivateKey = ds_panel_setting($pdo, 'nobitex_api_private_key');
 $tgStarsProfit = (float) ds_panel_setting($pdo, 'tgtools_stars_profit_percent', '0');
 $tgPremiumProfit = (float) ds_panel_setting($pdo, 'tgtools_premium_profit_percent', '0');
 $tgApprovalMode = BluebotDigitalServices::providerApprovalMode($pdo, 'tgtools');
+$tgEnabled = BluebotDigitalServices::providerEnabled($pdo, 'tgtools');
 BluebotDigitalServices::refreshTgToolsTonRateFromNobitex($pdo, false, 60);
 $tgTonRateStatus = BluebotDigitalServices::tgToolsTonRateStatus($pdo);
 $tgTonRateToman = (float) ($tgTonRateStatus['rate_toman'] ?? 0);
 $tgLandedTonRateToman = (float) ($tgTonRateStatus['landed_rate_toman'] ?? 0);
-$tgWalletStatus = $tgApiKey !== ''
+$tgWalletStatus = $tgEnabled && $tgApiKey !== ''
     ? BluebotDigitalServices::tgToolsWalletStatus($pdo)
     : ['ok' => false, 'configured' => false, 'balance_ton' => null, 'deposit_address' => '', 'message' => 'API Key تنظیم نشده است.'];
 $providerCatalogs = array_values(array_filter(
@@ -600,9 +677,10 @@ $tivaApiKey = is_array($tivaProvider) ? trim((string) ($tivaProvider['api_key'] 
 $tivaProfitPercent = is_array($tivaProvider) ? (float) ($tivaProvider['profit_percent'] ?? 0) : 0.0;
 $tivaSyncInterval = is_array($tivaProvider) ? max(1, (int) ($tivaProvider['sync_interval_minutes'] ?? 15)) : 15;
 $tivaApprovalMode = BluebotDigitalServices::providerApprovalMode($pdo, 'tivanovin');
+$tivaEnabled = BluebotDigitalServices::providerEnabled($pdo, 'tivanovin');
 $tivaProductCountStmt = $pdo->query("SELECT COUNT(*) FROM digital_service_products WHERE provider = 'tivanovin' AND active = 1");
 $tivaProductCount = (int) $tivaProductCountStmt->fetchColumn();
-$tivaWalletStatus = $tivaApiKey !== ''
+$tivaWalletStatus = $tivaEnabled && $tivaApiKey !== ''
     ? BluebotDigitalServices::tivaNovinWalletStatus($pdo)
     : ['ok' => false, 'configured' => false, 'balance' => null, 'currency' => 'IRR', 'message' => 'API Key تنظیم نشده است.'];
 $panelBazProvider = BluebotProviderCatalogService::findProvider($pdo, 'panelbaz');
@@ -610,20 +688,22 @@ $panelBazApiKey = is_array($panelBazProvider) ? trim((string) ($panelBazProvider
 $panelBazProfitPercent = is_array($panelBazProvider) ? (float) ($panelBazProvider['profit_percent'] ?? 0) : 0.0;
 $panelBazSyncInterval = is_array($panelBazProvider) ? max(1, (int) ($panelBazProvider['sync_interval_minutes'] ?? 15)) : 15;
 $panelBazApprovalMode = BluebotDigitalServices::providerApprovalMode($pdo, 'panelbaz');
+$panelBazEnabled = BluebotDigitalServices::providerEnabled($pdo, 'panelbaz');
 $panelBazProductCountStmt = $pdo->query("SELECT COUNT(*) FROM digital_service_products WHERE provider = 'panelbaz' AND active = 1");
 $panelBazProductCount = (int) $panelBazProductCountStmt->fetchColumn();
-$panelBazWalletStatus = $panelBazApiKey !== ''
+$panelBazWalletStatus = $panelBazEnabled && $panelBazApiKey !== ''
     ? BluebotDigitalServices::panelBazWalletStatus($pdo)
     : ['ok' => false, 'configured' => false, 'balance' => null, 'currency' => 'TOMAN', 'message' => 'API Key تنظیم نشده است.'];
 $ozApiKey = ds_panel_setting($pdo, 'ozvinoo_api_key');
 $ozProfitPercent = (float) ds_panel_setting($pdo, 'ozvinoo_profit_percent', '0');
 $ozSyncInterval = (int) ds_panel_setting($pdo, 'ozvinoo_sync_interval_minutes', '15');
 $ozApprovalMode = BluebotDigitalServices::providerApprovalMode($pdo, 'ozvinoo');
+$ozEnabled = BluebotDigitalServices::providerEnabled($pdo, 'ozvinoo');
 $ozProvider = BluebotProviderCatalogService::findProvider($pdo, 'ozvinoo');
 $ozProductCountStmt = $pdo->query("SELECT COUNT(*) FROM digital_service_products WHERE provider = 'ozvinoo' AND active = 1");
 $ozProductCount = (int) $ozProductCountStmt->fetchColumn();
 $digitalServicesMenuEnabled = BluebotDigitalServices::mainKeyboardHasDigitalServices($pdo);
-$ozWalletStatus = $ozApiKey !== ''
+$ozWalletStatus = $ozEnabled && $ozApiKey !== ''
     ? BluebotDigitalServices::ozvinooWalletStatus($pdo)
     : ['ok' => false, 'configured' => false, 'balance' => null, 'message' => 'API Key تنظیم نشده است.'];
 
@@ -650,9 +730,17 @@ include __DIR__ . '/inc/layout_head.php';
 <div class="card fade-up d1" id="tgtools">
         <div class="card-head">
             <div>
-                <div class="card-title">TGTools API</div>
+                <div class="card-title">TGTools API <?= $tgEnabled ? '· ✅ فعال' : '· ⛔ غیرفعال' ?></div>
                 <div class="card-subtitle">فروش Stars و Premium با انتخاب مستقل تأیید دستی یا ارسال خودکار؛ وضعیت سفارش خودکار پیگیری می‌شود.</div>
             </div>
+            <form method="post" style="margin:0">
+                <input type="hidden" name="_csrf" value="<?= htmlspecialchars(csrf_token()) ?>">
+                <input type="hidden" name="action" value="toggle_provider_enabled">
+                <input type="hidden" name="provider_key" value="tgtools">
+                <button class="btn <?= $tgEnabled ? 'btn-no' : 'btn-primary' ?> btn-sm" type="submit">
+                    <?= $tgEnabled ? 'غیرفعال کردن' : 'فعال کردن' ?>
+                </button>
+            </form>
         </div>
         <form method="post" class="card-body" style="display:grid;gap:12px">
             <input type="hidden" name="_csrf" value="<?= htmlspecialchars(csrf_token()) ?>">
@@ -865,9 +953,17 @@ include __DIR__ . '/inc/layout_head.php';
     <div class="card fade-up d1" id="ozvinoo">
         <div class="card-head">
             <div>
-                <div class="card-title">عضوینو / OZVinoo</div>
+                <div class="card-title">عضوینو / OZVinoo <?= $ozEnabled ? '· ✅ فعال' : '· ⛔ غیرفعال' ?></div>
                 <div class="card-subtitle">اتصال مستقیم به API رسمی Stars، Premium و شماره مجازی؛ بدون حدس‌زدن endpoint.</div>
             </div>
+            <form method="post" style="margin:0">
+                <input type="hidden" name="_csrf" value="<?= htmlspecialchars(csrf_token()) ?>">
+                <input type="hidden" name="action" value="toggle_provider_enabled">
+                <input type="hidden" name="provider_key" value="ozvinoo">
+                <button class="btn <?= $ozEnabled ? 'btn-no' : 'btn-primary' ?> btn-sm" type="submit">
+                    <?= $ozEnabled ? 'غیرفعال کردن' : 'فعال کردن' ?>
+                </button>
+            </form>
         </div>
         <form method="post" class="card-body" style="display:grid;gap:12px" data-ozvinoo-sync-form>
             <input type="hidden" name="_csrf" value="<?= htmlspecialchars(csrf_token()) ?>">
@@ -974,9 +1070,17 @@ include __DIR__ . '/inc/layout_head.php';
     <div class="card fade-up d1" id="tivanovin">
         <div class="card-head">
             <div>
-                <div class="card-title">TivaNovin / تیوا نوین</div>
+                <div class="card-title">TivaNovin / تیوا نوین <?= $tivaEnabled ? '· ✅ فعال' : '· ⛔ غیرفعال' ?></div>
                 <div class="card-subtitle">اتصال کامل SMM API برای دریافت سرویس‌ها، ثبت سفارش، پیگیری وضعیت و موجودی کیف پول.</div>
             </div>
+            <form method="post" style="margin:0">
+                <input type="hidden" name="_csrf" value="<?= htmlspecialchars(csrf_token()) ?>">
+                <input type="hidden" name="action" value="toggle_provider_enabled">
+                <input type="hidden" name="provider_key" value="tivanovin">
+                <button class="btn <?= $tivaEnabled ? 'btn-no' : 'btn-primary' ?> btn-sm" type="submit">
+                    <?= $tivaEnabled ? 'غیرفعال کردن' : 'فعال کردن' ?>
+                </button>
+            </form>
         </div>
 
         <form method="post" class="card-body" style="display:grid;gap:12px">
@@ -1066,9 +1170,17 @@ include __DIR__ . '/inc/layout_head.php';
     <div class="card fade-up d1" id="panelbaz">
         <div class="card-head">
             <div>
-                <div class="card-title">PanelBaz / پنل باز</div>
+                <div class="card-title">PanelBaz / پنل باز <?= $panelBazEnabled ? '· ✅ فعال' : '· ⛔ غیرفعال' ?></div>
                 <div class="card-subtitle">اتصال SMM API برای دریافت سرویس‌ها، قیمت‌گذاری مستقیم با تومان، سفارش خودکار/دستی، پیگیری وضعیت و موجودی.</div>
             </div>
+            <form method="post" style="margin:0">
+                <input type="hidden" name="_csrf" value="<?= htmlspecialchars(csrf_token()) ?>">
+                <input type="hidden" name="action" value="toggle_provider_enabled">
+                <input type="hidden" name="provider_key" value="panelbaz">
+                <button class="btn <?= $panelBazEnabled ? 'btn-no' : 'btn-primary' ?> btn-sm" type="submit">
+                    <?= $panelBazEnabled ? 'غیرفعال کردن' : 'فعال کردن' ?>
+                </button>
+            </form>
         </div>
 
         <form method="post" class="card-body" style="display:grid;gap:12px">
@@ -1300,6 +1412,7 @@ include __DIR__ . '/inc/layout_head.php';
                 <?php foreach ($providerCatalogs as $providerCatalog): ?>
                     <?php
                     $providerKey = strtolower((string) ($providerCatalog['provider_key'] ?? ''));
+                    $providerEnabled = BluebotDigitalServices::providerEnabled($pdo, $providerKey);
                     $providerApprovalMode = BluebotDigitalServices::providerApprovalMode($pdo, $providerKey);
                     $providerAutoCapable = BluebotDigitalServices::providerSupportsAutomaticDelivery($pdo, $providerKey);
                     $providerProductsPath = (string) ($providerCatalog['products_path'] ?? '');
@@ -1307,7 +1420,7 @@ include __DIR__ . '/inc/layout_head.php';
                         ? 'SMM GET (Legacy)'
                         : (str_starts_with($providerProductsPath, 'smm:') ? 'SMM POST' : 'REST/JSON');
                     ?>
-                    <div class="notice <?= (int) $providerCatalog['active'] === 1 ? 'notice-info' : 'notice-warn' ?>" style="display:flex;justify-content:space-between;gap:12px;align-items:center;flex-wrap:wrap">
+                    <div class="notice <?= $providerEnabled ? 'notice-info' : 'notice-warn' ?>" style="display:flex;justify-content:space-between;gap:12px;align-items:center;flex-wrap:wrap">
                         <div>
                             <strong><?= htmlspecialchars($providerCatalog['name']) ?></strong>
                             <span class="cell-mono"> · <?= htmlspecialchars($providerCatalog['provider_key']) ?></span>
@@ -1315,6 +1428,7 @@ include __DIR__ . '/inc/layout_head.php';
                                 سود: <?= htmlspecialchars((string) $providerCatalog['profit_percent']) ?>٪
                                 · ارز: <?= htmlspecialchars(strtoupper((string) $providerCatalog['currency'])) ?>
                                 · API: <strong><?= htmlspecialchars($providerTransportLabel) ?></strong>
+                                · وضعیت: <strong><?= $providerEnabled ? '✅ فعال' : '⛔ غیرفعال' ?></strong>
                                 · تأیید: <strong><?= $providerApprovalMode === 'automatic' ? '⚡ خودکار' : '🛡️ دستی' ?></strong>
                                 · آخرین Sync: <?= htmlspecialchars((string) ($providerCatalog['last_sync_at'] ?? '—')) ?>
                                 <?php if (!empty($providerCatalog['last_sync_status'])): ?>
@@ -1344,9 +1458,9 @@ include __DIR__ . '/inc/layout_head.php';
                             </form>
                             <form method="post">
                                 <input type="hidden" name="_csrf" value="<?= htmlspecialchars(csrf_token()) ?>">
-                                <input type="hidden" name="action" value="toggle_provider_catalog">
+                                <input type="hidden" name="action" value="toggle_provider_enabled">
                                 <input type="hidden" name="provider_key" value="<?= htmlspecialchars($providerCatalog['provider_key']) ?>">
-                                <button class="btn btn-ghost btn-sm" type="submit"><?= (int) $providerCatalog['active'] === 1 ? 'غیرفعال' : 'فعال' ?></button>
+                                <button class="btn <?= $providerEnabled ? 'btn-no' : 'btn-primary' ?> btn-sm" type="submit"><?= $providerEnabled ? 'غیرفعال' : 'فعال' ?></button>
                             </form>
                             <form method="post" data-confirm="ارائه‌دهنده حذف شود؟">
                                 <input type="hidden" name="_csrf" value="<?= htmlspecialchars(csrf_token()) ?>">

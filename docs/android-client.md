@@ -1,26 +1,30 @@
-# Blue Panel Android Client Architecture
+# Blue VPN Android Client Architecture
 
 ## Goal
 
-Provide a first-party Android VPN client for BlueBot customers. The customer authenticates with a BlueBot-generated username/password and never needs to manually copy a subscription link into a third-party client.
+Provide a first-party Android client for BlueBot customers. Customers authenticate
+with service-specific BlueBot credentials and never need to manually copy a
+subscription URL into another application.
 
 ## Trust boundaries
 
-- BlueBot owns customer identity, billing and subscription authorization.
-- The Android app receives a device-bound bearer session after password authentication.
-- `/api/client.php` returns only subscriptions owned by the authenticated BlueBot user.
+- BlueBot owns customer identity, billing and service authorization.
+- Each `app_client_accounts` row is bound to one BlueBot invoice through `invoice_id`.
+- A bearer session can read only its bound invoice/service.
+- Cross-service API requests are rejected even when the same Telegram user owns both services.
 - Panel administrator credentials remain server-side.
-- Connection profiles are transport secrets and must be sent only over HTTPS.
+- Connection profiles are returned only over HTTPS.
 
 ## Authentication
 
-`AppClientAuth` maintains three tables:
+`AppClientAuth` maintains:
 
-- `app_client_accounts`: one app identity per BlueBot user; password stored as a one-way hash.
+- `app_client_accounts`: service-scoped app identities with one-way password hashes.
 - `app_client_sessions`: SHA-256 token hashes, device binding, expiry and revocation.
 - `app_client_login_guards`: failed-login throttling.
 
-A password rotation revokes all existing client sessions.
+Legacy user-wide app accounts are disabled by the service-scope migration.
+Rotating a password revokes sessions for that app account/service.
 
 ## API
 
@@ -36,11 +40,18 @@ A password rotation revokes all existing client sessions.
 
 ### `GET /api/client.php?action=services`
 
-Returns the authenticated user's active/current invoice rows and whether each panel type is supported by the Android client.
+Returns a one-item service collection containing only the invoice bound to the
+authenticated app account.
 
 ### `GET /api/client.php?action=service&id=<invoice-id>`
 
-Returns traffic/expiry metadata plus an in-memory Xray connection source. Ownership is checked again by `id_user` and `id_invoice` before any profile is returned.
+Returns traffic/expiry metadata and the in-memory Xray connection source only
+when the requested ID matches the authenticated account's invoice.
+
+### `GET /api/client.php?action=app-version`
+
+Returns the currently published Android version, minimum version, release notes
+and HTTPS download URL.
 
 ### `POST /api/client.php?action=logout`
 
@@ -48,15 +59,20 @@ Revokes the current bearer session.
 
 ## VPN engine
 
-The app establishes Android `VpnService`, obtains the system TUN fd, then passes that fd to Xray-core through `xray.tun.fd`. `libXray` socket protection is registered so Xray's upstream sockets stay outside the Android VPN route and do not loop back into the tunnel.
+Blue VPN establishes Android `VpnService`, obtains the TUN file descriptor and
+passes it to Xray-core through `xray.tun.fd`. libXray socket protection keeps
+upstream sockets outside the Android VPN route and prevents routing loops.
 
-## Next production milestone
+## Release identity and signing
 
-- signed release APK/AAB pipeline using GitHub Environments/secrets
-- remote minimum-version / forced-update policy
-- device/session list and revoke controls
-- latency testing and automatic node selection
-- reconnect on network transitions
-- per-app routing and split tunneling
-- crash telemetry with secret redaction
-- protocol fixture tests against every enabled BlueBot panel adapter
+The Android application ID remains `com.bluepanel.client`. Official release
+APKs are built with one permanent Blue VPN signing key. GitHub Actions refuses
+to publish a release APK if the signing secrets are absent or if the produced
+certificate does not match the pinned public SHA-256 fingerprint.
+
+The 0.6.1/0.6.2 Android artifacts used temporary debug keys. Moving to the first
+permanently signed APK therefore requires a one-time uninstall of those old
+debug-signed builds. All releases after that first migration can update in place
+as long as the permanent key is preserved.
+
+See `docs/android-signing.md`.

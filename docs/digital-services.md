@@ -302,6 +302,26 @@ manual lock and returns the product to provider-managed availability.
 This rule applies consistently to OZVinoo/Callinoo, TGTools and generic catalog
 providers.
 
+## Provider enable and disable controls
+
+Every provider has an independent store-wide enable switch in **Panel → Digital Services**.
+The built-in TGTools, OZVinoo, TivaNovin and PanelBaz cards use the same control
+as generic catalog providers.
+
+Disabling a provider:
+
+- immediately deactivates its customer-facing products;
+- prevents those products from being selected at checkout;
+- stops catalog/pricing/wallet background requests for that provider where applicable;
+- preserves provider credentials, margin settings and manual/automatic delivery mode;
+- does not delete historical orders;
+- allows reconciliation of already-processing orders so an in-flight purchase is not abandoned.
+
+Re-enabling a provider triggers a catalog synchronization and restores only
+products that the provider currently exposes. Product-level `admin_disabled`
+locks remain authoritative, so a provider sync cannot override an administrator's
+manual product disable.
+
 ## Manual and automatic delivery
 
 Every supported provider can keep its own approval mode where an automatic
