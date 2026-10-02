@@ -615,7 +615,7 @@ BluebotDigitalServices::refreshTgToolsTonRateFromNobitex($pdo, false, 60);
 $tgTonRateStatus = BluebotDigitalServices::tgToolsTonRateStatus($pdo);
 $tgTonRateToman = (float) ($tgTonRateStatus['rate_toman'] ?? 0);
 $tgLandedTonRateToman = (float) ($tgTonRateStatus['landed_rate_toman'] ?? 0);
-$tgWalletStatus = $tgApiKey !== ''
+$tgWalletStatus = $tgEnabled && $tgApiKey !== ''
     ? BluebotDigitalServices::tgToolsWalletStatus($pdo)
     : ['ok' => false, 'configured' => false, 'balance_ton' => null, 'deposit_address' => '', 'message' => 'API Key تنظیم نشده است.'];
 $providerCatalogs = array_values(array_filter(
@@ -634,7 +634,7 @@ $tivaApprovalMode = BluebotDigitalServices::providerApprovalMode($pdo, 'tivanovi
 $tivaEnabled = BluebotDigitalServices::providerEnabled($pdo, 'tivanovin');
 $tivaProductCountStmt = $pdo->query("SELECT COUNT(*) FROM digital_service_products WHERE provider = 'tivanovin' AND active = 1");
 $tivaProductCount = (int) $tivaProductCountStmt->fetchColumn();
-$tivaWalletStatus = $tivaApiKey !== ''
+$tivaWalletStatus = $tivaEnabled && $tivaApiKey !== ''
     ? BluebotDigitalServices::tivaNovinWalletStatus($pdo)
     : ['ok' => false, 'configured' => false, 'balance' => null, 'currency' => 'IRR', 'message' => 'API Key تنظیم نشده است.'];
 $panelBazProvider = BluebotProviderCatalogService::findProvider($pdo, 'panelbaz');
@@ -645,7 +645,7 @@ $panelBazApprovalMode = BluebotDigitalServices::providerApprovalMode($pdo, 'pane
 $panelBazEnabled = BluebotDigitalServices::providerEnabled($pdo, 'panelbaz');
 $panelBazProductCountStmt = $pdo->query("SELECT COUNT(*) FROM digital_service_products WHERE provider = 'panelbaz' AND active = 1");
 $panelBazProductCount = (int) $panelBazProductCountStmt->fetchColumn();
-$panelBazWalletStatus = $panelBazApiKey !== ''
+$panelBazWalletStatus = $panelBazEnabled && $panelBazApiKey !== ''
     ? BluebotDigitalServices::panelBazWalletStatus($pdo)
     : ['ok' => false, 'configured' => false, 'balance' => null, 'currency' => 'TOMAN', 'message' => 'API Key تنظیم نشده است.'];
 $ozApiKey = ds_panel_setting($pdo, 'ozvinoo_api_key');
@@ -657,7 +657,7 @@ $ozProvider = BluebotProviderCatalogService::findProvider($pdo, 'ozvinoo');
 $ozProductCountStmt = $pdo->query("SELECT COUNT(*) FROM digital_service_products WHERE provider = 'ozvinoo' AND active = 1");
 $ozProductCount = (int) $ozProductCountStmt->fetchColumn();
 $digitalServicesMenuEnabled = BluebotDigitalServices::mainKeyboardHasDigitalServices($pdo);
-$ozWalletStatus = $ozApiKey !== ''
+$ozWalletStatus = $ozEnabled && $ozApiKey !== ''
     ? BluebotDigitalServices::ozvinooWalletStatus($pdo)
     : ['ok' => false, 'configured' => false, 'balance' => null, 'message' => 'API Key تنظیم نشده است.'];
 
