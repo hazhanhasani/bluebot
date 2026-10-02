@@ -80,9 +80,11 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
@@ -388,6 +390,20 @@ private fun PremiumDashboard(
     val isConnected = connected != null
     val isConnecting = vpnState is VpnConnectionState.Connecting
 
+    var visualState by remember { mutableStateOf<VpnConnectionState>(vpnState) }
+    LaunchedEffect(vpnState) {
+        val previous = visualState
+        if (vpnState is VpnConnectionState.Disconnected &&
+            previous is VpnConnectionState.Connected
+        ) {
+            delay(460L)
+        }
+        visualState = vpnState
+    }
+    val visualConnected = visualState as? VpnConnectionState.Connected
+    val visualIsConnected = visualConnected != null
+    val visualIsConnecting = visualState is VpnConnectionState.Connecting
+
     var elapsedSeconds by remember { mutableStateOf(0L) }
     LaunchedEffect(connected?.connectedAtElapsedRealtime) {
         val startedAt = connected?.connectedAtElapsedRealtime
@@ -411,11 +427,11 @@ private fun PremiumDashboard(
         }
     }
 
-    val visualActive = isConnected || isConnecting
+    val visualActive = visualIsConnected || visualIsConnecting
     val backgroundTop by animateColorAsState(
         targetValue = when {
-            isConnected -> Color(0xFF15958F)
-            isConnecting -> Color(0xFF0C5354)
+            visualIsConnected -> Color(0xFF15958F)
+            visualIsConnecting -> Color(0xFF0C5354)
             else -> Color(0xFF202124)
         },
         animationSpec = tween(650),
@@ -491,10 +507,18 @@ private fun PremiumDashboard(
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Text("Blue VPN", fontWeight = FontWeight.Black, fontSize = 18.sp)
                     Text(username, color = Color.White.copy(alpha = 0.54f), fontSize = 10.sp)
+                    Spacer(Modifier.height(3.dp))
                     Text(
                         PersianDateTime.formatEpochSeconds(nowEpochSeconds, includeTime = true),
-                        color = Color.White.copy(alpha = 0.34f),
-                        fontSize = 8.sp,
+                        color = Color.White.copy(alpha = 0.70f),
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier
+                            .background(
+                                Color.Black.copy(alpha = 0.12f),
+                                RoundedCornerShape(50),
+                            )
+                            .padding(horizontal = 8.dp, vertical = 3.dp),
                     )
                 }
 
@@ -555,7 +579,7 @@ private fun PremiumDashboard(
                     .fillMaxWidth()
                     .weight(1f)
                     .heightIn(min = 190.dp),
-                state = vpnState,
+                state = visualState,
                 elapsedSeconds = elapsedSeconds,
                 selected = selected,
             )
@@ -577,15 +601,15 @@ private fun PremiumDashboard(
             Spacer(Modifier.height(8.dp))
 
             ConnectionCaption(
-                state = vpnState,
+                state = visualState,
                 selected = selected,
             )
 
             Spacer(Modifier.height(10.dp))
 
             TrafficDock(
-                traffic = connected?.traffic,
-                expiresAt = connected?.expiresAt,
+                traffic = visualConnected?.traffic,
+                expiresAt = visualConnected?.expiresAt,
                 fallbackStatus = selected?.status.orEmpty(),
             )
 
@@ -622,7 +646,7 @@ private fun StatusStrip(
         Text("Xray", color = Color.White.copy(alpha = 0.78f), fontWeight = FontWeight.Bold, fontSize = 12.sp)
         Spacer(Modifier.width(14.dp))
         Text(
-            "$serviceCount سرویس",
+            "${PersianDateTime.toPersianDigits(serviceCount.toString())} سرویس",
             color = Color.White.copy(alpha = 0.60f),
             fontWeight = FontWeight.Bold,
             fontSize = 12.sp,
@@ -645,7 +669,7 @@ private fun ServiceSelectorPill(
     }
 
     val pillScale by animateFloatAsState(
-        targetValue = if (selected || connected) 1.035f else 1f,
+        targetValue = if (selected || connected) 1.018f else 1f,
         animationSpec = spring(
             dampingRatio = Spring.DampingRatioMediumBouncy,
             stiffness = Spring.StiffnessMediumLow,
@@ -658,9 +682,7 @@ private fun ServiceSelectorPill(
             .graphicsLayer {
                 scaleX = pillScale
                 scaleY = pillScale
-                rotationX = if (selected || connected) -2.5f else 0f
-                shadowElevation = if (selected || connected) 10f else 0f
-                cameraDistance = 18f * density
+                shadowElevation = if (selected || connected) 5f else 0f
             }
             .clip(RoundedCornerShape(50))
             .background(background)
@@ -705,28 +727,10 @@ private fun ConnectionStage(
         animationSpec = tween(320),
         label = "stageContent",
     )
-    val stageMotion = rememberInfiniteTransition(label = "stage3dMotion")
-    val tiltX by stageMotion.animateFloat(
-        initialValue = -4.5f,
-        targetValue = 4.5f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(3_200),
-            repeatMode = RepeatMode.Reverse,
-        ),
-        label = "stageTiltX",
-    )
-    val tiltY by stageMotion.animateFloat(
-        initialValue = 7f,
-        targetValue = -7f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(4_200),
-            repeatMode = RepeatMode.Reverse,
-        ),
-        label = "stageTiltY",
-    )
+    val stageMotion = rememberInfiniteTransition(label = "stageMotion")
     val floatY by stageMotion.animateFloat(
-        initialValue = -4f,
-        targetValue = 5f,
+        initialValue = -3f,
+        targetValue = 4f,
         animationSpec = infiniteRepeatable(
             animation = tween(2_700),
             repeatMode = RepeatMode.Reverse,
@@ -749,13 +753,7 @@ private fun ConnectionStage(
             active = active,
             modifier = Modifier
                 .size(globeSize)
-                .graphicsLayer {
-                    rotationX = tiltX
-                    rotationY = tiltY
-                    translationY = floatY
-                    cameraDistance = 26f * density
-                    shadowElevation = if (active) 14f else 5f
-                },
+                .offset(y = floatY.dp),
         )
 
         Column(
@@ -830,7 +828,13 @@ private fun GlobeBackdrop(
     )
 
     Canvas(modifier = modifier) {
-        val center = Offset(size.width / 2f, size.height / 2f)
+        val phaseRadians = Math.toRadians(orbitPhase.toDouble())
+        val parallaxX = cos(phaseRadians).toFloat() * size.minDimension * 0.018f
+        val parallaxY = sin(phaseRadians * 0.7).toFloat() * size.minDimension * 0.012f
+        val center = Offset(
+            size.width / 2f + parallaxX,
+            size.height / 2f + parallaxY,
+        )
         val radius = size.minDimension * (0.365f + (0.015f * pulse))
         val glow = if (active) Accent else Color.White
         val glowAlpha = if (active) 0.09f + 0.06f * pulse else 0.035f + 0.02f * pulse
@@ -875,6 +879,24 @@ private fun GlobeBackdrop(
                 end = Offset(center.x + radius * 0.88f, center.y + radius * fraction),
                 strokeWidth = 1.2f,
             )
+        }
+
+        listOf(
+            18f to 0.42f,
+            -26f to 0.33f,
+            63f to 0.26f,
+        ).forEachIndexed { index, (angle, compression) ->
+            rotate(
+                degrees = angle + orbitPhase * (if (index % 2 == 0) 0.10f else -0.08f),
+                pivot = center,
+            ) {
+                drawOval(
+                    color = glow.copy(alpha = 0.045f + index * 0.012f),
+                    topLeft = Offset(center.x - radius, center.y - radius * compression),
+                    size = Size(radius * 2f, radius * compression * 2f),
+                    style = Stroke(width = 1.25f),
+                )
+            }
         }
 
         val dots = listOf(
@@ -934,12 +956,14 @@ private fun PowerControl(
     onToggle: () -> Unit,
 ) {
     val localDensity = LocalDensity.current
+    val haptic = LocalHapticFeedback.current
     val travelDp = 56.dp
     val travelPx = with(localDensity) { travelDp.toPx() }
     val topPaddingPx = with(localDensity) { 8.dp.toPx() }
 
     var dragDeltaPx by remember { mutableFloatStateOf(0f) }
     var dragging by remember { mutableStateOf(false) }
+    var thresholdHapticSent by remember { mutableStateOf(false) }
 
     val stateTargetPx = when {
         connecting -> travelPx * 0.5f
@@ -984,14 +1008,26 @@ private fun PowerControl(
                         onDragStart = {
                             dragging = true
                             dragDeltaPx = 0f
+                            thresholdHapticSent = false
                         },
                         onVerticalDrag = { change, dragAmount ->
                             change.consume()
                             dragDeltaPx += dragAmount
+                            val candidate = (stateTargetPx + dragDeltaPx).coerceIn(0f, travelPx)
+                            val thresholdReached = if (connected) {
+                                candidate <= travelPx * 0.35f
+                            } else {
+                                candidate >= travelPx * 0.65f
+                            }
+                            if (thresholdReached && !thresholdHapticSent) {
+                                thresholdHapticSent = true
+                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                            }
                         },
                         onDragCancel = {
                             dragging = false
                             dragDeltaPx = 0f
+                            thresholdHapticSent = false
                         },
                         onDragEnd = {
                             val finalPx = (stateTargetPx + dragDeltaPx).coerceIn(0f, travelPx)
@@ -1002,6 +1038,7 @@ private fun PowerControl(
                             }
                             dragging = false
                             dragDeltaPx = 0f
+                            thresholdHapticSent = false
                             if (shouldToggle) onToggle()
                         },
                     )
@@ -1013,6 +1050,19 @@ private fun PowerControl(
                 modifier = Modifier
                     .align(if (connected) Alignment.TopCenter else Alignment.BottomCenter)
                     .padding(vertical = 12.dp),
+            )
+
+            PowerThumbGlow(
+                active = connected || dragging || connecting,
+                modifier = Modifier
+                    .offset {
+                        IntOffset(
+                            x = 0,
+                            y = (topPaddingPx + visualOffsetPx - with(localDensity) { 5.dp.toPx() }).roundToInt(),
+                        )
+                    }
+                    .align(Alignment.TopCenter)
+                    .size(100.dp),
             )
 
             Box(
@@ -1028,8 +1078,8 @@ private fun PowerControl(
                     .height(104.dp)
                     .graphicsLayer {
                         val fraction = if (travelPx > 0f) visualOffsetPx / travelPx else 0f
-                        rotationX = (0.5f - fraction) * 14f
-                        rotationY = if (dragging) dragDeltaPx.coerceIn(-20f, 20f) * 0.18f else 0f
+                        rotationX = (0.5f - fraction) * 8f
+                        rotationY = if (dragging) dragDeltaPx.coerceIn(-20f, 20f) * 0.10f else 0f
                         scaleX = if (dragging) 1.04f else 1f
                         scaleY = if (dragging) 1.04f else 1f
                         shadowElevation = if (connected) 24f else 16f
@@ -1039,6 +1089,7 @@ private fun PowerControl(
                     .background(Brush.verticalGradient(listOf(topColor, bottomColor))),
                 contentAlignment = Alignment.Center,
             ) {
+                PowerShimmer(active = connected || dragging || connecting)
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     PowerGlyph(
                         color = if (connected) Color.White else Color(0xFF252A2E),
@@ -1112,6 +1163,17 @@ private fun TrafficDock(
     val total = traffic?.totalBytes ?: 0L
     val used = traffic?.usedBytes ?: 0L
     val remaining = traffic?.remainingBytes ?: 0L
+    val animatedUsed by animateFloatAsState(
+        targetValue = used.toFloat(),
+        animationSpec = tween(900),
+        label = "animatedUsedTraffic",
+    )
+    val animatedRemaining by animateFloatAsState(
+        targetValue = remaining.toFloat(),
+        animationSpec = tween(900),
+        label = "animatedRemainingTraffic",
+    )
+    val localizedFallbackStatus = localizeServiceStatus(fallbackStatus)
     val targetProgress = if (total > 0L) {
         (used.toDouble() / total.toDouble()).coerceIn(0.0, 1.0).toFloat()
     } else {
@@ -1148,10 +1210,8 @@ private fun TrafficDock(
         modifier = Modifier
             .fillMaxWidth()
             .graphicsLayer {
-                rotationX = dockTilt
                 translationY = dockFloat
-                shadowElevation = 18f
-                cameraDistance = 24f * density
+                shadowElevation = 9f + kotlin.math.abs(dockTilt) * 2f
             },
         shape = RoundedCornerShape(24.dp),
         colors = CardDefaults.cardColors(containerColor = Color(0xAA101317)),
@@ -1167,16 +1227,16 @@ private fun TrafficDock(
                         when {
                             traffic == null -> "اطلاعات سرویس"
                             unlimited -> "حجم نامحدود"
-                            else -> "باقی‌مانده: ${formatBytes(remaining)}"
+                            else -> "باقی‌مانده: ${formatBytes(animatedRemaining.toLong())}"
                         },
                         fontWeight = FontWeight.Black,
                         fontSize = 14.sp,
                     )
                     Text(
                         when {
-                            traffic == null -> fallbackStatus.ifBlank { "آماده" }
-                            unlimited -> "مصرف: ${formatBytes(used)}"
-                            else -> "مصرف: ${formatBytes(used)} از ${formatBytes(total)}"
+                            traffic == null -> localizedFallbackStatus.ifBlank { "آماده" }
+                            unlimited -> "مصرف: ${formatBytes(animatedUsed.toLong())}"
+                            else -> "مصرف: ${formatBytes(animatedUsed.toLong())} از ${formatBytes(total)}"
                         },
                         color = Muted,
                         fontSize = 10.sp,
@@ -1215,6 +1275,71 @@ private fun TrafficDock(
 }
 
 @Composable
+private fun PowerThumbGlow(
+    active: Boolean,
+    modifier: Modifier = Modifier,
+) {
+    val transition = rememberInfiniteTransition(label = "powerGlow")
+    val pulse by transition.animateFloat(
+        initialValue = 0.72f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(if (active) 1_050 else 2_200),
+            repeatMode = RepeatMode.Reverse,
+        ),
+        label = "powerGlowPulse",
+    )
+    Canvas(modifier = modifier) {
+        val glowColor = if (active) Accent else Color.White
+        drawCircle(
+            brush = Brush.radialGradient(
+                colors = listOf(
+                    glowColor.copy(alpha = if (active) 0.18f * pulse else 0.05f),
+                    glowColor.copy(alpha = if (active) 0.05f * pulse else 0.01f),
+                    Color.Transparent,
+                ),
+                center = center,
+                radius = size.minDimension * 0.62f,
+            ),
+            radius = size.minDimension * 0.62f,
+            center = center,
+        )
+    }
+}
+
+@Composable
+private fun PowerShimmer(
+    active: Boolean,
+    modifier: Modifier = Modifier.fillMaxSize(),
+) {
+    val transition = rememberInfiniteTransition(label = "powerShimmer")
+    val phase by transition.animateFloat(
+        initialValue = -0.35f,
+        targetValue = 1.35f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(if (active) 1_500 else 3_400),
+            repeatMode = RepeatMode.Restart,
+        ),
+        label = "powerShimmerPhase",
+    )
+    Canvas(modifier = modifier) {
+        val center = Offset(size.width * phase, size.height * 0.28f)
+        drawCircle(
+            brush = Brush.radialGradient(
+                colors = listOf(
+                    Color.White.copy(alpha = if (active) 0.20f else 0.08f),
+                    Color.Transparent,
+                ),
+                center = center,
+                radius = size.minDimension * 0.46f,
+            ),
+            radius = size.minDimension * 0.46f,
+            center = center,
+        )
+    }
+}
+
+@Composable
 private fun LivingBackground(
     active: Boolean,
     modifier: Modifier = Modifier.fillMaxSize(),
@@ -1237,13 +1362,22 @@ private fun LivingBackground(
             val wave = sin(phase.toDouble() * 2.0 * PI + index * 0.73).toFloat()
             val x = (baseX + wave * size.width * 0.035f)
                 .coerceIn(0f, size.width)
-            val yCycle = (phase + (index / 18f)) % 1f
+            val depth = 0.25f + ((index % 6) / 6f)
+            val speed = 0.48f + depth * 0.92f
+            val yCycle = (phase * speed + (index / 18f)) % 1f
             val y = size.height * (1.08f - yCycle * 1.16f)
-            val depth = 0.35f + ((index % 5) / 5f)
-            val radius = 1.2f + depth * 3.4f
+            val radius = 1.1f + depth * 3.8f
+            val particleColor = if (active) Accent else Color.White
+            if (depth > 0.78f) {
+                drawCircle(
+                    color = particleColor.copy(alpha = 0.025f),
+                    radius = radius * 2.6f,
+                    center = Offset(x, y),
+                )
+            }
             drawCircle(
-                color = (if (active) Accent else Color.White).copy(
-                    alpha = (0.025f + depth * if (active) 0.085f else 0.035f),
+                color = particleColor.copy(
+                    alpha = (0.02f + depth * if (active) 0.095f else 0.04f),
                 ),
                 radius = radius,
                 center = Offset(x, y),
@@ -1429,6 +1563,18 @@ private fun ErrorNotice(message: String) {
             .background(Color(0x332D0F0F), RoundedCornerShape(14.dp))
             .padding(horizontal = 12.dp, vertical = 9.dp),
     )
+}
+
+private fun localizeServiceStatus(status: String): String {
+    return when (status.trim().lowercase(Locale.US)) {
+        "active", "enabled", "online", "ok" -> "فعال"
+        "disabled", "inactive" -> "غیرفعال"
+        "expired", "end_of_time" -> "منقضی شده"
+        "end_of_volume", "limited" -> "حجم تمام شده"
+        "sendedwarn" -> "نزدیک به پایان"
+        "send_on_hold", "pending", "on_hold" -> "در انتظار"
+        else -> status
+    }
 }
 
 private fun formatElapsed(seconds: Long): String =
