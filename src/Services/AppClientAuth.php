@@ -23,6 +23,7 @@ final class AppClientAuth
             invoice_id VARCHAR(128) NULL,
             username VARCHAR(64) NOT NULL,
             password_hash VARCHAR(255) NOT NULL,
+            password_secret TEXT NULL,
             enabled TINYINT(1) NOT NULL DEFAULT 1,
             created_at DATETIME NOT NULL,
             updated_at DATETIME NOT NULL,
@@ -34,6 +35,18 @@ final class AppClientAuth
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
 
         self::migrateServiceScope($pdo);
+        self::migrateCredentialSecret($pdo);
+
+        $pdo->exec("CREATE TABLE IF NOT EXISTS app_client_qr_links (
+            fingerprint CHAR(64) NOT NULL,
+            user_id VARCHAR(64) NOT NULL,
+            invoice_id VARCHAR(128) NOT NULL,
+            created_at DATETIME NOT NULL,
+            updated_at DATETIME NOT NULL,
+            PRIMARY KEY (fingerprint),
+            KEY idx_app_client_qr_service (user_id, invoice_id),
+            KEY idx_app_client_qr_invoice (invoice_id)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
 
         $pdo->exec("CREATE TABLE IF NOT EXISTS app_client_sessions (
             id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
@@ -114,7 +127,7 @@ final class AppClientAuth
     {
         self::ensureSchema($pdo);
         $stmt = $pdo->prepare(
-            "SELECT id,user_id,invoice_id,username,enabled,created_at,updated_at,last_login_at
+            "SELECT id,user_id,invoice_id,username,password_secret,enabled,created_at,updated_at,last_login_at
              FROM app_client_accounts
              WHERE user_id = ? AND invoice_id = ?
              LIMIT 1"
@@ -123,6 +136,34 @@ final class AppClientAuth
         $row = $stmt->fetch(PDO::FETCH_ASSOC);
 
         return is_array($row) ? $row : null;
+    }
+
+    public static function credentialsForService(PDO $pdo, string $userId, string $invoiceId): array
+    {
+        self::ensureSchema($pdo);
+
+        $service = self::serviceForUser($pdo, $userId, $invoiceId);
+        if (!is_array($service)) {
+            throw new InvalidArgumentException('Service not found');
+        }
+
+        $account = self::accountForService($pdo, $userId, $invoiceId);
+        if (is_array($account) && (int) ($account['enabled'] ?? 0) === 1) {
+            $password = self::decryptPassword((string) ($account['password_secret'] ?? ''));
+            if ($password !== '') {
+                return [
+                    'user_id' => $userId,
+                    'invoice_id' => $invoiceId,
+                    'username' => (string) $account['username'],
+                    'password' => $password,
+                    'service' => $service,
+                ];
+            }
+        }
+
+        // Existing legacy accounts only stored a one-way password hash. Generate
+        // one recoverable password once without revoking already-issued sessions.
+        return self::writeCredentials($pdo, $userId, $invoiceId, $service, false);
     }
 
     public static function createCredentials(PDO $pdo, string $userId, string $invoiceId): array
@@ -134,40 +175,113 @@ final class AppClientAuth
             throw new InvalidArgumentException('Service not found');
         }
 
-        $account = self::accountForService($pdo, $userId, $invoiceId);
-        $username = is_array($account) ? (string) $account['username'] : self::uniqueUsername($pdo);
-        $password = self::random(15);
-        $hash = password_hash(
-            $password,
-            defined('PASSWORD_ARGON2ID') ? PASSWORD_ARGON2ID : PASSWORD_DEFAULT
-        );
-        if (!is_string($hash)) {
-            throw new RuntimeException('Password hashing failed');
+        return self::writeCredentials($pdo, $userId, $invoiceId, $service, true);
+    }
+
+    /**
+     * Registers the exact service QR payloads without storing the raw links.
+     *
+     * @param array<int,string>|string $payloads
+     */
+    public static function replaceQrPayloads(
+        PDO $pdo,
+        string $userId,
+        string $invoiceId,
+        array|string $payloads
+    ): void {
+        self::ensureSchema($pdo);
+
+        $service = self::serviceForUser($pdo, $userId, $invoiceId);
+        if (!is_array($service)) {
+            throw new InvalidArgumentException('Service not found');
+        }
+
+        $pdo->prepare(
+            "DELETE FROM app_client_qr_links WHERE user_id = ? AND invoice_id = ?"
+        )->execute([$userId, $invoiceId]);
+
+        $values = is_array($payloads) ? $payloads : [$payloads];
+        $fingerprints = [];
+        foreach ($values as $payload) {
+            foreach (self::qrFingerprints((string) $payload) as $fingerprint) {
+                $fingerprints[$fingerprint] = true;
+            }
         }
 
         $now = self::now();
-        if (is_array($account)) {
-            $pdo->prepare(
-                "UPDATE app_client_accounts
-                 SET password_hash = ?, enabled = 1, updated_at = ?
-                 WHERE id = ?"
-            )->execute([$hash, $now, (int) $account['id']]);
-            self::revokeAccount($pdo, (int) $account['id']);
-        } else {
-            $pdo->prepare(
-                "INSERT INTO app_client_accounts
-                    (user_id, invoice_id, username, password_hash, enabled, created_at, updated_at)
-                 VALUES (?, ?, ?, ?, 1, ?, ?)"
-            )->execute([$userId, $invoiceId, $username, $hash, $now, $now]);
+        $stmt = $pdo->prepare(
+            "INSERT INTO app_client_qr_links
+                (fingerprint,user_id,invoice_id,created_at,updated_at)
+             VALUES (?,?,?,?,?)
+             ON DUPLICATE KEY UPDATE
+                user_id = VALUES(user_id),
+                invoice_id = VALUES(invoice_id),
+                updated_at = VALUES(updated_at)"
+        );
+
+        foreach (array_keys($fingerprints) as $fingerprint) {
+            $stmt->execute([$fingerprint, $userId, $invoiceId, $now, $now]);
+        }
+    }
+
+    public static function authenticateQr(
+        PDO $pdo,
+        string $payload,
+        string $deviceId,
+        string $ip
+    ): array {
+        self::ensureSchema($pdo);
+        self::validateDevice($deviceId);
+
+        $fingerprints = self::qrFingerprints($payload);
+        if ($fingerprints === []) {
+            throw new InvalidArgumentException('Unsupported QR code');
         }
 
-        return [
-            'user_id' => $userId,
-            'invoice_id' => $invoiceId,
-            'username' => $username,
-            'password' => $password,
-            'service' => $service,
-        ];
+        $guard = hash('sha256', 'qr|' . trim($ip) . '|' . $fingerprints[0]);
+        self::assertAllowed($pdo, $guard);
+
+        $placeholders = implode(',', array_fill(0, count($fingerprints), '?'));
+        $stmt = $pdo->prepare(
+            "SELECT user_id,invoice_id
+             FROM app_client_qr_links
+             WHERE fingerprint IN ({$placeholders})
+             LIMIT 1"
+        );
+        $stmt->execute($fingerprints);
+        $link = $stmt->fetch(PDO::FETCH_ASSOC);
+
+        if (!is_array($link)) {
+            self::failed($pdo, $guard);
+            throw new RuntimeException('QR code is not linked to an active service');
+        }
+
+        $userId = (string) $link['user_id'];
+        $invoiceId = (string) $link['invoice_id'];
+        $user = self::user($pdo, $userId);
+        $service = self::serviceForUser($pdo, $userId, $invoiceId);
+
+        if (
+            !is_array($user)
+            || (string) ($user['User_Status'] ?? '') === 'block'
+            || !is_array($service)
+        ) {
+            self::failed($pdo, $guard);
+            throw new RuntimeException('QR code is not linked to an active service');
+        }
+
+        // Ensure an app account exists even if the user never used /app.
+        self::credentialsForService($pdo, $userId, $invoiceId);
+        $account = self::accountForService($pdo, $userId, $invoiceId);
+        if (!is_array($account) || (int) ($account['enabled'] ?? 0) !== 1) {
+            self::failed($pdo, $guard);
+            throw new RuntimeException('QR account is unavailable');
+        }
+
+        $pdo->prepare("DELETE FROM app_client_login_guards WHERE identifier_hash = ?")
+            ->execute([$guard]);
+
+        return self::issueSession($pdo, $account, $user, $service, $deviceId);
     }
 
     public static function authenticate(
@@ -222,46 +336,7 @@ final class AppClientAuth
         $pdo->prepare("DELETE FROM app_client_login_guards WHERE identifier_hash = ?")
             ->execute([$guard]);
 
-        $token = self::random(32);
-        $now = self::now();
-        $deviceHash = hash('sha256', trim($deviceId));
-        $accountId = (int) $account['id'];
-
-        $pdo->prepare(
-            "UPDATE app_client_sessions
-             SET revoked_at = ?
-             WHERE account_id = ? AND device_hash = ? AND revoked_at IS NULL"
-        )->execute([$now, $accountId, $deviceHash]);
-
-        $expires = gmdate('Y-m-d H:i:s', time() + self::SESSION_TTL);
-        $pdo->prepare(
-            "INSERT INTO app_client_sessions
-                (account_id,token_hash,device_hash,created_at,expires_at,last_seen_at)
-             VALUES (?,?,?,?,?,?)"
-        )->execute([
-            $accountId,
-            hash('sha256', $token),
-            $deviceHash,
-            $now,
-            $expires,
-            $now,
-        ]);
-
-        $pdo->prepare("UPDATE app_client_accounts SET last_login_at = ? WHERE id = ?")
-            ->execute([$now, $accountId]);
-
-        return [
-            'token' => $token,
-            'expires_at' => $expires,
-            'expires_in' => self::SESSION_TTL,
-            'account' => [
-                'username' => (string) $account['username'],
-                'user_id' => (string) $account['user_id'],
-                'invoice_id' => (string) $account['invoice_id'],
-            ],
-            'service' => $service,
-            'user' => $user,
-        ];
+        return self::issueSession($pdo, $account, $user, $service, $deviceId);
     }
 
     public static function authorize(PDO $pdo, string $token, string $deviceId): array
@@ -341,6 +416,251 @@ final class AppClientAuth
              SET revoked_at = ?
              WHERE token_hash = ? AND revoked_at IS NULL"
         )->execute([self::now(), hash('sha256', trim($token))]);
+    }
+
+    private static function migrateCredentialSecret(PDO $pdo): void
+    {
+        if (!self::hasColumn($pdo, 'app_client_accounts', 'password_secret')) {
+            $pdo->exec(
+                "ALTER TABLE app_client_accounts
+                 ADD COLUMN password_secret TEXT NULL AFTER password_hash"
+            );
+        }
+    }
+
+    private static function writeCredentials(
+        PDO $pdo,
+        string $userId,
+        string $invoiceId,
+        array $service,
+        bool $revokeSessions
+    ): array {
+        $account = self::accountForService($pdo, $userId, $invoiceId);
+        $username = is_array($account)
+            ? (string) $account['username']
+            : self::uniqueUsername($pdo);
+        $password = self::random(15);
+        $hash = password_hash(
+            $password,
+            defined('PASSWORD_ARGON2ID') ? PASSWORD_ARGON2ID : PASSWORD_DEFAULT
+        );
+        if (!is_string($hash)) {
+            throw new RuntimeException('Password hashing failed');
+        }
+
+        $secret = self::encryptPassword($password);
+        $now = self::now();
+
+        if (is_array($account)) {
+            $pdo->prepare(
+                "UPDATE app_client_accounts
+                 SET password_hash = ?, password_secret = ?, enabled = 1, updated_at = ?
+                 WHERE id = ?"
+            )->execute([$hash, $secret, $now, (int) $account['id']]);
+
+            if ($revokeSessions) {
+                self::revokeAccount($pdo, (int) $account['id']);
+            }
+        } else {
+            $pdo->prepare(
+                "INSERT INTO app_client_accounts
+                    (user_id,invoice_id,username,password_hash,password_secret,enabled,created_at,updated_at)
+                 VALUES (?,?,?,?,?,1,?,?)"
+            )->execute([$userId, $invoiceId, $username, $hash, $secret, $now, $now]);
+        }
+
+        return [
+            'user_id' => $userId,
+            'invoice_id' => $invoiceId,
+            'username' => $username,
+            'password' => $password,
+            'service' => $service,
+        ];
+    }
+
+    private static function issueSession(
+        PDO $pdo,
+        array $account,
+        array $user,
+        array $service,
+        string $deviceId
+    ): array {
+        $token = self::random(32);
+        $now = self::now();
+        $deviceHash = hash('sha256', trim($deviceId));
+        $accountId = (int) $account['id'];
+
+        $pdo->prepare(
+            "UPDATE app_client_sessions
+             SET revoked_at = ?
+             WHERE account_id = ? AND device_hash = ? AND revoked_at IS NULL"
+        )->execute([$now, $accountId, $deviceHash]);
+
+        $expires = gmdate('Y-m-d H:i:s', time() + self::SESSION_TTL);
+        $pdo->prepare(
+            "INSERT INTO app_client_sessions
+                (account_id,token_hash,device_hash,created_at,expires_at,last_seen_at)
+             VALUES (?,?,?,?,?,?)"
+        )->execute([
+            $accountId,
+            hash('sha256', $token),
+            $deviceHash,
+            $now,
+            $expires,
+            $now,
+        ]);
+
+        $pdo->prepare("UPDATE app_client_accounts SET last_login_at = ? WHERE id = ?")
+            ->execute([$now, $accountId]);
+
+        return [
+            'token' => $token,
+            'expires_at' => $expires,
+            'expires_in' => self::SESSION_TTL,
+            'account' => [
+                'username' => (string) $account['username'],
+                'user_id' => (string) $account['user_id'],
+                'invoice_id' => (string) $account['invoice_id'],
+            ],
+            'service' => $service,
+            'user' => $user,
+        ];
+    }
+
+    private static function encryptPassword(string $password): string
+    {
+        if (!function_exists('openssl_encrypt')) {
+            throw new RuntimeException('OpenSSL is required for credential storage');
+        }
+
+        $iv = random_bytes(12);
+        $tag = '';
+        $ciphertext = openssl_encrypt(
+            $password,
+            'aes-256-gcm',
+            self::credentialKey(),
+            OPENSSL_RAW_DATA,
+            $iv,
+            $tag,
+            'bluebot-app-credential-v1',
+            16
+        );
+
+        if (!is_string($ciphertext) || strlen($tag) !== 16) {
+            throw new RuntimeException('Credential encryption failed');
+        }
+
+        return 'v1.'
+            . self::base64UrlEncode($iv) . '.'
+            . self::base64UrlEncode($tag) . '.'
+            . self::base64UrlEncode($ciphertext);
+    }
+
+    private static function decryptPassword(string $secret): string
+    {
+        $parts = explode('.', trim($secret));
+        if (count($parts) !== 4 || $parts[0] !== 'v1' || !function_exists('openssl_decrypt')) {
+            return '';
+        }
+
+        $iv = self::base64UrlDecode($parts[1]);
+        $tag = self::base64UrlDecode($parts[2]);
+        $ciphertext = self::base64UrlDecode($parts[3]);
+        if ($iv === null || $tag === null || $ciphertext === null) {
+            return '';
+        }
+
+        $plain = openssl_decrypt(
+            $ciphertext,
+            'aes-256-gcm',
+            self::credentialKey(),
+            OPENSSL_RAW_DATA,
+            $iv,
+            $tag,
+            'bluebot-app-credential-v1'
+        );
+
+        return is_string($plain) ? $plain : '';
+    }
+
+    private static function credentialKey(): string
+    {
+        $env = getenv('BLUEBOT_APP_CREDENTIAL_KEY');
+        if (is_string($env) && strlen(trim($env)) >= 32) {
+            return hash('sha256', trim($env), true);
+        }
+
+        $parts = [
+            (string) ($GLOBALS['APIKEY'] ?? ''),
+            (string) ($GLOBALS['passworddb'] ?? ''),
+            (string) ($GLOBALS['dbname'] ?? ''),
+            (string) ($GLOBALS['domainhosts'] ?? ''),
+        ];
+        $material = implode('|', $parts);
+        if (strlen(str_replace('|', '', $material)) < 24) {
+            throw new RuntimeException('Credential encryption key is unavailable');
+        }
+
+        return hash('sha256', 'bluebot-app-credential-v1|' . $material, true);
+    }
+
+    private static function base64UrlEncode(string $value): string
+    {
+        return rtrim(strtr(base64_encode($value), '+/', '-_'), '=');
+    }
+
+    private static function base64UrlDecode(string $value): ?string
+    {
+        $padding = strlen($value) % 4;
+        if ($padding !== 0) {
+            $value .= str_repeat('=', 4 - $padding);
+        }
+        $decoded = base64_decode(strtr($value, '-_', '+/'), true);
+        return is_string($decoded) ? $decoded : null;
+    }
+
+    /**
+     * @return array<int,string>
+     */
+    private static function qrFingerprints(string $payload): array
+    {
+        $payload = str_replace(["\r\n", "\r"], "\n", trim($payload));
+        if ($payload === '' || strlen($payload) > 65535) {
+            return [];
+        }
+
+        $values = [$payload];
+        foreach (preg_split('/\n+/', $payload) ?: [] as $line) {
+            $line = trim((string) $line);
+            if ($line !== '') {
+                $values[] = $line;
+            }
+        }
+
+        $fingerprints = [];
+        foreach (array_unique($values) as $value) {
+            if (!self::isSupportedQrValue($value)) {
+                continue;
+            }
+            $fingerprints[] = hash('sha256', $value);
+        }
+
+        return array_values(array_unique($fingerprints));
+    }
+
+    private static function isSupportedQrValue(string $value): bool
+    {
+        if (preg_match('/^(vless|vmess|trojan|ss|socks|hysteria2|hy2):\/\//i', $value)) {
+            return true;
+        }
+
+        $parts = parse_url($value);
+        if (!is_array($parts)) {
+            return false;
+        }
+
+        return in_array(strtolower((string) ($parts['scheme'] ?? '')), ['https', 'http'], true)
+            && trim((string) ($parts['host'] ?? '')) !== '';
     }
 
     private static function migrateServiceScope(PDO $pdo): void
