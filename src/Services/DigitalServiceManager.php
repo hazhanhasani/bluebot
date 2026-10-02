@@ -58,12 +58,16 @@ final class BluebotDigitalServices
              ORDER BY sort_order ASC, id ASC"
         );
         $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+        $providerStates = [];
 
         return array_values(array_filter(
             $rows,
-            static function (array $product) use ($pdo): bool {
+            static function (array $product) use ($pdo, &$providerStates): bool {
                 $provider = strtolower(trim((string) ($product['provider'] ?? 'manual')));
-                return self::providerEnabled($pdo, $provider);
+                if (!array_key_exists($provider, $providerStates)) {
+                    $providerStates[$provider] = self::providerEnabled($pdo, $provider);
+                }
+                return $providerStates[$provider];
             }
         ));
     }
