@@ -22,6 +22,17 @@ class BluePanelApi(private val sessionStore: SessionStore) {
         LoginResult(token, account.getString("username"))
     }
 
+    suspend fun qrLogin(payload: String): LoginResult = withContext(Dispatchers.IO) {
+        val body = JSONObject()
+            .put("action", "qr-login")
+            .put("qr_payload", payload.trim())
+            .put("device_id", sessionStore.deviceId)
+        val data = request("qr-login", "POST", body, authenticated = false)
+        val token = data.getString("access_token")
+        val account = data.getJSONObject("account")
+        LoginResult(token, account.getString("username"))
+    }
+
     suspend fun updateInfo(): AppUpdateInfo = withContext(Dispatchers.IO) {
         val data = request("app-version", "GET", null, authenticated = false)
         val android = data.getJSONObject("android")

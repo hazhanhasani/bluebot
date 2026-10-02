@@ -107,20 +107,57 @@ function bluebotAppClientCredentialsText(array $credentials, array $service): st
         . "👤 نام کاربری:\n<code>{$username}</code>\n\n"
         . "🔑 رمز عبور:\n<code>{$password}</code>\n\n"
         . "این حساب فقط به همین اشتراک دسترسی دارد و هیچ سرویس دیگری را نمایش نمی‌دهد.\n\n"
-        . "⚠️ رمز فقط همین یک‌بار نمایش داده می‌شود. با ساخت رمز جدید، نشست‌های قبلی همین سرویس باطل می‌شوند.";
+        . "📌 این نام کاربری و رمز بعداً هم از بخش «سرویس‌های من» قابل دریافت است.";
 }
 
-function bluebotAppClientExistingText(array $account, array $service): string
+function bluebotAppClientExistingText(array $credentials, array $service): string
 {
-    $username = bluebotAppClientEscape((string) ($account['username'] ?? ''));
-    $serviceTitle = bluebotAppClientEscape(bluebotAppClientServiceTitle($service));
+    return bluebotAppClientCredentialsText($credentials, $service);
+}
 
-    return "📱 <b>حساب اختصاصی Blue VPN</b>\n\n"
-        . "🛍 سرویس: <b>{$serviceTitle}</b>\n\n"
-        . "👤 نام کاربری:\n<code>{$username}</code>\n\n"
-        . "🔐 رمز قبلی به دلایل امنیتی قابل مشاهده نیست. "
-        . "اگر رمز را فراموش کرده‌اید، «ساخت رمز جدید برای همین سرویس» را بزنید.\n\n"
-        . "این حساب فقط همین اشتراک را داخل اپ نمایش می‌دهد.";
+function bluebotAppClientCredentialsBlock(PDO $pdo, string $userId, string $invoiceId): string
+{
+    try {
+        $credentials = AppClientAuth::credentialsForService($pdo, $userId, $invoiceId);
+        $username = bluebotAppClientEscape((string) ($credentials['username'] ?? ''));
+        $password = bluebotAppClientEscape((string) ($credentials['password'] ?? ''));
+
+        return "\n\n📱 <b>ورود به Blue VPN</b>"
+            . "\n👤 نام کاربری: <code>{$username}</code>"
+            . "\n🔑 رمز عبور: <code>{$password}</code>"
+            . "\n<i>برای کپی، روی مقدار داخل کادر بزنید.</i>";
+    } catch (Throwable $e) {
+        if (function_exists('bluebotLog')) {
+            bluebotLog('warning', 'Unable to expose app credentials in service details', [
+                'user_id' => $userId,
+                'invoice_id' => $invoiceId,
+                'reason' => $e->getMessage(),
+            ]);
+        }
+        return '';
+    }
+}
+
+/**
+ * @param array<int,string>|string $payloads
+ */
+function bluebotAppClientSyncQr(
+    PDO $pdo,
+    string $userId,
+    string $invoiceId,
+    array|string $payloads
+): void {
+    try {
+        AppClientAuth::replaceQrPayloads($pdo, $userId, $invoiceId, $payloads);
+    } catch (Throwable $e) {
+        if (function_exists('bluebotLog')) {
+            bluebotLog('warning', 'Unable to sync service QR fingerprint', [
+                'user_id' => $userId,
+                'invoice_id' => $invoiceId,
+                'reason' => $e->getMessage(),
+            ]);
+        }
+    }
 }
 
 function bluebotAppClientAnswerCallback(string $text, bool $alert = false): void
@@ -238,13 +275,8 @@ function bluebotHandleAppClientEntry(): bool
             return true;
         }
 
-        $account = AppClientAuth::accountForService($pdo, $userId, $invoiceId);
-        if (!is_array($account) || (int) ($account['enabled'] ?? 0) !== 1) {
-            $credentials = AppClientAuth::createCredentials($pdo, $userId, $invoiceId);
-            $body = bluebotAppClientCredentialsText($credentials, $service);
-        } else {
-            $body = bluebotAppClientExistingText($account, $service);
-        }
+        $credentials = AppClientAuth::credentialsForService($pdo, $userId, $invoiceId);
+        $body = bluebotAppClientExistingText($credentials, $service);
 
         $markup = bluebotAppClientServiceMarkup($invoiceId);
         if (!empty($message_id)) {

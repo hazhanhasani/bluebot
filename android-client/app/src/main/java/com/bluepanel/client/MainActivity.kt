@@ -98,6 +98,7 @@ import com.bluepanel.client.data.BluePanelApi
 import com.bluepanel.client.data.ServiceSummary
 import com.bluepanel.client.data.SessionStore
 import com.bluepanel.client.data.TrafficInfo
+import com.bluepanel.client.ui.QrScannerOverlay
 import com.bluepanel.client.util.PersianDateTime
 import com.bluepanel.client.vpn.BluePanelVpnService
 import com.bluepanel.client.vpn.VpnConnectionState
@@ -234,6 +235,21 @@ private fun BlueVpnApp() {
                                 loading = false
                             }
                         },
+                        onQrLogin = { payload ->
+                            scope.launch {
+                                loading = true
+                                error = null
+                                runCatching { api.qrLogin(payload) }
+                                    .onSuccess {
+                                        store.saveSession(it.accessToken, it.username)
+                                        loggedIn = true
+                                    }
+                                    .onFailure {
+                                        error = it.message ?: "ورود با QR ناموفق بود"
+                                    }
+                                loading = false
+                            }
+                        },
                     )
                 } else {
                     PremiumDashboard(
@@ -268,9 +284,11 @@ private fun LoginScreen(
     error: String?,
     updateInfo: AppUpdateInfo?,
     onLogin: (String, String) -> Unit,
+    onQrLogin: (String) -> Unit,
 ) {
     var username by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
+    var scannerOpen by remember { mutableStateOf(false) }
 
     Box(
         modifier = Modifier
@@ -348,11 +366,35 @@ private fun LoginScreen(
                 }
             }
 
+            Spacer(Modifier.height(10.dp))
+            Button(
+                onClick = { scannerOpen = true },
+                enabled = !loading,
+                modifier = Modifier.fillMaxWidth().height(52.dp),
+                shape = RoundedCornerShape(18.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = Color(0xFF17242B),
+                    contentColor = Color.White,
+                ),
+            ) {
+                Text("اسکن QR سرویس", fontWeight = FontWeight.ExtraBold)
+            }
+
             Spacer(Modifier.height(12.dp))
             Text(
-                "نام کاربری و رمز مخصوص سرویس را از ربات دریافت کنید.",
+                "یا نام کاربری و رمز مخصوص همین سرویس را از ربات کپی کنید.",
                 color = Color(0xFF65717E),
                 fontSize = 11.sp,
+            )
+        }
+
+        if (scannerOpen) {
+            QrScannerOverlay(
+                onResult = { payload ->
+                    scannerOpen = false
+                    onQrLogin(payload)
+                },
+                onClose = { scannerOpen = false },
             )
         }
     }
