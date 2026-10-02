@@ -21,6 +21,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -29,6 +30,7 @@ import kotlinx.coroutines.launch
 class BluePanelVpnService : VpnService() {
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private var connectJob: Job? = null
+    private var trafficMonitorJob: Job? = null
     private var vpnInterface: ParcelFileDescriptor? = null
     private var xrayEngine: XrayEngine? = null
     private lateinit var sessionStore: SessionStore
@@ -100,6 +102,7 @@ class BluePanelVpnService : VpnService() {
                 xrayEngine = engine
                 engine.start(tun.fd, sourceText)
 
+                val connectedAt = SystemClock.elapsedRealtime()
                 publish(
                     VpnConnectionState.Connected(
                         serviceId = serviceId,
@@ -107,9 +110,10 @@ class BluePanelVpnService : VpnService() {
                         username = profile.username,
                         traffic = profile.traffic,
                         expiresAt = profile.expiresAt,
-                        connectedAtElapsedRealtime = SystemClock.elapsedRealtime(),
+                        connectedAtElapsedRealtime = connectedAt,
                     ),
                 )
+                startTrafficMonitor(serviceId)
                 notifyState("متصل · ${profile.productName.ifBlank { profile.username }}")
             } catch (error: Throwable) {
                 stopTunnelOnly()
@@ -122,9 +126,46 @@ class BluePanelVpnService : VpnService() {
         }
     }
 
+    private fun startTrafficMonitor(serviceId: String) {
+        trafficMonitorJob?.cancel()
+        trafficMonitorJob = serviceScope.launch {
+            while (true) {
+                delay(30_000L)
+
+                val current = _state.value as? VpnConnectionState.Connected ?: break
+                if (current.serviceId != serviceId) break
+
+                val profile = runCatching { api.service(serviceId) }.getOrNull() ?: continue
+                val normalizedStatus = profile.status.lowercase()
+                if (normalizedStatus in setOf("expired", "disabled", "limited", "end_of_time", "end_of_volume")) {
+                    publish(VpnConnectionState.Error("اعتبار این سرویس به پایان رسیده است"))
+                    notifyState("سرویس غیرفعال شده")
+                    stopTunnelOnly()
+                    stopForeground(STOP_FOREGROUND_REMOVE)
+                    stopSelf()
+                    break
+                }
+
+                val latest = _state.value as? VpnConnectionState.Connected ?: break
+                if (latest.serviceId != serviceId) break
+
+                publish(
+                    latest.copy(
+                        productName = profile.productName,
+                        username = profile.username,
+                        traffic = profile.traffic,
+                        expiresAt = profile.expiresAt,
+                    ),
+                )
+            }
+        }
+    }
+
     private fun disconnect(stopService: Boolean) {
         connectJob?.cancel()
         connectJob = null
+        trafficMonitorJob?.cancel()
+        trafficMonitorJob = null
         stopTunnelOnly()
         publish(VpnConnectionState.Disconnected)
         stopForeground(STOP_FOREGROUND_REMOVE)
@@ -168,7 +209,7 @@ class BluePanelVpnService : VpnService() {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
         return NotificationCompat.Builder(this, CHANNEL_ID)
-            .setSmallIcon(android.R.drawable.stat_sys_warning)
+            .setSmallIcon(R.drawable.ic_vpn_status)
             .setContentTitle(getString(R.string.app_name))
             .setContentText(content)
             .setContentIntent(openIntent)
