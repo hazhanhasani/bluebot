@@ -559,7 +559,7 @@ if ($user['step'] == "createusertest" || preg_match('/locationtest_(.*)/', $data
         (string) $randomString,
         [$output_config_link, $config]
     );
-    $textcreatuser .= bluebotAppClientCredentialsBlock(
+    $appCredentialsText = bluebotAppClientCredentialsBlock(
         $pdo,
         (string) $from_id,
         (string) $randomString
@@ -601,6 +601,9 @@ if ($user['step'] == "createusertest" || preg_match('/locationtest_(.*)/', $data
         }
     } else {
         sendmessage($from_id, $textcreatuser, $usertestinfo, 'HTML');
+    }
+    if ($appCredentialsText !== '') {
+        sendmessage($from_id, trim($appCredentialsText), null, 'HTML');
     }
     sendmessage($from_id, $textbotlang['users']['selectoption'], $keyboard, 'HTML');
     step('home', $from_id);
@@ -1284,7 +1287,7 @@ if ($text == $text_bot_var['btn_keyboard']['buy'] && $setting['active_step_note'
         (string) $randomString,
         [$output_config_link, $config]
     );
-    $textcreatuser .= bluebotAppClientCredentialsBlock(
+    $appCredentialsText = bluebotAppClientCredentialsBlock(
         $pdo,
         (string) $from_id,
         (string) $randomString
@@ -1321,6 +1324,9 @@ if ($text == $text_bot_var['btn_keyboard']['buy'] && $setting['active_step_note'
                 sendmessage($from_id, $textcreatuser, null, 'HTML');
             }
         }
+    }
+    if ($appCredentialsText !== '') {
+        sendmessage($from_id, trim($appCredentialsText), null, 'HTML');
     }
     sendmessage($from_id, $textbotlang['users']['selectoption'], $keyboard, 'HTML');
     if (intval($userbotbalance['pricediscount']) != 0) {
