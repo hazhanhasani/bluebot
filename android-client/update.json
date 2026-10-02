@@ -1,8 +1,8 @@
 {
-  "latest_version_code": 5,
-  "latest_version_name": "0.3.1",
+  "latest_version_code": 6,
+  "latest_version_name": "0.3.2",
   "minimum_version_code": 4,
-  "download_url": "https://github.com/hazhanhasani/bluebot/releases/download/v0.6.4/blue-vpn-android-v0.6.4.apk",
-  "release_notes": "رابط کاربری جدید Blue VPN با طراحی مدرن اتصال، تایمر واقعی، نمایش مصرف و حجم باقی‌مانده، انتخاب سرویس و کنترل یک‌لمسی اتصال.",
+  "download_url": "https://github.com/hazhanhasani/bluebot/releases/download/v0.6.5/blue-vpn-android-v0.6.5.apk",
+  "release_notes": "رفع باگ آیکن‌ها، Swipe واقعی برای اتصال و قطع، انیمیشن‌های نرم، چیدمان واکنش‌گرا، نمایش صحیح سرویس نامحدود و بروزرسانی زنده مصرف و زمان سرویس.",
   "check_interval_seconds": 21600
 }

@@ -11,12 +11,21 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -24,6 +33,8 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
@@ -50,6 +61,7 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -61,14 +73,19 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -83,6 +100,8 @@ import com.bluepanel.client.vpn.VpnConnectionState
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
+import java.util.Locale
+import kotlin.math.roundToInt
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -378,25 +397,29 @@ private fun PremiumDashboard(
         }
     }
 
-    val background = if (isConnected) {
-        Brush.verticalGradient(
-            listOf(
-                Color(0xFF15958F),
-                Color(0xFF08736F),
-                Color(0xFF053D3D),
-                Color(0xFF071115),
-            ),
-        )
-    } else {
-        Brush.verticalGradient(
-            listOf(
-                Color(0xFF202124),
-                Color(0xFF15171A),
-                Color(0xFF0B0E12),
-                Color(0xFF07090C),
-            ),
-        )
-    }
+    val visualActive = isConnected || isConnecting
+    val backgroundTop by animateColorAsState(
+        targetValue = when {
+            isConnected -> Color(0xFF15958F)
+            isConnecting -> Color(0xFF0C5354)
+            else -> Color(0xFF202124)
+        },
+        animationSpec = tween(650),
+        label = "backgroundTop",
+    )
+    val backgroundMiddle by animateColorAsState(
+        targetValue = if (visualActive) Color(0xFF075F5E) else Color(0xFF14171B),
+        animationSpec = tween(650),
+        label = "backgroundMiddle",
+    )
+    val backgroundBottom by animateColorAsState(
+        targetValue = if (visualActive) Color(0xFF06191B) else Color(0xFF07090C),
+        animationSpec = tween(650),
+        label = "backgroundBottom",
+    )
+    val background = Brush.verticalGradient(
+        listOf(backgroundTop, backgroundMiddle, backgroundBottom),
+    )
 
     Box(
         modifier = Modifier
@@ -426,7 +449,7 @@ private fun PremiumDashboard(
                             .clickable { menuOpen = true },
                         contentAlignment = Alignment.Center,
                     ) {
-                        Text("☰", fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                        MenuGlyph()
                     }
                     DropdownMenu(
                         expanded = menuOpen,
@@ -462,7 +485,7 @@ private fun PremiumDashboard(
                         .clickable(enabled = !loading) { onRefresh() },
                     contentAlignment = Alignment.Center,
                 ) {
-                    Text("↻", fontSize = 21.sp, fontWeight = FontWeight.Bold)
+                    RefreshGlyph(spinning = loading)
                 }
             }
 
@@ -507,18 +530,22 @@ private fun PremiumDashboard(
             Spacer(Modifier.height(8.dp))
 
             ConnectionStage(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f)
+                    .heightIn(min = 190.dp),
                 state = vpnState,
                 elapsedSeconds = elapsedSeconds,
                 selected = selected,
             )
 
-            Spacer(Modifier.height(8.dp))
+            Spacer(Modifier.height(4.dp))
 
             PowerControl(
                 connected = isConnected,
                 connecting = isConnecting,
                 enabled = selected?.supported == true || isConnected || isConnecting,
-                onClick = {
+                onToggle = {
                     when {
                         isConnected || isConnecting -> onDisconnect()
                         selected != null && selected.supported -> onConnect(selected)
@@ -526,14 +553,14 @@ private fun PremiumDashboard(
                 },
             )
 
-            Spacer(Modifier.height(14.dp))
+            Spacer(Modifier.height(8.dp))
 
             ConnectionCaption(
                 state = vpnState,
                 selected = selected,
             )
 
-            Spacer(Modifier.weight(1f))
+            Spacer(Modifier.height(10.dp))
 
             TrafficDock(
                 traffic = connected?.traffic,
@@ -629,37 +656,67 @@ private fun ServiceSelectorPill(
 
 @Composable
 private fun ConnectionStage(
+    modifier: Modifier = Modifier,
     state: VpnConnectionState,
     elapsedSeconds: Long,
     selected: ServiceSummary?,
 ) {
     val connected = state as? VpnConnectionState.Connected
     val active = connected != null || state is VpnConnectionState.Connecting
+    val contentAlpha by animateFloatAsState(
+        targetValue = if (state is VpnConnectionState.Connecting) 0.72f else 1f,
+        animationSpec = tween(320),
+        label = "stageContent",
+    )
 
-    Box(
-        modifier = Modifier.fillMaxWidth().height(300.dp),
+    BoxWithConstraints(
+        modifier = modifier,
         contentAlignment = Alignment.Center,
     ) {
-        GlobeBackdrop(active = active)
+        val candidate = minOf(maxWidth * 0.82f, maxHeight * 0.94f)
+        val globeSize = when {
+            candidate < 170.dp -> 170.dp
+            candidate > 285.dp -> 285.dp
+            else -> candidate
+        }
 
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        GlobeBackdrop(
+            active = active,
+            modifier = Modifier.size(globeSize),
+        )
+
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            modifier = Modifier.background(Color.Transparent),
+        ) {
             if (connected != null) {
-                Text(
-                    formatElapsed(elapsedSeconds),
-                    fontSize = 39.sp,
-                    fontWeight = FontWeight.Black,
-                    letterSpacing = 1.sp,
-                )
+                CompositionLocalProvider(
+                    androidx.compose.ui.platform.LocalLayoutDirection provides LayoutDirection.Ltr,
+                ) {
+                    Text(
+                        formatElapsed(elapsedSeconds),
+                        fontSize = 38.sp,
+                        fontWeight = FontWeight.Black,
+                        letterSpacing = 1.sp,
+                        color = Color.White.copy(alpha = contentAlpha),
+                    )
+                }
                 Spacer(Modifier.height(9.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(20.dp)) {
-                    MetricText("⇣", formatBytes(connected.traffic.usedBytes), "مصرف")
-                    MetricText("⇡", formatBytes(connected.traffic.remainingBytes), "باقی‌مانده")
+                Row(horizontalArrangement = Arrangement.spacedBy(24.dp)) {
+                    MetricText("↓", formatBytes(connected.traffic.usedBytes), "مصرف")
+                    MetricText(
+                        "↑",
+                        if (connected.traffic.totalBytes <= 0L) "نامحدود"
+                        else formatBytes(connected.traffic.remainingBytes),
+                        "باقی‌مانده",
+                    )
                 }
             } else {
                 Text(
                     if (state is VpnConnectionState.Connecting) "در حال اتصال…" else "آماده اتصال",
                     fontSize = 25.sp,
                     fontWeight = FontWeight.Black,
+                    color = Color.White.copy(alpha = contentAlpha),
                 )
                 Spacer(Modifier.height(8.dp))
                 Text(
@@ -675,16 +732,31 @@ private fun ConnectionStage(
 }
 
 @Composable
-private fun GlobeBackdrop(active: Boolean) {
-    Canvas(modifier = Modifier.size(285.dp)) {
+private fun GlobeBackdrop(
+    active: Boolean,
+    modifier: Modifier = Modifier,
+) {
+    val pulseTransition = rememberInfiniteTransition(label = "globePulse")
+    val pulse by pulseTransition.animateFloat(
+        initialValue = 0.82f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(if (active) 1_600 else 2_600),
+            repeatMode = RepeatMode.Reverse,
+        ),
+        label = "globePulseValue",
+    )
+
+    Canvas(modifier = modifier) {
         val center = Offset(size.width / 2f, size.height / 2f)
-        val radius = size.minDimension * 0.38f
+        val radius = size.minDimension * (0.365f + (0.015f * pulse))
         val glow = if (active) Accent else Color.White
+        val glowAlpha = if (active) 0.09f + 0.06f * pulse else 0.035f + 0.02f * pulse
 
         drawCircle(
             brush = Brush.radialGradient(
                 colors = listOf(
-                    glow.copy(alpha = if (active) 0.13f else 0.05f),
+                    glow.copy(alpha = glowAlpha),
                     Color.Transparent,
                 ),
                 center = center,
@@ -695,7 +767,7 @@ private fun GlobeBackdrop(active: Boolean) {
         )
 
         drawCircle(
-            color = glow.copy(alpha = 0.10f),
+            color = glow.copy(alpha = if (active) 0.12f else 0.08f),
             radius = radius,
             center = center,
             style = Stroke(width = 2f),
@@ -732,10 +804,11 @@ private fun GlobeBackdrop(active: Boolean) {
             Offset(0.12f, 0.38f),
             Offset(-0.38f, 0.32f),
         )
-        dots.forEach { dot ->
+        dots.forEachIndexed { index, dot ->
+            val dotPulse = if ((index % 2) == 0) pulse else (1f - pulse * 0.25f)
             drawCircle(
-                color = glow.copy(alpha = if (active) 0.32f else 0.16f),
-                radius = 3.8f,
+                color = glow.copy(alpha = if (active) 0.18f + 0.22f * dotPulse else 0.13f),
+                radius = 3.2f + (1.2f * dotPulse),
                 center = Offset(center.x + radius * dot.x, center.y + radius * dot.y),
             )
         }
@@ -745,8 +818,12 @@ private fun GlobeBackdrop(active: Boolean) {
 @Composable
 private fun MetricText(icon: String, value: String, label: String) {
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-        Text("$icon $value", fontSize = 11.sp, fontWeight = FontWeight.Bold)
-        Text(label, color = Color.White.copy(alpha = 0.44f), fontSize = 9.sp)
+        CompositionLocalProvider(
+            androidx.compose.ui.platform.LocalLayoutDirection provides LayoutDirection.Ltr,
+        ) {
+            Text("$icon $value", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+        }
+        Text(label, color = Color.White.copy(alpha = 0.48f), fontSize = 9.sp)
     }
 }
 
@@ -755,49 +832,131 @@ private fun PowerControl(
     connected: Boolean,
     connecting: Boolean,
     enabled: Boolean,
-    onClick: () -> Unit,
+    onToggle: () -> Unit,
 ) {
-    val top = if (connected) Color(0xFF5BE7E8) else Color(0xFFE2E5E8)
-    val bottom = if (connected) Color(0xFF169C9A) else Color(0xFF5B6066)
+    val density = LocalDensity.current
+    val travelDp = 56.dp
+    val travelPx = with(density) { travelDp.toPx() }
+    val topPaddingPx = with(density) { 8.dp.toPx() }
 
-    Box(
-        modifier = Modifier
-            .width(104.dp)
-            .height(186.dp)
-            .clip(RoundedCornerShape(54.dp))
-            .background(Color(0xAA080A0D))
-            .clickable(enabled = enabled, onClick = onClick)
-            .padding(8.dp),
-        contentAlignment = if (connected) Alignment.BottomCenter else Alignment.TopCenter,
-    ) {
+    var dragDeltaPx by remember { mutableFloatStateOf(0f) }
+    var dragging by remember { mutableStateOf(false) }
+
+    val stateTargetPx = when {
+        connecting -> travelPx * 0.5f
+        connected -> travelPx
+        else -> 0f
+    }
+    val animatedBasePx by animateFloatAsState(
+        targetValue = stateTargetPx,
+        animationSpec = tween(360),
+        label = "powerThumbOffset",
+    )
+    val visualOffsetPx = if (dragging) {
+        (stateTargetPx + dragDeltaPx).coerceIn(0f, travelPx)
+    } else {
+        animatedBasePx
+    }
+
+    val topColor by animateColorAsState(
+        targetValue = if (connected) Color(0xFF64ECEC) else Color(0xFFF0F2F4),
+        animationSpec = tween(320),
+        label = "powerTop",
+    )
+    val bottomColor by animateColorAsState(
+        targetValue = if (connected) Color(0xFF139D9C) else Color(0xFF747A80),
+        animationSpec = tween(320),
+        label = "powerBottom",
+    )
+
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
         Box(
             modifier = Modifier
-                .fillMaxWidth()
-                .height(116.dp)
-                .clip(RoundedCornerShape(48.dp))
-                .background(Brush.verticalGradient(listOf(top, bottom))),
-            contentAlignment = Alignment.Center,
+                .width(106.dp)
+                .height(176.dp)
+                .clip(RoundedCornerShape(54.dp))
+                .background(Color(0xCC05090C))
+                .pointerInput(connected, connecting, enabled) {
+                    if (!enabled || connecting) return@pointerInput
+                    detectVerticalDragGestures(
+                        onDragStart = {
+                            dragging = true
+                            dragDeltaPx = 0f
+                        },
+                        onVerticalDrag = { change, dragAmount ->
+                            change.consume()
+                            dragDeltaPx += dragAmount
+                        },
+                        onDragCancel = {
+                            dragging = false
+                            dragDeltaPx = 0f
+                        },
+                        onDragEnd = {
+                            val finalPx = (stateTargetPx + dragDeltaPx).coerceIn(0f, travelPx)
+                            val shouldToggle = if (connected) {
+                                finalPx <= travelPx * 0.35f
+                            } else {
+                                finalPx >= travelPx * 0.65f
+                            }
+                            dragging = false
+                            dragDeltaPx = 0f
+                            if (shouldToggle) onToggle()
+                        },
+                    )
+                }
+                .clickable(enabled = enabled && !connecting) { onToggle() },
         ) {
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Text(
-                    "⏻",
-                    color = if (connected) Color.White else Color(0xFF22262A),
-                    fontSize = 31.sp,
-                    fontWeight = FontWeight.Black,
-                )
-                Spacer(Modifier.height(7.dp))
-                Text(
-                    when {
-                        connecting -> "..."
-                        connected -> "Stop"
-                        else -> "Start"
-                    },
-                    color = if (connected) Color.White else Color(0xFF22262A),
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.ExtraBold,
-                )
+            SwipeChevron(
+                down = !connected,
+                modifier = Modifier
+                    .align(if (connected) Alignment.TopCenter else Alignment.BottomCenter)
+                    .padding(vertical = 12.dp),
+            )
+
+            Box(
+                modifier = Modifier
+                    .offset {
+                        IntOffset(
+                            x = 0,
+                            y = (topPaddingPx + visualOffsetPx).roundToInt(),
+                        )
+                    }
+                    .align(Alignment.TopCenter)
+                    .width(90.dp)
+                    .height(104.dp)
+                    .clip(RoundedCornerShape(47.dp))
+                    .background(Brush.verticalGradient(listOf(topColor, bottomColor))),
+                contentAlignment = Alignment.Center,
+            ) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    PowerGlyph(
+                        color = if (connected) Color.White else Color(0xFF252A2E),
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        when {
+                            connecting -> "..."
+                            connected -> "Stop"
+                            else -> "Start"
+                        },
+                        color = if (connected) Color.White else Color(0xFF252A2E),
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                    )
+                }
             }
         }
+
+        Spacer(Modifier.height(7.dp))
+        Text(
+            when {
+                connecting -> "در حال اتصال…"
+                connected -> "برای قطع، به بالا بکشید"
+                else -> "برای اتصال، به پایین بکشید"
+            },
+            color = Color.White.copy(alpha = 0.48f),
+            fontSize = 9.sp,
+        )
     }
 }
 
@@ -813,7 +972,7 @@ private fun ConnectionCaption(
         is VpnConnectionState.Error -> "اتصال ناموفق"
     }
     val subtitle = when (state) {
-        VpnConnectionState.Disconnected -> "برای اتصال دکمه Start را لمس کنید"
+        VpnConnectionState.Disconnected -> "دکمه را به پایین بکشید یا لمس کنید"
         VpnConnectionState.Connecting -> "چند لحظه صبر کنید…"
         is VpnConnectionState.Connected -> state.productName.ifBlank { state.username }
         is VpnConnectionState.Error -> state.message
@@ -842,33 +1001,44 @@ private fun TrafficDock(
     val total = traffic?.totalBytes ?: 0L
     val used = traffic?.usedBytes ?: 0L
     val remaining = traffic?.remainingBytes ?: 0L
-    val progress = if (total > 0L) {
+    val targetProgress = if (total > 0L) {
         (used.toDouble() / total.toDouble()).coerceIn(0.0, 1.0).toFloat()
     } else {
         0f
     }
+    val progress by animateFloatAsState(
+        targetValue = targetProgress,
+        animationSpec = tween(650),
+        label = "trafficProgress",
+    )
+    val unlimited = traffic != null && total <= 0L
 
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(24.dp),
         colors = CardDefaults.cardColors(containerColor = Color(0xAA101317)),
     ) {
-        Column(Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 14.dp)) {
+        Column(Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 13.dp)) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
             ) {
                 Column {
                     Text(
-                        if (traffic != null) "${formatBytes(remaining)} باقی‌مانده" else "اطلاعات سرویس",
+                        when {
+                            traffic == null -> "اطلاعات سرویس"
+                            unlimited -> "حجم نامحدود"
+                            else -> "باقی‌مانده: ${formatBytes(remaining)}"
+                        },
                         fontWeight = FontWeight.Black,
                         fontSize = 14.sp,
                     )
                     Text(
-                        if (traffic != null && total > 0) {
-                            "${formatBytes(used)} از ${formatBytes(total)} مصرف شده"
-                        } else {
-                            fallbackStatus.ifBlank { "آماده" }
+                        when {
+                            traffic == null -> fallbackStatus.ifBlank { "آماده" }
+                            unlimited -> "مصرف: ${formatBytes(used)}"
+                            else -> "مصرف: ${formatBytes(used)} از ${formatBytes(total)}"
                         },
                         color = Muted,
                         fontSize = 10.sp,
@@ -876,27 +1046,147 @@ private fun TrafficDock(
                 }
                 Column(horizontalAlignment = Alignment.End) {
                     Text("انقضا", color = Muted, fontSize = 9.sp)
-                    Text(formatExpiry(expiresAt), fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                    CompositionLocalProvider(
+                        androidx.compose.ui.platform.LocalLayoutDirection provides LayoutDirection.Ltr,
+                    ) {
+                        Text(formatExpiry(expiresAt), fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                    }
                 }
             }
 
-            Spacer(Modifier.height(10.dp))
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(5.dp)
-                    .clip(RoundedCornerShape(50))
-                    .background(Color.White.copy(alpha = 0.08f)),
-            ) {
+            if (traffic != null && !unlimited) {
+                Spacer(Modifier.height(10.dp))
                 Box(
                     modifier = Modifier
-                        .fillMaxHeight()
-                        .fillMaxWidth(progress)
+                        .fillMaxWidth()
+                        .height(5.dp)
                         .clip(RoundedCornerShape(50))
-                        .background(Accent),
-                )
+                        .background(Color.White.copy(alpha = 0.08f)),
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxHeight()
+                            .fillMaxWidth(progress)
+                            .clip(RoundedCornerShape(50))
+                            .background(Accent),
+                    )
+                }
             }
         }
+    }
+}
+
+@Composable
+private fun MenuGlyph(
+    modifier: Modifier = Modifier.size(22.dp),
+    color: Color = Color.White,
+) {
+    Canvas(modifier = modifier) {
+        val stroke = size.minDimension * 0.11f
+        val left = size.width * 0.12f
+        val right = size.width * 0.88f
+        for (fraction in listOf(0.24f, 0.5f, 0.76f)) {
+            drawLine(
+                color = color,
+                start = Offset(left, size.height * fraction),
+                end = Offset(right, size.height * fraction),
+                strokeWidth = stroke,
+                cap = StrokeCap.Round,
+            )
+        }
+    }
+}
+
+@Composable
+private fun RefreshGlyph(
+    spinning: Boolean,
+    modifier: Modifier = Modifier.size(22.dp),
+    color: Color = Color.White,
+) {
+    val transition = rememberInfiniteTransition(label = "refreshSpin")
+    val rotation by transition.animateFloat(
+        initialValue = 0f,
+        targetValue = 360f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(if (spinning) 900 else 20_000),
+            repeatMode = RepeatMode.Restart,
+        ),
+        label = "refreshRotation",
+    )
+
+    Canvas(modifier = modifier) {
+        rotate(if (spinning) rotation else 0f) {
+            val stroke = size.minDimension * 0.10f
+            val inset = stroke * 1.8f
+            drawArc(
+                color = color,
+                startAngle = -50f,
+                sweepAngle = 285f,
+                useCenter = false,
+                topLeft = Offset(inset, inset),
+                size = Size(size.width - inset * 2f, size.height - inset * 2f),
+                style = Stroke(width = stroke, cap = StrokeCap.Round),
+            )
+            val tip = Offset(size.width * 0.79f, size.height * 0.18f)
+            drawLine(
+                color = color,
+                start = tip,
+                end = Offset(size.width * 0.93f, size.height * 0.27f),
+                strokeWidth = stroke,
+                cap = StrokeCap.Round,
+            )
+            drawLine(
+                color = color,
+                start = tip,
+                end = Offset(size.width * 0.81f, size.height * 0.35f),
+                strokeWidth = stroke,
+                cap = StrokeCap.Round,
+            )
+        }
+    }
+}
+
+@Composable
+private fun PowerGlyph(
+    color: Color,
+    modifier: Modifier = Modifier.size(28.dp),
+) {
+    Canvas(modifier = modifier) {
+        val stroke = size.minDimension * 0.11f
+        drawArc(
+            color = color,
+            startAngle = -45f,
+            sweepAngle = 270f,
+            useCenter = false,
+            topLeft = Offset(stroke * 1.4f, stroke * 1.4f),
+            size = Size(size.width - stroke * 2.8f, size.height - stroke * 2.8f),
+            style = Stroke(width = stroke, cap = StrokeCap.Round),
+        )
+        drawLine(
+            color = color,
+            start = Offset(size.width / 2f, size.height * 0.08f),
+            end = Offset(size.width / 2f, size.height * 0.48f),
+            strokeWidth = stroke,
+            cap = StrokeCap.Round,
+        )
+    }
+}
+
+@Composable
+private fun SwipeChevron(
+    down: Boolean,
+    modifier: Modifier = Modifier.size(18.dp),
+) {
+    Canvas(modifier = modifier) {
+        val color = Color.White.copy(alpha = 0.42f)
+        val stroke = size.minDimension * 0.11f
+        val centerY = size.height * 0.5f
+        val yShift = if (down) size.height * 0.13f else -size.height * 0.13f
+        val left = Offset(size.width * 0.24f, centerY - yShift)
+        val center = Offset(size.width * 0.5f, centerY + yShift)
+        val right = Offset(size.width * 0.76f, centerY - yShift)
+        drawLine(color, left, center, strokeWidth = stroke, cap = StrokeCap.Round)
+        drawLine(color, center, right, strokeWidth = stroke, cap = StrokeCap.Round)
     }
 }
 
@@ -956,7 +1246,7 @@ private fun formatElapsed(seconds: Long): String {
     val hours = safe / 3_600L
     val minutes = (safe % 3_600L) / 60L
     val secs = safe % 60L
-    return "%02d:%02d:%02d".format(hours, minutes, secs)
+    return String.format(Locale.US, "%02d:%02d:%02d", hours, minutes, secs)
 }
 
 private fun formatBytes(bytes: Long): String {
@@ -964,9 +1254,9 @@ private fun formatBytes(bytes: Long): String {
     val gb = 1024.0 * 1024.0 * 1024.0
     val mb = 1024.0 * 1024.0
     return when {
-        safe >= gb -> "%.2f GB".format(safe / gb)
-        safe >= mb -> "%.0f MB".format(safe / mb)
-        safe > 0 -> "%.0f KB".format(safe / 1024.0)
+        safe >= gb -> String.format(Locale.US, "%.2f GB", safe / gb)
+        safe >= mb -> String.format(Locale.US, "%.0f MB", safe / mb)
+        safe > 0 -> String.format(Locale.US, "%.0f KB", safe / 1024.0)
         else -> "0 MB"
     }
 }
@@ -974,7 +1264,7 @@ private fun formatBytes(bytes: Long): String {
 private fun formatExpiry(expiresAt: Long?): String {
     if (expiresAt == null || expiresAt <= 0L) return "نامحدود"
     return runCatching {
-        val formatter = DateTimeFormatter.ofPattern("yyyy/MM/dd")
+        val formatter = DateTimeFormatter.ofPattern("yyyy/MM/dd", Locale.US)
             .withZone(ZoneId.systemDefault())
         formatter.format(Instant.ofEpochSecond(expiresAt))
     }.getOrDefault("—")
