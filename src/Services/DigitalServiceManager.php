@@ -57,7 +57,15 @@ final class BluebotDigitalServices
              WHERE active = 1
              ORDER BY sort_order ASC, id ASC"
         );
-        return $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+        $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+
+        return array_values(array_filter(
+            $rows,
+            static function (array $product) use ($pdo): bool {
+                $provider = strtolower(trim((string) ($product['provider'] ?? 'manual')));
+                return self::providerEnabled($pdo, $provider);
+            }
+        ));
     }
 
     public static function providerEnabled(PDO $pdo, string $providerKey): bool
@@ -382,7 +390,18 @@ final class BluebotDigitalServices
         $stmt = $pdo->prepare($sql);
         $stmt->execute([$id]);
         $row = $stmt->fetch(PDO::FETCH_ASSOC);
-        return is_array($row) ? $row : null;
+        if (!is_array($row)) {
+            return null;
+        }
+
+        if ($activeOnly) {
+            $provider = strtolower(trim((string) ($row['provider'] ?? 'manual')));
+            if (!self::providerEnabled($pdo, $provider)) {
+                return null;
+            }
+        }
+
+        return $row;
     }
 
     public static function generatedProviderProductCode(string $type, int $serviceValue): string
@@ -1052,6 +1071,11 @@ final class BluebotDigitalServices
                 sync_interval_minutes = VALUES(sync_interval_minutes)"
         );
         $stmt->execute([$apiKey, $profitPercent, $syncIntervalMinutes]);
+        BluebotProviderCatalogService::setActive(
+            $pdo,
+            'tivanovin',
+            self::providerEnabled($pdo, 'tivanovin')
+        );
 
         return BluebotProviderCatalogService::findProvider($pdo, 'tivanovin') ?? [];
     }
@@ -1152,6 +1176,11 @@ final class BluebotDigitalServices
                 sync_interval_minutes = VALUES(sync_interval_minutes)"
         );
         $stmt->execute([$apiKey, $profitPercent, $syncIntervalMinutes]);
+        BluebotProviderCatalogService::setActive(
+            $pdo,
+            'panelbaz',
+            self::providerEnabled($pdo, 'panelbaz')
+        );
 
         return BluebotProviderCatalogService::findProvider($pdo, 'panelbaz') ?? [];
     }
