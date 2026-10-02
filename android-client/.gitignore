@@ -5,3 +5,8 @@ build/
 app/build/
 app/libs/*.aar
 *.iml
+
+# Never commit Android signing credentials
+*.keystore
+*.jks
+keystore.properties
