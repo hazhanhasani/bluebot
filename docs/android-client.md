@@ -1,4 +1,4 @@
-# Blue Panel Android Client Architecture
+# Blue VPN Android Client Architecture
 
 ## Goal
 
@@ -16,7 +16,7 @@ Provide a first-party Android VPN client for BlueBot customers. The customer aut
 
 `AppClientAuth` maintains three tables:
 
-- `app_client_accounts`: one app identity per BlueBot user; password stored as a one-way hash.
+- `app_client_accounts`: one app identity per purchased invoice/service; password stored as a one-way hash.
 - `app_client_sessions`: SHA-256 token hashes, device binding, expiry and revocation.
 - `app_client_login_guards`: failed-login throttling.
 
@@ -36,7 +36,7 @@ A password rotation revokes all existing client sessions.
 
 ### `GET /api/client.php?action=services`
 
-Returns the authenticated user's active/current invoice rows and whether each panel type is supported by the Android client.
+Returns exactly the invoice/service bound to the authenticated app account and whether its panel type is supported by the Android client.
 
 ### `GET /api/client.php?action=service&id=<invoice-id>`
 
@@ -52,7 +52,7 @@ The app establishes Android `VpnService`, obtains the system TUN fd, then passes
 
 ## Next production milestone
 
-- signed release APK/AAB pipeline using GitHub Environments/secrets
+- permanently signed release APK/AAB pipeline using GitHub Actions secrets and a pinned certificate fingerprint
 - remote minimum-version / forced-update policy
 - device/session list and revoke controls
 - latency testing and automatic node selection
