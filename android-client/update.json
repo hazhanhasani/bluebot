@@ -2,6 +2,7 @@
   "latest_version_code": 3,
   "latest_version_name": "0.2.0",
   "minimum_version_code": 2,
+  "download_url": "https://github.com/hazhanhasani/bluebot/releases/download/v0.6.2/blue-panel-android-v0.6.2.apk",
   "release_notes": "حساب مستقل برای هر سرویس، پشتیبانی بهتر از پنل‌ها و تشخیص خودکار بروزرسانی.",
   "check_interval_seconds": 21600
 }
