@@ -158,7 +158,7 @@ jobs:
       - name: Verify permanent Android APK signature
         shell: bash
         env:
-          EXPECTED_CERT_SHA256: e594e3f1591e33fd4d8a8704260c6517b6a63d10e3a0b5a55b0626df2c21cb49
+          EXPECTED_CERT_SHA256: 5ac901356db4f79be2cbf577e37439a0414c881da200b423a59f26f9eb4e9acc
         run: |
           set -euo pipefail
           APK="android-client/app/build/outputs/apk/release/app-release.apk"
