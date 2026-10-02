@@ -30,3 +30,13 @@ data class ConnectionProfile(
     val links: List<String>,
     val subscriptionUrl: String?,
 )
+
+data class AppUpdateInfo(
+    val latestVersionCode: Int,
+    val latestVersionName: String,
+    val minimumVersionCode: Int,
+    val releaseTag: String,
+    val downloadUrl: String,
+    val releaseNotes: String,
+    val checkIntervalSeconds: Long,
+)
