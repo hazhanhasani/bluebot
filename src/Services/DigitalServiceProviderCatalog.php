@@ -399,8 +399,7 @@ final class BluebotProviderCatalogService
                 currency = VALUES(currency),
                 exchange_rate_toman = VALUES(exchange_rate_toman),
                 profit_percent = VALUES(profit_percent),
-                sync_interval_minutes = VALUES(sync_interval_minutes),
-                active = 1"
+                sync_interval_minutes = VALUES(sync_interval_minutes)"
         );
         $stmt->execute([
             $key,
@@ -433,9 +432,9 @@ final class BluebotProviderCatalogService
             $deactivate = $pdo->prepare(
                 "UPDATE digital_service_products
                  SET active = 0, updated_at = NOW()
-                 WHERE provider = ? AND code LIKE ?"
+                 WHERE provider = ?"
             );
-            $deactivate->execute([$providerKey, 'auto-' . $providerKey . '-%']);
+            $deactivate->execute([strtolower(trim($providerKey))]);
         }
     }
 
