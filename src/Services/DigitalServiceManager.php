@@ -60,10 +60,56 @@ final class BluebotDigitalServices
         return $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
     }
 
+    public static function providerEnabled(PDO $pdo, string $providerKey): bool
+    {
+        $providerKey = strtolower(trim($providerKey));
+        if (!preg_match('/^[a-z][a-z0-9_-]{1,49}$/', $providerKey)) {
+            return false;
+        }
+
+        $explicit = self::setting($pdo, 'provider_enabled_' . $providerKey, '');
+        if ($explicit !== '') {
+            return $explicit === '1';
+        }
+
+        $provider = BluebotProviderCatalogService::findProvider($pdo, $providerKey);
+        if (is_array($provider)) {
+            return (int) ($provider['active'] ?? 0) === 1;
+        }
+
+        // Built-in providers existed before per-provider enable switches.
+        // Keep existing installations enabled until the admin explicitly disables one.
+        return in_array($providerKey, ['tgtools', 'ozvinoo', 'tivanovin', 'panelbaz', 'telegram_bot', 'manual'], true);
+    }
+
+    public static function setProviderEnabled(PDO $pdo, string $providerKey, bool $enabled): void
+    {
+        $providerKey = strtolower(trim($providerKey));
+        if (!preg_match('/^[a-z][a-z0-9_-]{1,49}$/', $providerKey)) {
+            throw new InvalidArgumentException('Provider key is invalid.');
+        }
+
+        self::setSetting($pdo, 'provider_enabled_' . $providerKey, $enabled ? '1' : '0', false);
+
+        $provider = BluebotProviderCatalogService::findProvider($pdo, $providerKey);
+        if (is_array($provider)) {
+            BluebotProviderCatalogService::setActive($pdo, $providerKey, $enabled);
+        }
+
+        if (!$enabled) {
+            $stmt = $pdo->prepare(
+                "UPDATE digital_service_products
+                 SET active = 0, updated_at = NOW()
+                 WHERE provider = ?"
+            );
+            $stmt->execute([$providerKey]);
+        }
+    }
+
     public static function providerSupportsAutomaticDelivery(PDO $pdo, string $providerKey): bool
     {
         $providerKey = strtolower(trim($providerKey));
-        if ($providerKey === '') {
+        if ($providerKey === '' || !self::providerEnabled($pdo, $providerKey)) {
             return false;
         }
 
@@ -580,6 +626,10 @@ final class BluebotDigitalServices
 
     private static function repriceTgToolsCatalogFromTonRate(PDO $pdo, float $tonRateToman): int
     {
+        if (!self::providerEnabled($pdo, 'tgtools')) {
+            return 0;
+        }
+
         $status = self::tgToolsTonRateStatus($pdo);
         $landedRateToman = (float) ($status['landed_rate_toman'] ?? 0);
         if ($tonRateToman <= 0 || $landedRateToman <= 0 || !self::isAvailable($pdo)) {
@@ -670,6 +720,9 @@ final class BluebotDigitalServices
     {
         if (!self::isAvailable($pdo)) {
             return ['ok' => false, 'created' => 0, 'updated' => 0, 'remote_ok' => false];
+        }
+        if (!self::providerEnabled($pdo, 'tgtools')) {
+            return ['ok' => true, 'skipped' => true, 'disabled' => true, 'created' => 0, 'updated' => 0, 'remote_ok' => false];
         }
 
         $client = new TgToolsClient(trim(self::setting($pdo, 'tgtools_api_key', '')));
@@ -996,8 +1049,7 @@ final class BluebotDigitalServices
                 currency = VALUES(currency),
                 exchange_rate_toman = VALUES(exchange_rate_toman),
                 profit_percent = VALUES(profit_percent),
-                sync_interval_minutes = VALUES(sync_interval_minutes),
-                active = 1"
+                sync_interval_minutes = VALUES(sync_interval_minutes)"
         );
         $stmt->execute([$apiKey, $profitPercent, $syncIntervalMinutes]);
 
@@ -1097,8 +1149,7 @@ final class BluebotDigitalServices
                 currency = VALUES(currency),
                 exchange_rate_toman = VALUES(exchange_rate_toman),
                 profit_percent = VALUES(profit_percent),
-                sync_interval_minutes = VALUES(sync_interval_minutes),
-                active = 1"
+                sync_interval_minutes = VALUES(sync_interval_minutes)"
         );
         $stmt->execute([$apiKey, $profitPercent, $syncIntervalMinutes]);
 
@@ -1161,6 +1212,9 @@ final class BluebotDigitalServices
         if (!self::isAvailable($pdo)) {
             return ['ok' => false, 'skipped' => true, 'message' => 'Digital services are unavailable.'];
         }
+        if (!self::providerEnabled($pdo, 'ozvinoo')) {
+            return ['ok' => true, 'skipped' => true, 'disabled' => true, 'message' => 'OZVinoo provider is disabled.'];
+        }
 
         $apiKey = trim(self::setting($pdo, 'ozvinoo_api_key', ''));
         if ($apiKey === '') {
@@ -1194,6 +1248,9 @@ final class BluebotDigitalServices
     {
         if (!self::isAvailable($pdo)) {
             return ['ok' => false, 'message' => 'Digital services are unavailable.'];
+        }
+        if (!self::providerEnabled($pdo, 'ozvinoo')) {
+            return ['ok' => false, 'disabled' => true, 'message' => 'OZVinoo provider is disabled.'];
         }
 
         $apiKey = trim(self::setting($pdo, 'ozvinoo_api_key', ''));
