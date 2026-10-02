@@ -664,7 +664,7 @@ private fun ConnectionStage(
                 )
                 Spacer(Modifier.height(8.dp))
                 Text(
-                    selected?.productName?.ifBlank { selected.username }.orEmpty()
+                    selected?.let { it.productName.ifBlank { it.username } }.orEmpty()
                         .ifBlank { "سرویس خود را انتخاب کنید" },
                     color = Color.White.copy(alpha = 0.56f),
                     fontSize = 12.sp,
@@ -825,7 +825,7 @@ private fun ConnectionCaption(
         Spacer(Modifier.height(4.dp))
         Text(
             subtitle.ifBlank {
-                selected?.productName?.ifBlank { selected.username }.orEmpty()
+                selected?.let { it.productName.ifBlank { it.username } }.orEmpty()
             },
             color = Color.White.copy(alpha = 0.52f),
             fontSize = 10.sp,
