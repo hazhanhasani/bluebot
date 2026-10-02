@@ -10,6 +10,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -53,6 +54,8 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalUriHandler
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -236,19 +239,14 @@ private fun LoginScreen(
         modifier = Modifier.fillMaxSize().padding(horizontal = 24.dp),
         verticalArrangement = Arrangement.Center,
     ) {
-        Box(
-            modifier = Modifier
-                .size(72.dp)
-                .background(
-                    Brush.linearGradient(listOf(Color(0xFF1687FF), Color(0xFF65D8FF))),
-                    CircleShape,
-                ),
-            contentAlignment = Alignment.Center,
-        ) {
-            Text("B", fontSize = 32.sp, fontWeight = FontWeight.Black, color = Color.White)
-        }
+        Image(
+            painter = painterResource(R.drawable.blue_vpn_icon),
+            contentDescription = "Blue VPN",
+            contentScale = ContentScale.Crop,
+            modifier = Modifier.size(88.dp),
+        )
         Spacer(Modifier.height(20.dp))
-        Text("Blue Panel", fontSize = 30.sp, fontWeight = FontWeight.Black)
+        Text("Blue VPN", fontSize = 30.sp, fontWeight = FontWeight.Black)
         Text("اتصال اختصاصی، ساده و یک‌لمسی", color = Color(0xFFA7BAD3))
         if (updateInfo != null) {
             Spacer(Modifier.height(18.dp))
@@ -286,12 +284,12 @@ private fun LoginScreen(
             if (loading) {
                 CircularProgressIndicator(Modifier.size(22.dp), strokeWidth = 2.dp, color = Color.White)
             } else {
-                Text("ورود به بلوپنل", fontWeight = FontWeight.Bold)
+                Text("ورود به Blue VPN", fontWeight = FontWeight.Bold)
             }
         }
         Spacer(Modifier.height(12.dp))
         Text(
-            "نام کاربری و رمز را از ربات بلوپنل دریافت کنید.",
+            "نام کاربری و رمز مخصوص سرویس را از ربات دریافت کنید.",
             color = Color(0xFF8094AF),
             fontSize = 12.sp,
         )
@@ -323,7 +321,7 @@ private fun Dashboard(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Column {
-                    Text("Blue Panel", fontSize = 26.sp, fontWeight = FontWeight.Black)
+                    Text("Blue VPN", fontSize = 26.sp, fontWeight = FontWeight.Black)
                     Text(username, color = Color(0xFF8297B4), fontSize = 12.sp)
                 }
                 OutlinedButton(onClick = onLogout, shape = RoundedCornerShape(14.dp)) { Text("خروج") }
@@ -396,7 +394,7 @@ private fun UpdateNotice(info: AppUpdateInfo) {
     ) {
         Column(Modifier.fillMaxWidth().padding(16.dp)) {
             Text(
-                if (required) "بروزرسانی ضروری Blue Panel" else "نسخه جدید Blue Panel آماده است",
+                if (required) "بروزرسانی ضروری Blue VPN" else "نسخه جدید Blue VPN آماده است",
                 fontWeight = FontWeight.ExtraBold,
                 fontSize = 15.sp,
             )
