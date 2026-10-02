@@ -12,6 +12,7 @@ require_once 'config.php';
 require_once $Pathfiles . 'function.php';
 require_once $Pathfiles . 'config.php';
 require_once $Pathfiles . 'src/Support/JalaliDate.php';
+require_once $Pathfiles . 'src/Support/AppClientBot.php';
 require_once $Pathfiles . 'panels.php';
 require_once 'func.php';
 require_once 'botapi.php';
@@ -551,6 +552,19 @@ if ($user['step'] == "createusertest" || preg_match('/locationtest_(.*)/', $data
         $textcreatuser = str_replace('{password}', $dataoutput['subscription_url'], $textcreatuser);
         update("invoice", "user_info", $dataoutput['subscription_url'], "id_invoice", $randomString);
     }
+
+    bluebotAppClientSyncQr(
+        $pdo,
+        (string) $from_id,
+        (string) $randomString,
+        [$output_config_link, $config]
+    );
+    $textcreatuser .= bluebotAppClientCredentialsBlock(
+        $pdo,
+        (string) $from_id,
+        (string) $randomString
+    );
+
     if ($marzban_list_get['sublink'] == "onsublink") {
         if (($marzban_list_get['type'] ?? '') === "WGDashboard") {
             $sent = vpnbotSendTempDocument(
@@ -1263,6 +1277,19 @@ if ($text == $text_bot_var['btn_keyboard']['buy'] && $setting['active_step_note'
         $textcreatuser = str_replace('{password}', $dataoutput['subscription_url'], $textcreatuser);
         update("invoice", "user_info", $dataoutput['subscription_url'], "id_invoice", $randomString);
     }
+
+    bluebotAppClientSyncQr(
+        $pdo,
+        (string) $from_id,
+        (string) $randomString,
+        [$output_config_link, $config]
+    );
+    $textcreatuser .= bluebotAppClientCredentialsBlock(
+        $pdo,
+        (string) $from_id,
+        (string) $randomString
+    );
+
     if (in_array(($marzban_list_get['type'] ?? ''), ["Manualsale", "ibsng"], true)) {
         sendmessage($from_id, $textcreatuser, null, 'HTML');
     } else {
@@ -1566,6 +1593,19 @@ $textonebuy
     
     📌 اطلاعات سرویس : 
     {$userinfo['contentrecord']}";
+
+        bluebotAppClientSyncQr(
+            $pdo,
+            (string) $from_id,
+            (string) $nameloc['id_invoice'],
+            (string) ($userinfo['contentrecord'] ?? '')
+        );
+        $textinfo .= bluebotAppClientCredentialsBlock(
+            $pdo,
+            (string) $from_id,
+            (string) $nameloc['id_invoice']
+        );
+
         Editmessagetext($from_id, $message_id, $textinfo, $keyboardsetting);
         return;
     }
@@ -1647,6 +1687,19 @@ $output
 ";
         }
     }
+
+    bluebotAppClientSyncQr(
+        $pdo,
+        (string) $from_id,
+        (string) $nameloc['id_invoice'],
+        [$output, $config]
+    );
+    $textinfo .= bluebotAppClientCredentialsBlock(
+        $pdo,
+        (string) $from_id,
+        (string) $nameloc['id_invoice']
+    );
+
     Editmessagetext($from_id, $message_id, $textinfo, $keyboardsetting);
 } elseif (preg_match('/extend_(\w+)/', $datain, $dataget)) {
     $id_invoice = $dataget[1];
@@ -2096,6 +2149,13 @@ $output
         }
         $output_config_link = $config;
     }
+    bluebotAppClientSyncQr(
+        $pdo,
+        (string) $from_id,
+        (string) $nameloc['id_invoice'],
+        (string) $output_config_link
+    );
+
     $textconfig = "✅ کانفیگ شما با موفقیت بروزرسانی گردید.
 اشتراک شما : 
 <code>$output_config_link</code>";
