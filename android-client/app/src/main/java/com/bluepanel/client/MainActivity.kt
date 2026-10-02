@@ -52,6 +52,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -59,11 +60,13 @@ import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
+import com.bluepanel.client.data.AppUpdateInfo
 import com.bluepanel.client.data.BluePanelApi
 import com.bluepanel.client.data.ServiceSummary
 import com.bluepanel.client.data.SessionStore
 import com.bluepanel.client.vpn.BluePanelVpnService
 import com.bluepanel.client.vpn.VpnConnectionState
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
@@ -96,6 +99,7 @@ private fun BluePanelApp() {
             var loading by remember { mutableStateOf(loggedIn) }
             var error by remember { mutableStateOf<String?>(null) }
             var pendingServiceId by remember { mutableStateOf<String?>(null) }
+            var updateInfo by remember { mutableStateOf<AppUpdateInfo?>(null) }
             val vpnState by BluePanelVpnService.state.collectAsState()
 
             val vpnPermission = rememberLauncherForActivityResult(
@@ -134,6 +138,20 @@ private fun BluePanelApp() {
                 if (loggedIn) refreshServices()
             }
 
+            LaunchedEffect(Unit) {
+                var intervalSeconds = 21_600L
+                while (true) {
+                    runCatching { api.updateInfo() }
+                        .onSuccess { info ->
+                            intervalSeconds = info.checkIntervalSeconds.coerceAtLeast(3_600L)
+                            updateInfo = info.takeIf {
+                                it.latestVersionCode > BuildConfig.VERSION_CODE
+                            }
+                        }
+                    delay(intervalSeconds * 1_000L)
+                }
+            }
+
             Surface(modifier = Modifier.fillMaxSize()) {
                 Box(
                     modifier = Modifier
@@ -148,6 +166,7 @@ private fun BluePanelApp() {
                         LoginScreen(
                             loading = loading,
                             error = error,
+                            updateInfo = updateInfo,
                             onLogin = { username, password ->
                                 scope.launch {
                                     loading = true
@@ -166,6 +185,7 @@ private fun BluePanelApp() {
                         Dashboard(
                             username = store.username(),
                             services = services,
+                            updateInfo = updateInfo,
                             loading = loading,
                             error = error,
                             vpnState = vpnState,
@@ -206,6 +226,7 @@ private fun BluePanelApp() {
 private fun LoginScreen(
     loading: Boolean,
     error: String?,
+    updateInfo: AppUpdateInfo?,
     onLogin: (String, String) -> Unit,
 ) {
     var username by remember { mutableStateOf("") }
@@ -229,6 +250,10 @@ private fun LoginScreen(
         Spacer(Modifier.height(20.dp))
         Text("Blue Panel", fontSize = 30.sp, fontWeight = FontWeight.Black)
         Text("اتصال اختصاصی، ساده و یک‌لمسی", color = Color(0xFFA7BAD3))
+        if (updateInfo != null) {
+            Spacer(Modifier.height(18.dp))
+            UpdateNotice(updateInfo)
+        }
         Spacer(Modifier.height(28.dp))
         OutlinedTextField(
             value = username,
@@ -277,6 +302,7 @@ private fun LoginScreen(
 private fun Dashboard(
     username: String,
     services: List<ServiceSummary>,
+    updateInfo: AppUpdateInfo?,
     loading: Boolean,
     error: String?,
     vpnState: VpnConnectionState,
@@ -304,6 +330,10 @@ private fun Dashboard(
             }
             Spacer(Modifier.height(12.dp))
             ConnectionHero(vpnState, onDisconnect)
+            if (updateInfo != null) {
+                Spacer(Modifier.height(12.dp))
+                UpdateNotice(updateInfo)
+            }
             Spacer(Modifier.height(8.dp))
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -311,8 +341,12 @@ private fun Dashboard(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Column {
-                    Text("اشتراک‌های من", fontSize = 20.sp, fontWeight = FontWeight.ExtraBold)
-                    Text("${services.size} سرویس", color = Color(0xFF8297B4), fontSize = 12.sp)
+                    Text("اشتراک این حساب", fontSize = 20.sp, fontWeight = FontWeight.ExtraBold)
+                    Text(
+                        if (services.isEmpty()) "سرویسی یافت نشد" else "دسترسی فقط به همین سرویس",
+                        color = Color(0xFF8297B4),
+                        fontSize = 12.sp,
+                    )
                 }
                 OutlinedButton(onClick = onRefresh, enabled = !loading) { Text("بروزرسانی") }
             }
@@ -347,6 +381,49 @@ private fun Dashboard(
             }
         }
         item { Spacer(Modifier.height(28.dp)) }
+    }
+}
+
+@Composable
+private fun UpdateNotice(info: AppUpdateInfo) {
+    val uriHandler = LocalUriHandler.current
+    val required = BuildConfig.VERSION_CODE < info.minimumVersionCode
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(18.dp),
+        colors = CardDefaults.cardColors(containerColor = Color(0xFF152B46)),
+    ) {
+        Column(Modifier.fillMaxWidth().padding(16.dp)) {
+            Text(
+                if (required) "بروزرسانی ضروری Blue Panel" else "نسخه جدید Blue Panel آماده است",
+                fontWeight = FontWeight.ExtraBold,
+                fontSize = 15.sp,
+            )
+            Spacer(Modifier.height(4.dp))
+            Text(
+                "نسخه ${info.latestVersionName}",
+                color = Color(0xFF8EADD0),
+                fontSize = 12.sp,
+            )
+            if (info.releaseNotes.isNotBlank()) {
+                Spacer(Modifier.height(6.dp))
+                Text(
+                    info.releaseNotes,
+                    color = Color(0xFFA7BAD3),
+                    fontSize = 12.sp,
+                    maxLines = 3,
+                )
+            }
+            Spacer(Modifier.height(10.dp))
+            Button(
+                onClick = { uriHandler.openUri(info.downloadUrl) },
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(12.dp),
+            ) {
+                Text(if (required) "بروزرسانی الآن" else "دریافت بروزرسانی")
+            }
+        }
     }
 }
 

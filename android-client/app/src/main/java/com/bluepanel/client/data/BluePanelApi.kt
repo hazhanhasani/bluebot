@@ -22,6 +22,21 @@ class BluePanelApi(private val sessionStore: SessionStore) {
         LoginResult(token, account.getString("username"))
     }
 
+    suspend fun updateInfo(): AppUpdateInfo = withContext(Dispatchers.IO) {
+        val data = request("app-version", "GET", null, authenticated = false)
+        val android = data.getJSONObject("android")
+        AppUpdateInfo(
+            latestVersionCode = android.optInt("latest_version_code", 1),
+            latestVersionName = android.optString("latest_version_name", "0.1.0"),
+            minimumVersionCode = android.optInt("minimum_version_code", 1),
+            releaseTag = android.optString("release_tag"),
+            downloadUrl = android.getString("download_url"),
+            releaseNotes = android.optString("release_notes"),
+            checkIntervalSeconds = android.optLong("check_interval_seconds", 21_600L)
+                .coerceAtLeast(3_600L),
+        )
+    }
+
     suspend fun services(): List<ServiceSummary> = withContext(Dispatchers.IO) {
         val data = request("services", "GET", null, authenticated = true)
         val rows = data.optJSONArray("services") ?: JSONArray()

@@ -40,10 +40,12 @@ function clientBody(): array
     if (!is_string($raw) || trim($raw) === '') {
         return [];
     }
+
     $decoded = json_decode($raw, true);
     if (!is_array($decoded)) {
         clientResponse(false, 'Invalid JSON body', [], 400);
     }
+
     return sanitize_recursive($decoded);
 }
 
@@ -57,6 +59,7 @@ function clientHeader(string $name): string
             }
         }
     }
+
     $serverKey = 'HTTP_' . strtoupper(str_replace('-', '_', $name));
     return isset($_SERVER[$serverKey]) && is_scalar($_SERVER[$serverKey])
         ? trim((string) $_SERVER[$serverKey])
@@ -74,24 +77,33 @@ function clientBearer(): string
 
 function clientRequireSession(PDO $pdo): array
 {
-    $token = clientBearer();
-    $deviceId = clientHeader('X-Device-Id');
     try {
-        return AppClientAuth::authorize($pdo, $token, $deviceId);
+        return AppClientAuth::authorize(
+            $pdo,
+            clientBearer(),
+            clientHeader('X-Device-Id')
+        );
     } catch (Throwable $e) {
         clientResponse(false, 'Authentication required', [], 401);
     }
 }
 
-function clientSupportedPanelType(string $type): bool
+function clientPanelProtocol(string $type): string
 {
-    return in_array($type, [
-        'marzban',
-        'marzneshin',
-        'alireza_single',
-        'x-ui_single',
-        'hiddify',
-    ], true);
+    $normalized = strtolower(trim($type));
+
+    if (in_array($normalized, [
+        'wgdashboard',
+        'ibsng',
+        'mikrotik',
+    ], true)) {
+        return 'unsupported';
+    }
+
+    // Every other panel is allowed to be probed. This avoids false negatives
+    // for new Xray-compatible adapters while the service endpoint still
+    // validates that an actual share link or subscription URL exists.
+    return 'xray';
 }
 
 function clientNormalizeLinks($value): array
@@ -109,16 +121,105 @@ function clientNormalizeLinks($value): array
         if (!is_scalar($link)) {
             continue;
         }
+
         $link = trim((string) $link);
         if ($link === '') {
             continue;
         }
+
         if (!preg_match('/^(vless|vmess|trojan|ss|socks|hysteria2|hy2):\/\//i', $link)) {
             continue;
         }
+
         $out[] = $link;
     }
+
     return array_values(array_unique($out));
+}
+
+function clientExtractConnection(array $runtime): array
+{
+    $links = clientNormalizeLinks($runtime['links'] ?? ($runtime['configs'] ?? []));
+    $rawSubscription = trim((string) ($runtime['subscription_url'] ?? ''));
+
+    // Manual/custom providers sometimes put a single share link in the
+    // subscription_url field. Treat it as a normal in-memory Xray link.
+    if ($rawSubscription !== '') {
+        $embeddedLinks = clientNormalizeLinks($rawSubscription);
+        if (!empty($embeddedLinks)) {
+            $links = array_values(array_unique(array_merge($links, $embeddedLinks)));
+            $rawSubscription = '';
+        }
+    }
+
+    $subscriptionUrl = null;
+    if ($rawSubscription !== '') {
+        $parts = parse_url($rawSubscription);
+        $scheme = strtolower((string) ($parts['scheme'] ?? ''));
+        if (in_array($scheme, ['https', 'http'], true)) {
+            $subscriptionUrl = $rawSubscription;
+        }
+    }
+
+    return [
+        'links' => $links,
+        'subscription_url' => $subscriptionUrl,
+    ];
+}
+
+function clientServiceSummary(array $invoice, ?array $panel): array
+{
+    $panelType = is_array($panel) ? (string) ($panel['type'] ?? '') : '';
+    $protocol = is_array($panel) ? clientPanelProtocol($panelType) : 'unsupported';
+
+    return [
+        'id' => (string) ($invoice['id_invoice'] ?? ''),
+        'username' => (string) ($invoice['username'] ?? ''),
+        'product_name' => (string) ($invoice['name_product'] ?? ''),
+        'note' => (string) ($invoice['note'] ?? ''),
+        'status' => (string) ($invoice['status'] ?? $invoice['Status'] ?? ''),
+        'supported' => $protocol === 'xray',
+        'protocol_family' => $protocol,
+        'panel_type' => $panelType,
+    ];
+}
+
+function clientAndroidUpdateManifest(): array
+{
+    $manifestPath = __DIR__ . '/../android-client/update.json';
+    $manifest = [];
+
+    if (is_file($manifestPath)) {
+        $decoded = json_decode((string) file_get_contents($manifestPath), true);
+        if (is_array($decoded)) {
+            $manifest = $decoded;
+        }
+    }
+
+    $versionPath = __DIR__ . '/../version';
+    $releaseVersion = is_file($versionPath)
+        ? trim((string) file_get_contents($versionPath))
+        : '';
+
+    if (!preg_match('/^\d+\.\d+\.\d+$/', $releaseVersion)) {
+        $releaseVersion = '0.0.0';
+    }
+
+    $tag = 'v' . $releaseVersion;
+    $downloadUrl = "https://github.com/hazhanhasani/bluebot/releases/download/{$tag}/blue-panel-android-{$tag}.apk";
+
+    return [
+        'latest_version_code' => max(1, (int) ($manifest['latest_version_code'] ?? 1)),
+        'latest_version_name' => (string) ($manifest['latest_version_name'] ?? '0.1.0'),
+        'minimum_version_code' => max(1, (int) ($manifest['minimum_version_code'] ?? 1)),
+        'release_tag' => $tag,
+        'download_url' => $downloadUrl,
+        'release_notes' => (string) ($manifest['release_notes'] ?? ''),
+        'check_interval_seconds' => max(
+            3600,
+            (int) ($manifest['check_interval_seconds'] ?? 21600)
+        ),
+    ];
 }
 
 $method = strtoupper((string) ($_SERVER['REQUEST_METHOD'] ?? 'GET'));
@@ -128,7 +229,18 @@ $action = trim((string) ($_GET['action'] ?? ($body['action'] ?? '')));
 if ($action === 'health') {
     clientResponse(true, 'ok', [
         'api' => 'bluepanel-client',
-        'version' => 1,
+        'version' => 2,
+        'service_scoped_accounts' => true,
+    ]);
+}
+
+if ($action === 'version' || $action === 'app-version') {
+    if ($method !== 'GET') {
+        clientResponse(false, 'Method not allowed', [], 405);
+    }
+
+    clientResponse(true, 'ok', [
+        'android' => clientAndroidUpdateManifest(),
     ]);
 }
 
@@ -136,12 +248,15 @@ if ($action === 'login') {
     if ($method !== 'POST') {
         clientResponse(false, 'Method not allowed', [], 405);
     }
+
     $username = trim((string) ($body['username'] ?? ''));
     $password = (string) ($body['password'] ?? '');
     $deviceId = trim((string) ($body['device_id'] ?? clientHeader('X-Device-Id')));
+
     if ($username === '' || $password === '' || $deviceId === '') {
         clientResponse(false, 'Username, password and device id are required', [], 422);
     }
+
     try {
         $session = AppClientAuth::authenticate(
             $pdo,
@@ -150,7 +265,10 @@ if ($action === 'login') {
             $deviceId,
             (string) ($_SERVER['REMOTE_ADDR'] ?? '')
         );
+
         $user = is_array($session['user'] ?? null) ? $session['user'] : [];
+        $service = is_array($session['service'] ?? null) ? $session['service'] : [];
+
         clientResponse(true, 'Authenticated', [
             'access_token' => (string) $session['token'],
             'token_type' => 'Bearer',
@@ -159,6 +277,8 @@ if ($action === 'login') {
             'account' => [
                 'username' => (string) ($session['account']['username'] ?? ''),
                 'telegram_user_id' => (string) ($session['account']['user_id'] ?? ''),
+                'service_id' => (string) ($session['account']['invoice_id'] ?? ''),
+                'service_name' => (string) ($service['name_product'] ?? ''),
                 'balance' => (int) ($user['Balance'] ?? 0),
             ],
         ]);
@@ -173,11 +293,14 @@ if ($action === 'login') {
 
 $session = clientRequireSession($pdo);
 $userId = (string) $session['user_id'];
+$invoiceId = (string) $session['invoice_id'];
+$sessionService = is_array($session['service'] ?? null) ? $session['service'] : [];
 
 if ($action === 'logout') {
     if ($method !== 'POST') {
         clientResponse(false, 'Method not allowed', [], 405);
     }
+
     AppClientAuth::logout($pdo, clientBearer());
     clientResponse(true, 'Logged out');
 }
@@ -186,10 +309,13 @@ if ($action === 'me') {
     if ($method !== 'GET') {
         clientResponse(false, 'Method not allowed', [], 405);
     }
+
     $user = is_array($session['user'] ?? null) ? $session['user'] : [];
     clientResponse(true, 'ok', [
         'username' => (string) $session['username'],
         'telegram_user_id' => $userId,
+        'service_id' => $invoiceId,
+        'service_name' => (string) ($sessionService['name_product'] ?? ''),
         'balance' => (int) ($user['Balance'] ?? 0),
         'phone' => (string) ($user['number'] ?? ''),
     ]);
@@ -199,61 +325,68 @@ if ($action === 'services') {
     if ($method !== 'GET') {
         clientResponse(false, 'Method not allowed', [], 405);
     }
-    $stmt = $pdo->prepare(
-        "SELECT id_invoice, username, name_product, note, Service_location, status, time_sell
-         FROM invoice
-         WHERE id_user = :user_id
-           AND status IN ('active', 'end_of_time', 'end_of_volume', 'sendedwarn', 'send_on_hold')
-         ORDER BY time_sell DESC
-         LIMIT 100"
-    );
-    $stmt->execute([':user_id' => $userId]);
-    $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
-    $items = [];
-    foreach (is_array($rows) ? $rows : [] as $row) {
-        $panel = select('marzban_panel', '*', 'name_panel', (string) ($row['Service_location'] ?? ''), 'select');
-        $panelType = is_array($panel) ? (string) ($panel['type'] ?? '') : '';
-        $items[] = [
-            'id' => (string) ($row['id_invoice'] ?? ''),
-            'username' => (string) ($row['username'] ?? ''),
-            'product_name' => (string) ($row['name_product'] ?? ''),
-            'note' => (string) ($row['note'] ?? ''),
-            'status' => (string) ($row['status'] ?? ''),
-            'supported' => clientSupportedPanelType($panelType),
-            'protocol_family' => clientSupportedPanelType($panelType) ? 'xray' : 'unsupported',
-        ];
+
+    if (empty($sessionService)) {
+        clientResponse(true, 'ok', ['services' => []]);
     }
-    clientResponse(true, 'ok', ['services' => $items]);
+
+    $panel = select(
+        'marzban_panel',
+        '*',
+        'name_panel',
+        (string) ($sessionService['Service_location'] ?? ''),
+        'select'
+    );
+
+    clientResponse(true, 'ok', [
+        'services' => [
+            clientServiceSummary(
+                $sessionService,
+                is_array($panel) ? $panel : null
+            ),
+        ],
+    ]);
 }
 
 if ($action === 'service') {
     if ($method !== 'GET') {
         clientResponse(false, 'Method not allowed', [], 405);
     }
-    $invoiceId = trim((string) ($_GET['id'] ?? ''));
-    if ($invoiceId === '') {
+
+    $requestedId = trim((string) ($_GET['id'] ?? ''));
+    if ($requestedId === '') {
         clientResponse(false, 'Service id is required', [], 422);
     }
 
-    $stmt = $pdo->prepare(
-        "SELECT * FROM invoice
-         WHERE id_invoice = :id_invoice
-           AND id_user = :user_id
-           AND status IN ('active', 'end_of_time', 'end_of_volume', 'sendedwarn', 'send_on_hold')
-         LIMIT 1"
-    );
-    $stmt->execute([
-        ':id_invoice' => $invoiceId,
-        ':user_id' => $userId,
-    ]);
-    $invoice = $stmt->fetch(PDO::FETCH_ASSOC);
+    if (!hash_equals($invoiceId, $requestedId)) {
+        clientResponse(false, 'Service not found', [], 404);
+    }
+
+    $invoice = AppClientAuth::serviceForUser($pdo, $userId, $invoiceId);
     if (!is_array($invoice)) {
         clientResponse(false, 'Service not found', [], 404);
     }
 
-    $panel = select('marzban_panel', '*', 'name_panel', (string) $invoice['Service_location'], 'select');
-    if (!is_array($panel) || !clientSupportedPanelType((string) ($panel['type'] ?? ''))) {
-        clientResponse(false, 'This service is not supported by the Android client yet', [], 422);
+    $panel = select(
+        'marzban_panel',
+        '*',
+        'name_panel',
+        (string) ($invoice['Service_location'] ?? ''),
+        'select'
+    );
+
+    if (!is_array($panel)) {
+        clientResponse(false, 'Service panel not found', [], 422);
+    }
+
+    $panelType = (string) ($panel['type'] ?? '');
+    if (clientPanelProtocol($panelType) !== 'xray') {
+        clientResponse(
+            false,
+            'This service uses a protocol that is not supported by the Android client',
+            [],
+            422
+        );
     }
 
     try {
@@ -265,24 +398,33 @@ if ($action === 'service') {
         bluebotLog('warning', 'Android client service lookup failed', [
             'user_id' => $userId,
             'invoice_id' => $invoiceId,
+            'panel_type' => $panelType,
             'reason' => $e->getMessage(),
         ]);
         clientResponse(false, 'Service data unavailable', [], 502);
     }
 
-    if (!is_array($runtime)) {
+    if (
+        !is_array($runtime)
+        || (string) ($runtime['status'] ?? '') === 'Unsuccessful'
+    ) {
         clientResponse(false, 'Service data unavailable', [], 502);
     }
 
-    $dataLimit = is_numeric($runtime['data_limit'] ?? null) ? (float) $runtime['data_limit'] : 0.0;
-    $usedTraffic = is_numeric($runtime['used_traffic'] ?? null) ? (float) $runtime['used_traffic'] : 0.0;
-    $expire = is_numeric($runtime['expire'] ?? null) ? (int) $runtime['expire'] : 0;
-    $links = clientNormalizeLinks($runtime['links'] ?? ($runtime['configs'] ?? []));
-    $subscriptionUrl = trim((string) ($runtime['subscription_url'] ?? ''));
-
-    if (empty($links) && $subscriptionUrl === '') {
-        clientResponse(false, 'No compatible connection profile is available', [], 422);
+    $connection = clientExtractConnection($runtime);
+    if (empty($connection['links']) && empty($connection['subscription_url'])) {
+        clientResponse(false, 'No compatible Xray connection profile is available', [], 422);
     }
+
+    $dataLimit = is_numeric($runtime['data_limit'] ?? null)
+        ? (float) $runtime['data_limit']
+        : 0.0;
+    $usedTraffic = is_numeric($runtime['used_traffic'] ?? null)
+        ? (float) $runtime['used_traffic']
+        : 0.0;
+    $expire = is_numeric($runtime['expire'] ?? null)
+        ? (int) $runtime['expire']
+        : 0;
 
     clientResponse(true, 'ok', [
         'service' => [
@@ -299,8 +441,9 @@ if ($action === 'service') {
         ],
         'connection' => [
             'type' => 'xray',
-            'links' => $links,
-            'subscription_url' => $subscriptionUrl !== '' ? $subscriptionUrl : null,
+            'panel_type' => $panelType,
+            'links' => $connection['links'],
+            'subscription_url' => $connection['subscription_url'],
         ],
     ]);
 }

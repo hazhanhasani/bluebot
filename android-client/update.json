@@ -1,0 +1,7 @@
+{
+  "latest_version_code": 3,
+  "latest_version_name": "0.2.0",
+  "minimum_version_code": 2,
+  "release_notes": "حساب مستقل برای هر سرویس، پشتیبانی بهتر از پنل‌ها و تشخیص خودکار بروزرسانی.",
+  "check_interval_seconds": 21600
+}
