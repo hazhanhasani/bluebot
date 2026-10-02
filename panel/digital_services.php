@@ -97,6 +97,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
         BluebotDigitalServices::setProviderApprovalMode($pdo, 'tgtools', $approvalMode);
 
+        if (!BluebotDigitalServices::providerEnabled($pdo, 'tgtools')) {
+            flash('success', 'تنظیمات TGTools ذخیره شد. ارائه‌دهنده غیرفعال است و تا زمان فعال‌سازی هیچ Sync یا سفارشی برای آن اجرا نمی‌شود.');
+            header('Location: digital_services.php#tgtools');
+            exit;
+        }
+
         $rateRefresh = BluebotDigitalServices::refreshTgToolsTonRateFromNobitex($pdo, true, 60);
 
         // TGTools owns only its own synchronized products. Other providers
@@ -133,6 +139,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 
     if ($action === 'refresh_tgtools_ton_rate') {
+        if (!BluebotDigitalServices::providerEnabled($pdo, 'tgtools')) {
+            flash('warning', 'دریافت نرخ انجام نشد؛ ابتدا این ارائه‌دهنده را فعال کنید.');
+            header('Location: digital_services.php#tgtools');
+            exit;
+        }
         $rate = BluebotDigitalServices::refreshTgToolsTonRateFromNobitex($pdo, true, 60);
         if (!empty($rate['ok'])) {
             flash(
@@ -155,6 +166,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 
     if ($action === 'sync_tgtools_catalog') {
+        if (!BluebotDigitalServices::providerEnabled($pdo, 'tgtools')) {
+            flash('warning', 'همگام‌سازی انجام نشد؛ ابتدا این ارائه‌دهنده را فعال کنید.');
+            header('Location: digital_services.php#tgtools');
+            exit;
+        }
         $catalog = BluebotDigitalServices::ensureTgToolsCatalog($pdo);
         if (!empty($catalog['ok'])) {
             $catalogMessage = 'محصولات Stars/Premium آماده شدند: '
@@ -192,6 +208,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         try {
             BluebotDigitalServices::saveTivaNovinProvider($pdo, $apiKey, $profitPercent, $syncInterval);
             BluebotDigitalServices::setProviderApprovalMode($pdo, 'tivanovin', $approvalMode);
+            if (!BluebotDigitalServices::providerEnabled($pdo, 'tivanovin')) {
+                flash('success', 'تنظیمات تیوا نوین ذخیره شد. ارائه‌دهنده غیرفعال است و تا زمان فعال‌سازی با API آن ارتباطی برقرار نمی‌شود.');
+                header('Location: digital_services.php#tivanovin');
+                exit;
+            }
             $sync = BluebotProviderCatalogService::syncProvider($pdo, 'tivanovin');
             $wallet = BluebotDigitalServices::tivaNovinWalletStatus($pdo);
 
@@ -230,6 +251,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 
     if ($action === 'sync_tivanovin_catalog') {
+        if (!BluebotDigitalServices::providerEnabled($pdo, 'tivanovin')) {
+            flash('warning', 'همگام‌سازی انجام نشد؛ ابتدا این ارائه‌دهنده را فعال کنید.');
+            header('Location: digital_services.php#tivanovin');
+            exit;
+        }
         try {
             $sync = BluebotProviderCatalogService::syncProvider($pdo, 'tivanovin');
             if (!empty($sync['ok'])) {
@@ -281,6 +307,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $syncInterval
             );
             BluebotDigitalServices::setProviderApprovalMode($pdo, 'panelbaz', $approvalMode);
+            if (!BluebotDigitalServices::providerEnabled($pdo, 'panelbaz')) {
+                flash('success', 'تنظیمات پنل باز ذخیره شد. ارائه‌دهنده غیرفعال است و تا زمان فعال‌سازی با API آن ارتباطی برقرار نمی‌شود.');
+                header('Location: digital_services.php#panelbaz');
+                exit;
+            }
             $sync = BluebotProviderCatalogService::syncProvider($pdo, 'panelbaz');
             $wallet = BluebotDigitalServices::panelBazWalletStatus($pdo);
 
@@ -315,6 +346,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 
     if ($action === 'sync_panelbaz_catalog') {
+        if (!BluebotDigitalServices::providerEnabled($pdo, 'panelbaz')) {
+            flash('warning', 'همگام‌سازی انجام نشد؛ ابتدا این ارائه‌دهنده را فعال کنید.');
+            header('Location: digital_services.php#panelbaz');
+            exit;
+        }
         try {
             $sync = BluebotProviderCatalogService::syncProvider($pdo, 'panelbaz');
             if (!empty($sync['ok'])) {
@@ -534,6 +570,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         try {
             BluebotDigitalServices::setProviderApprovalMode($pdo, 'ozvinoo', $approvalMode);
+            if (!BluebotDigitalServices::providerEnabled($pdo, 'ozvinoo')) {
+                flash('success', 'تنظیمات عضوینو ذخیره شد. ارائه‌دهنده غیرفعال است و تا زمان فعال‌سازی با API آن ارتباطی برقرار نمی‌شود.');
+                header('Location: digital_services.php#ozvinoo');
+                exit;
+            }
             $sync = BluebotDigitalServices::syncOZVinooCatalog($pdo);
             if (!empty($sync['ok'])) {
                 $wallet = BluebotDigitalServices::ozvinooWalletStatus($pdo);
@@ -572,6 +613,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 
     if ($action === 'sync_ozvinoo_catalog') {
+        if (!BluebotDigitalServices::providerEnabled($pdo, 'ozvinoo')) {
+            flash('warning', 'همگام‌سازی انجام نشد؛ ابتدا این ارائه‌دهنده را فعال کنید.');
+            header('Location: digital_services.php#ozvinoo');
+            exit;
+        }
         try {
             $sync = BluebotDigitalServices::syncOZVinooCatalog($pdo);
             if (!empty($sync['ok'])) {
