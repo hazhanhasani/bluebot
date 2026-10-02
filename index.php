@@ -397,6 +397,7 @@ require_once __DIR__ . '/src/Support/JalaliDate.php';
 require_once __DIR__ . '/src/Support/MiniApp.php';
 require_once __DIR__ . '/function.php';
 require_once __DIR__ . '/src/Services/DigitalServiceManager.php';
+require_once __DIR__ . '/src/Support/AppClientBot.php';
 bluebotEnsureInstallerRemoved();
 
 // Upgrade-safe one-time bootstrap: older installations can already have
@@ -901,6 +902,9 @@ if ($user['joinchannel'] != "active") {
             return;
         }
     }
+}
+if (bluebotHandleAppClientEntry()) {
+    return;
 }
 if ($text == "/start" || $datain == "start" || $text == "start") {
     // Keep Telegram's Mini App menu button synchronized with the bot domain.
