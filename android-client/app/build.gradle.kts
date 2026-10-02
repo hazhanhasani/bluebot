@@ -13,6 +13,10 @@ val libXrayVersion = "26.9.9"
 val libXraySha256 = "4998a8b56e4a78a164b5359d5690036f83da3b575465cea57ddf29c0149c345f"
 val libXrayArchive = layout.buildDirectory.file("downloads/libxray-android.zip")
 val libXrayAar = layout.projectDirectory.file("libs/libXray.aar")
+val releaseKeystorePath = System.getenv("BLUE_PANEL_KEYSTORE_PATH")
+val releaseKeystorePassword = System.getenv("BLUE_PANEL_KEYSTORE_PASSWORD")
+val releaseKeyPassword = System.getenv("BLUE_PANEL_KEY_PASSWORD")
+val releaseKeyAlias = "blue-panel-release"
 
 val prepareLibXray by tasks.registering {
     outputs.file(libXrayAar)
@@ -62,6 +66,33 @@ android {
 
         buildConfigField("String", "BLUEBOT_API_BASE", "\"${blueBotApi.get()}\"")
         buildConfigField("String", "XRAY_CORE_VERSION", "\"$libXrayVersion\"")
+    }
+
+    signingConfigs {
+        val hasReleaseSigning =
+            !releaseKeystorePath.isNullOrBlank() &&
+            !releaseKeystorePassword.isNullOrBlank() &&
+            !releaseKeyPassword.isNullOrBlank()
+
+        if (hasReleaseSigning) {
+            create("release") {
+                storeFile = file(releaseKeystorePath!!)
+                storePassword = releaseKeystorePassword
+                keyAlias = releaseKeyAlias
+                keyPassword = releaseKeyPassword
+                enableV1Signing = true
+                enableV2Signing = true
+                enableV3Signing = true
+                enableV4Signing = true
+            }
+        }
+    }
+
+    buildTypes {
+        getByName("release") {
+            signingConfigs.findByName("release")?.let { signingConfig = it }
+            isMinifyEnabled = false
+        }
     }
 
     buildFeatures {
