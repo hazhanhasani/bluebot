@@ -9,11 +9,13 @@ import android.content.Intent
 import android.net.VpnService
 import android.os.Build
 import android.os.ParcelFileDescriptor
+import android.os.SystemClock
 import androidx.core.app.NotificationCompat
 import com.bluepanel.client.MainActivity
 import com.bluepanel.client.R
 import com.bluepanel.client.data.BluePanelApi
 import com.bluepanel.client.data.SessionStore
+import com.bluepanel.client.data.TrafficInfo
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -98,7 +100,16 @@ class BluePanelVpnService : VpnService() {
                 xrayEngine = engine
                 engine.start(tun.fd, sourceText)
 
-                publish(VpnConnectionState.Connected(serviceId, profile.productName))
+                publish(
+                    VpnConnectionState.Connected(
+                        serviceId = serviceId,
+                        productName = profile.productName,
+                        username = profile.username,
+                        traffic = profile.traffic,
+                        expiresAt = profile.expiresAt,
+                        connectedAtElapsedRealtime = SystemClock.elapsedRealtime(),
+                    ),
+                )
                 notifyState("متصل · ${profile.productName.ifBlank { profile.username }}")
             } catch (error: Throwable) {
                 stopTunnelOnly()
@@ -206,6 +217,13 @@ class BluePanelVpnService : VpnService() {
 sealed interface VpnConnectionState {
     data object Disconnected : VpnConnectionState
     data object Connecting : VpnConnectionState
-    data class Connected(val serviceId: String, val productName: String) : VpnConnectionState
+    data class Connected(
+        val serviceId: String,
+        val productName: String,
+        val username: String,
+        val traffic: TrafficInfo,
+        val expiresAt: Long?,
+        val connectedAtElapsedRealtime: Long,
+    ) : VpnConnectionState
     data class Error(val message: String) : VpnConnectionState
 }
