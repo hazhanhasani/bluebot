@@ -25,17 +25,6 @@ val releaseSigningConfigured = listOf(
     releaseKeyPassword,
 ).all { it.isNotBlank() }
 
-val releaseKeystoreFile = System.getenv("ANDROID_KEYSTORE_FILE")
-val releaseKeystorePassword = System.getenv("ANDROID_KEYSTORE_PASSWORD")
-val releaseKeyAlias = System.getenv("ANDROID_KEY_ALIAS")
-val releaseKeyPassword = System.getenv("ANDROID_KEY_PASSWORD")
-val releaseSigningConfigured = listOf(
-    releaseKeystoreFile,
-    releaseKeystorePassword,
-    releaseKeyAlias,
-    releaseKeyPassword,
-).all { !it.isNullOrBlank() }
-
 val prepareLibXray by tasks.registering {
     outputs.file(libXrayAar)
     doLast {
@@ -89,7 +78,7 @@ android {
     signingConfigs {
         create("release") {
             if (releaseSigningConfigured) {
-                storeFile = file(releaseKeystoreFile!!)
+                storeFile = file(releaseKeystoreFile)
                 storePassword = releaseKeystorePassword
                 keyAlias = releaseKeyAlias
                 keyPassword = releaseKeyPassword
@@ -101,26 +90,6 @@ android {
         getByName("release") {
             signingConfig = signingConfigs.getByName("release")
             isMinifyEnabled = false
-        }
-    }
-
-    signingConfigs {
-        if (releaseSigningConfigured) {
-            create("release") {
-                storeFile = file(releaseKeystoreFile)
-                storePassword = releaseKeystorePassword
-                keyAlias = releaseKeyAlias
-                keyPassword = releaseKeyPassword
-            }
-        }
-    }
-
-    buildTypes {
-        getByName("release") {
-            isMinifyEnabled = false
-            if (releaseSigningConfigured) {
-                signingConfig = signingConfigs.getByName("release")
-            }
         }
     }
 
@@ -148,7 +117,7 @@ val verifyReleaseSigning by tasks.registering {
         check(releaseSigningConfigured) {
             "Release signing is not configured. Set ANDROID_KEYSTORE_FILE, ANDROID_KEYSTORE_PASSWORD, ANDROID_KEY_ALIAS and ANDROID_KEY_PASSWORD."
         }
-        check(file(releaseKeystoreFile!!).isFile) {
+        check(file(releaseKeystoreFile).isFile) {
             "Release keystore file does not exist: $releaseKeystoreFile"
         }
     }
