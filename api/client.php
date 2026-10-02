@@ -228,6 +228,26 @@ function clientAndroidUpdateManifest(): array
     ];
 }
 
+function clientAuthResponse(array $session, string $message = 'Authenticated'): never
+{
+    $user = is_array($session['user'] ?? null) ? $session['user'] : [];
+    $service = is_array($session['service'] ?? null) ? $session['service'] : [];
+
+    clientResponse(true, $message, [
+        'access_token' => (string) $session['token'],
+        'token_type' => 'Bearer',
+        'expires_in' => (int) $session['expires_in'],
+        'expires_at' => (string) $session['expires_at'],
+        'account' => [
+            'username' => (string) ($session['account']['username'] ?? ''),
+            'telegram_user_id' => (string) ($session['account']['user_id'] ?? ''),
+            'service_id' => (string) ($session['account']['invoice_id'] ?? ''),
+            'service_name' => (string) ($service['name_product'] ?? ''),
+            'balance' => (int) ($user['Balance'] ?? 0),
+        ],
+    ]);
+}
+
 $method = strtoupper((string) ($_SERVER['REQUEST_METHOD'] ?? 'GET'));
 $body = $method === 'POST' ? clientBody() : [];
 $action = trim((string) ($_GET['action'] ?? ($body['action'] ?? '')));
@@ -235,8 +255,9 @@ $action = trim((string) ($_GET['action'] ?? ($body['action'] ?? '')));
 if ($action === 'health') {
     clientResponse(true, 'ok', [
         'api' => 'bluepanel-client',
-        'version' => 2,
+        'version' => 3,
         'service_scoped_accounts' => true,
+        'qr_login' => true,
     ]);
 }
 
@@ -272,28 +293,47 @@ if ($action === 'login') {
             (string) ($_SERVER['REMOTE_ADDR'] ?? '')
         );
 
-        $user = is_array($session['user'] ?? null) ? $session['user'] : [];
-        $service = is_array($session['service'] ?? null) ? $session['service'] : [];
-
-        clientResponse(true, 'Authenticated', [
-            'access_token' => (string) $session['token'],
-            'token_type' => 'Bearer',
-            'expires_in' => (int) $session['expires_in'],
-            'expires_at' => (string) $session['expires_at'],
-            'account' => [
-                'username' => (string) ($session['account']['username'] ?? ''),
-                'telegram_user_id' => (string) ($session['account']['user_id'] ?? ''),
-                'service_id' => (string) ($session['account']['invoice_id'] ?? ''),
-                'service_name' => (string) ($service['name_product'] ?? ''),
-                'balance' => (int) ($user['Balance'] ?? 0),
-            ],
-        ]);
+        clientAuthResponse($session);
     } catch (AppClientAuthRateLimitException $e) {
         clientResponse(false, 'Too many login attempts. Try again later.', [], 429);
     } catch (InvalidArgumentException $e) {
         clientResponse(false, $e->getMessage(), [], 422);
     } catch (Throwable $e) {
         clientResponse(false, 'Invalid username or password', [], 401);
+    }
+}
+
+if ($action === 'qr-login') {
+    if ($method !== 'POST') {
+        clientResponse(false, 'Method not allowed', [], 405);
+    }
+
+    $payload = trim((string) ($body['qr_payload'] ?? ''));
+    $deviceId = trim((string) ($body['device_id'] ?? clientHeader('X-Device-Id')));
+
+    if ($payload === '' || $deviceId === '') {
+        clientResponse(false, 'QR payload and device id are required', [], 422);
+    }
+
+    try {
+        $session = AppClientAuth::authenticateQr(
+            $pdo,
+            $payload,
+            $deviceId,
+            (string) ($_SERVER['REMOTE_ADDR'] ?? '')
+        );
+        clientAuthResponse($session, 'QR authenticated');
+    } catch (AppClientAuthRateLimitException $e) {
+        clientResponse(false, 'Too many QR login attempts. Try again later.', [], 429);
+    } catch (InvalidArgumentException $e) {
+        clientResponse(false, 'این QR برای ورود Blue VPN قابل استفاده نیست.', [], 422);
+    } catch (Throwable $e) {
+        clientResponse(
+            false,
+            'این QR هنوز به سرویس فعال شما متصل نشده است. یک‌بار اطلاعات سرویس را در ربات باز کنید.',
+            [],
+            401
+        );
     }
 }
 
