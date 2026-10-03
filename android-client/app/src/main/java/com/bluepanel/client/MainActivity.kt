@@ -816,11 +816,13 @@ private fun StoreScreen(
                             error = null
                             runCatching { api.orderStatus(orderId) }
                                 .onSuccess { order ->
-                                    if (order.status == "paid" || order.serviceId != null) {
+                                    if (order.status == "paid" && order.serviceId != null) {
                                         statusMessage = "✅ پرداخت تأیید و سرویس فعال شد."
                                         pendingOrderId = null
                                         onPurchased()
                                         refresh()
+                                    } else if (order.status == "delivery_error") {
+                                        statusMessage = "⚠️ پرداخت تأیید شده اما ساخت سرویس کامل نشده است؛ سفارش برای بررسی ثبت شد."
                                     } else {
                                         statusMessage = "پرداخت هنوز تأیید نشده است."
                                     }
