@@ -79,8 +79,8 @@ android {
         applicationId = "com.bluepanel.client"
         minSdk = 26
         targetSdk = 37
-        versionCode = 15
-        versionName = "0.4.3"
+        versionCode = 16
+        versionName = "0.4.4"
 
         buildConfigField("String", "BLUEBOT_API_BASE", "\"${blueBotApi.get()}\"")
         buildConfigField("String", "XRAY_CORE_VERSION", "\"$libXrayVersion\"")
@@ -93,6 +93,9 @@ android {
                 storePassword = releaseKeystorePassword
                 keyAlias = releaseKeyAlias
                 keyPassword = releaseKeyPassword
+                enableV1Signing = true
+                enableV2Signing = true
+                enableV3Signing = true
             }
         }
     }

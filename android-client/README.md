@@ -70,6 +70,8 @@ committed to this repository.
 - Subscription payloads remain in memory.
 - Panel administrator credentials are never returned to Android.
 - Official APK releases are verified against a pinned signing-certificate SHA-256.
+- Stable APKs are signed with v1, v2 and v3 schemes and checked with `zipalign -P 16`.
+- Releases up to BlueBot v0.6.2 were CI debug-signed. Android cannot update those installs with the permanent production key introduced in v0.6.3, so those legacy builds require a one-time uninstall/reinstall migration.
 
 ## Branding
 
