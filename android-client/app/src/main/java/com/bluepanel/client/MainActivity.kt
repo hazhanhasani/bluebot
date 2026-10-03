@@ -2260,29 +2260,43 @@ private fun UpdateNotice(info: AppUpdateInfo) {
         shape = RoundedCornerShape(18.dp),
         colors = CardDefaults.cardColors(containerColor = Color(0xCC15242B)),
     ) {
-        Row(
+        Column(
             modifier = Modifier.fillMaxWidth().padding(12.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween,
         ) {
-            Column(Modifier.weight(1f)) {
-                Text(
-                    if (required) "بروزرسانی ضروری" else "نسخه جدید آماده است",
-                    fontWeight = FontWeight.ExtraBold,
-                    fontSize = 12.sp,
-                )
-                Text(
-                    "Blue VPN ${info.latestVersionName}",
-                    color = Color.White.copy(alpha = 0.55f),
-                    fontSize = 10.sp,
-                )
-            }
-            Button(
-                onClick = { uriHandler.openUri(info.downloadUrl) },
-                shape = RoundedCornerShape(50),
-                colors = ButtonDefaults.buttonColors(containerColor = Accent),
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween,
             ) {
-                Text("دریافت", fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                Column(Modifier.weight(1f)) {
+                    Text(
+                        if (required) "بروزرسانی ضروری" else "نسخه جدید آماده است",
+                        fontWeight = FontWeight.ExtraBold,
+                        fontSize = 12.sp,
+                    )
+                    Text(
+                        "Blue VPN ${info.latestVersionName}",
+                        color = Color.White.copy(alpha = 0.55f),
+                        fontSize = 10.sp,
+                    )
+                }
+                Button(
+                    onClick = { uriHandler.openUri(info.downloadUrl) },
+                    shape = RoundedCornerShape(50),
+                    colors = ButtonDefaults.buttonColors(containerColor = Accent),
+                ) {
+                    Text("دریافت", fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                }
+            }
+
+            if (info.releaseNotes.isNotBlank()) {
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    info.releaseNotes,
+                    color = Color.White.copy(alpha = 0.72f),
+                    fontSize = 10.sp,
+                    lineHeight = 16.sp,
+                )
             }
         }
     }
