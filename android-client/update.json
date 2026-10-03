@@ -1,8 +1,8 @@
 {
-  "latest_version_code": 11,
-  "latest_version_name": "0.3.7",
+  "latest_version_code": 12,
+  "latest_version_name": "0.4.0",
   "minimum_version_code": 4,
-  "download_url": "https://github.com/hazhanhasani/bluebot/releases/download/v0.6.10/blue-vpn-android-v0.6.10.apk",
-  "release_notes": "رفع کامل ساخت و نمایش نام کاربری و رمز Blue VPN پس از خرید و تست، نمایش مجدد با دکمه کپی در سرویس‌های من، همگام‌سازی QR سرویس و امکان اسکن QR از دوربین یا انتخاب تصویر از گالری.",
+  "download_url": "https://github.com/hazhanhasani/bluebot/releases/download/v0.7.0/blue-vpn-android-v0.7.0.apk",
+  "release_notes": "افزودن ثبت‌نام با شماره موبایل و کد تأیید، فروشگاه داخلی BlueVPN، انتخاب پلن و پرداخت مستقیم، نمایش سرویس‌های خریداری‌شده در اپ، و اتصال خودکار حساب اپ به ربات با شماره موبایل تأییدشده مشترک.",
   "check_interval_seconds": 21600
 }

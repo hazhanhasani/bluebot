@@ -396,6 +396,7 @@ require_once __DIR__ . '/botapi.php';
 require_once __DIR__ . '/src/Support/JalaliDate.php';
 require_once __DIR__ . '/src/Support/MiniApp.php';
 require_once __DIR__ . '/function.php';
+require_once __DIR__ . '/src/Services/AppStoreAccount.php';
 require_once __DIR__ . '/src/Services/DigitalServiceManager.php';
 require_once __DIR__ . '/src/Support/AppClientBot.php';
 bluebotEnsureInstallerRemoved();
@@ -2193,6 +2194,19 @@ if ($text == "/start" || $datain == "start" || $text == "start") {
     sendmessage($from_id, $textbotlang['users']['number']['active'], json_encode(['inline_keyboard' => [], 'remove_keyboard' => true]), 'html');
     sendmessage($from_id, $textbotlang['users']['text_start'], $keyboard, 'html');
     update("user", "number", $normalizedPhone, "id", $from_id);
+    try {
+        AppStoreAccount::linkTelegramUserByPhone(
+            $pdo,
+            (string) $from_id,
+            $normalizedPhone
+        );
+    } catch (Throwable $linkError) {
+        bluebotLog('warning', 'Mobile app account link failed after phone capture', [
+            'telegram_user_id' => (string) $from_id,
+            'phone' => $normalizedPhone,
+            'reason' => $linkError->getMessage(),
+        ]);
+    }
     if (($setting['verifystart'] ?? '') === "onverify") {
         update("user", "verify", "1", "id", $from_id);
     }
@@ -2276,6 +2290,26 @@ if ($text == "/start" || $datain == "start" || $text == "start") {
         }
 
         update("user", "number", $verifiedPhone, "id", $from_id);
+        try {
+            $appLink = AppStoreAccount::linkTelegramUserByPhone(
+                $pdo,
+                (string) $from_id,
+                $verifiedPhone
+            );
+            if (!empty($appLink['migrated'])) {
+                bluebotLog('info', 'Mobile app account linked to Telegram user', [
+                    'telegram_user_id' => (string) $from_id,
+                    'from_user_id' => (string) ($appLink['from_user_id'] ?? ''),
+                    'migrated_rows' => (int) ($appLink['migrated_rows'] ?? 0),
+                ]);
+            }
+        } catch (Throwable $linkError) {
+            bluebotLog('warning', 'Mobile app account link failed after phone verification', [
+                'telegram_user_id' => (string) $from_id,
+                'phone' => $verifiedPhone,
+                'reason' => $linkError->getMessage(),
+            ]);
+        }
         if (($setting['verifystart'] ?? '') === "onverify") {
             update("user", "verify", "1", "id", $from_id);
         }

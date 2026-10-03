@@ -13,6 +13,9 @@ require_once __DIR__ . '/../botapi.php';
 require_once __DIR__ . '/../panels.php';
 require_once __DIR__ . '/../src/Services/AppClientPanelQrResolver.php';
 require_once __DIR__ . '/../src/Services/AppClientAuth.php';
+require_once __DIR__ . '/../src/Services/AppStoreAccount.php';
+require_once __DIR__ . '/../src/Support/SmsService.php';
+require_once __DIR__ . '/../src/Payment/Blupal.php';
 
 header('Content-Type: application/json; charset=utf-8');
 header('Cache-Control: private, no-store, no-cache, must-revalidate');
@@ -78,12 +81,17 @@ function clientBearer(): string
 
 function clientRequireSession(PDO $pdo): array
 {
+    $token = clientBearer();
+    $deviceId = clientHeader('X-Device-Id');
+
     try {
-        return AppClientAuth::authorize(
-            $pdo,
-            clientBearer(),
-            clientHeader('X-Device-Id')
-        );
+        return AppStoreAccount::authorize($pdo, $token, $deviceId);
+    } catch (Throwable $e) {
+        // Fall through to legacy service-scoped / QR sessions.
+    }
+
+    try {
+        return AppClientAuth::authorize($pdo, $token, $deviceId);
     } catch (Throwable $e) {
         clientResponse(false, 'Authentication required', [], 401);
     }
@@ -249,6 +257,26 @@ function clientAuthResponse(array $session, string $message = 'Authenticated'): 
     ]);
 }
 
+function clientMobileAuthResponse(array $session): never
+{
+    $user = is_array($session['user'] ?? null) ? $session['user'] : [];
+    clientResponse(true, 'Authenticated', [
+        'access_token' => (string) $session['token'],
+        'token_type' => 'Bearer',
+        'expires_in' => (int) $session['expires_in'],
+        'expires_at' => (string) $session['expires_at'],
+        'account' => [
+            'username' => (string) ($session['phone'] ?? ''),
+            'phone' => (string) ($session['phone'] ?? ''),
+            'telegram_user_id' => (string) ($session['account']['linked_telegram_id'] ?? ''),
+            'service_id' => '',
+            'service_name' => '',
+            'balance' => (int) ($user['Balance'] ?? 0),
+            'account_type' => 'mobile',
+        ],
+    ]);
+}
+
 $method = strtoupper((string) ($_SERVER['REQUEST_METHOD'] ?? 'GET'));
 $body = $method === 'POST' ? clientBody() : [];
 $action = trim((string) ($_GET['action'] ?? ($body['action'] ?? '')));
@@ -256,8 +284,11 @@ $action = trim((string) ($_GET['action'] ?? ($body['action'] ?? '')));
 if ($action === 'health') {
     clientResponse(true, 'ok', [
         'api' => 'bluepanel-client',
-        'version' => 4,
+        'version' => 5,
         'service_scoped_accounts' => true,
+        'mobile_accounts' => true,
+        'storefront' => true,
+        'phone_account_linking' => true,
         'qr_login' => true,
         'connected_panel_qr_login' => true,
     ]);
@@ -271,6 +302,49 @@ if ($action === 'version' || $action === 'app-version') {
     clientResponse(true, 'ok', [
         'android' => clientAndroidUpdateManifest(),
     ]);
+}
+
+if ($action === 'mobile-otp-request') {
+    if ($method !== 'POST') {
+        clientResponse(false, 'Method not allowed', [], 405);
+    }
+
+    $phone = trim((string) ($body['phone'] ?? ''));
+    $deviceId = trim((string) ($body['device_id'] ?? clientHeader('X-Device-Id')));
+
+    try {
+        $result = AppStoreAccount::requestOtp($pdo, $phone, $deviceId);
+        clientResponse(true, 'OTP sent', $result);
+    } catch (InvalidArgumentException $e) {
+        clientResponse(false, $e->getMessage(), [], 422);
+    } catch (Throwable $e) {
+        bluebotLog('warning', 'Android mobile OTP request failed', [
+            'reason' => $e->getMessage(),
+        ]);
+        clientResponse(false, 'ارسال کد تأیید انجام نشد. کمی بعد دوباره تلاش کنید.', [], 429);
+    }
+}
+
+if ($action === 'mobile-otp-verify') {
+    if ($method !== 'POST') {
+        clientResponse(false, 'Method not allowed', [], 405);
+    }
+
+    $phone = trim((string) ($body['phone'] ?? ''));
+    $code = trim((string) ($body['code'] ?? ''));
+    $deviceId = trim((string) ($body['device_id'] ?? clientHeader('X-Device-Id')));
+
+    try {
+        $session = AppStoreAccount::verifyOtp($pdo, $phone, $code, $deviceId);
+        clientMobileAuthResponse($session);
+    } catch (InvalidArgumentException $e) {
+        clientResponse(false, $e->getMessage(), [], 422);
+    } catch (Throwable $e) {
+        bluebotLog('warning', 'Android mobile OTP verification failed', [
+            'reason' => $e->getMessage(),
+        ]);
+        clientResponse(false, $e->getMessage(), [], 401);
+    }
 }
 
 if ($action === 'login') {
@@ -340,8 +414,9 @@ if ($action === 'qr-login') {
 }
 
 $session = clientRequireSession($pdo);
-$userId = (string) $session['user_id'];
-$invoiceId = (string) $session['invoice_id'];
+$userId = (string) ($session['user_id'] ?? '');
+$invoiceId = (string) ($session['invoice_id'] ?? '');
+$sessionType = (string) ($session['session_type'] ?? 'invoice');
 $sessionService = is_array($session['service'] ?? null) ? $session['service'] : [];
 
 if ($action === 'logout') {
@@ -349,6 +424,7 @@ if ($action === 'logout') {
         clientResponse(false, 'Method not allowed', [], 405);
     }
 
+    AppStoreAccount::logout($pdo, clientBearer());
     AppClientAuth::logout($pdo, clientBearer());
     clientResponse(true, 'Logged out');
 }
@@ -360,18 +436,37 @@ if ($action === 'me') {
 
     $user = is_array($session['user'] ?? null) ? $session['user'] : [];
     clientResponse(true, 'ok', [
-        'username' => (string) $session['username'],
-        'telegram_user_id' => $userId,
+        'username' => (string) ($session['username'] ?? ''),
+        'telegram_user_id' => $sessionType === 'mobile'
+            ? (string) ($session['linked_telegram_id'] ?? '')
+            : $userId,
         'service_id' => $invoiceId,
         'service_name' => (string) ($sessionService['name_product'] ?? ''),
         'balance' => (int) ($user['Balance'] ?? 0),
-        'phone' => (string) ($user['number'] ?? ''),
+        'phone' => (string) ($user['number'] ?? ($session['phone'] ?? '')),
+        'account_type' => $sessionType,
     ]);
 }
 
 if ($action === 'services') {
     if ($method !== 'GET') {
         clientResponse(false, 'Method not allowed', [], 405);
+    }
+
+    if ($sessionType === 'mobile') {
+        $rows = AppClientAuth::servicesForUser($pdo, $userId, 100);
+        $services = [];
+        foreach ($rows as $row) {
+            $panel = select(
+                'marzban_panel',
+                '*',
+                'name_panel',
+                (string) ($row['Service_location'] ?? ''),
+                'select'
+            );
+            $services[] = clientServiceSummary($row, is_array($panel) ? $panel : null);
+        }
+        clientResponse(true, 'ok', ['services' => $services]);
     }
 
     if (empty($sessionService)) {
@@ -406,16 +501,23 @@ if ($action === 'service') {
         clientResponse(false, 'Service id is required', [], 422);
     }
 
-    if (!hash_equals($invoiceId, $requestedId)) {
-        clientResponse(false, 'Service not found', [], 404);
-    }
+    if ($sessionType === 'mobile') {
+        $invoice = AppClientAuth::serviceForUser($pdo, $userId, $requestedId);
+        if (!is_array($invoice)) {
+            clientResponse(false, 'Service not found', [], 404);
+        }
+    } else {
+        if (!hash_equals($invoiceId, $requestedId)) {
+            clientResponse(false, 'Service not found', [], 404);
+        }
 
-    $invoice = $sessionService;
-    if (
-        !is_array($invoice)
-        || !hash_equals((string) ($invoice['id_invoice'] ?? ''), $invoiceId)
-    ) {
-        clientResponse(false, 'Service not found', [], 404);
+        $invoice = $sessionService;
+        if (
+            !is_array($invoice)
+            || !hash_equals((string) ($invoice['id_invoice'] ?? ''), $invoiceId)
+        ) {
+            clientResponse(false, 'Service not found', [], 404);
+        }
     }
 
     $panel = select(
@@ -497,6 +599,77 @@ if ($action === 'service') {
             'subscription_url' => $connection['subscription_url'],
         ],
     ]);
+}
+
+if ($action === 'store-catalog') {
+    if ($method !== 'GET') {
+        clientResponse(false, 'Method not allowed', [], 405);
+    }
+    if ($userId === '') {
+        clientResponse(false, 'Store requires a linked Blue Panel account', [], 403);
+    }
+
+    try {
+        clientResponse(true, 'ok', AppStoreAccount::catalog($pdo, $userId));
+    } catch (Throwable $e) {
+        bluebotLog('warning', 'Android store catalog failed', [
+            'user_id' => $userId,
+            'reason' => $e->getMessage(),
+        ]);
+        clientResponse(false, 'دریافت فروشگاه ناموفق بود.', [], 500);
+    }
+}
+
+if ($action === 'store-checkout') {
+    if ($method !== 'POST') {
+        clientResponse(false, 'Method not allowed', [], 405);
+    }
+    if ($userId === '') {
+        clientResponse(false, 'Store requires a linked Blue Panel account', [], 403);
+    }
+
+    try {
+        $checkout = AppStoreAccount::createCheckout(
+            $pdo,
+            $userId,
+            trim((string) ($body['product_id'] ?? '')),
+            trim((string) ($body['panel_id'] ?? '')),
+            trim((string) ($body['gateway'] ?? 'wallet'))
+        );
+        clientResponse(true, 'Checkout created', $checkout);
+    } catch (DomainException $e) {
+        clientResponse(false, $e->getMessage(), [], 409);
+    } catch (InvalidArgumentException $e) {
+        clientResponse(false, $e->getMessage(), [], 422);
+    } catch (Throwable $e) {
+        bluebotLog('error', 'Android store checkout failed', [
+            'user_id' => $userId,
+            'reason' => $e->getMessage(),
+        ]);
+        clientResponse(false, $e->getMessage(), [], 500);
+    }
+}
+
+if ($action === 'store-order-status') {
+    if ($method !== 'GET') {
+        clientResponse(false, 'Method not allowed', [], 405);
+    }
+    if ($userId === '') {
+        clientResponse(false, 'Store requires a linked Blue Panel account', [], 403);
+    }
+
+    try {
+        $orderId = trim((string) ($_GET['order_id'] ?? ''));
+        clientResponse(true, 'ok', AppStoreAccount::orderStatus($pdo, $userId, $orderId));
+    } catch (InvalidArgumentException $e) {
+        clientResponse(false, $e->getMessage(), [], 404);
+    } catch (Throwable $e) {
+        bluebotLog('warning', 'Android store order status failed', [
+            'user_id' => $userId,
+            'reason' => $e->getMessage(),
+        ]);
+        clientResponse(false, 'بررسی وضعیت پرداخت ناموفق بود.', [], 500);
+    }
 }
 
 clientResponse(false, 'Unknown action', [], 404);

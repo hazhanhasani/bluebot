@@ -24,6 +24,8 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -97,6 +99,8 @@ import com.bluepanel.client.data.AppUpdateInfo
 import com.bluepanel.client.data.BluePanelApi
 import com.bluepanel.client.data.ServiceSummary
 import com.bluepanel.client.data.SessionStore
+import com.bluepanel.client.data.StoreCatalog
+import com.bluepanel.client.data.StorePlan
 import com.bluepanel.client.data.TrafficInfo
 import com.bluepanel.client.ui.QrScannerOverlay
 import com.bluepanel.client.util.PersianDateTime
@@ -139,6 +143,8 @@ private fun BlueVpnApp() {
             val api = remember { BluePanelApi(store) }
             val scope = rememberCoroutineScope()
             var loggedIn by remember { mutableStateOf(store.token() != null) }
+            var registerOpen by remember { mutableStateOf(false) }
+            var storeOpen by remember { mutableStateOf(false) }
             var services by remember { mutableStateOf<List<ServiceSummary>>(emptyList()) }
             var loading by remember { mutableStateOf(loggedIn) }
             var error by remember { mutableStateOf<String?>(null) }
@@ -217,61 +223,91 @@ private fun BlueVpnApp() {
             }
 
             Surface(modifier = Modifier.fillMaxSize()) {
-                if (!loggedIn) {
-                    LoginScreen(
-                        loading = loading,
-                        error = error,
-                        updateInfo = updateInfo,
-                        onLogin = { username, password ->
-                            scope.launch {
-                                loading = true
-                                error = null
-                                runCatching { api.login(username, password) }
-                                    .onSuccess {
-                                        store.saveSession(it.accessToken, it.username)
-                                        loggedIn = true
-                                    }
-                                    .onFailure { error = it.message ?: "ورود ناموفق بود" }
-                                loading = false
-                            }
-                        },
-                        onQrLogin = { payload ->
-                            scope.launch {
-                                loading = true
-                                error = null
-                                runCatching { api.qrLogin(payload) }
-                                    .onSuccess {
-                                        store.saveSession(it.accessToken, it.username)
-                                        loggedIn = true
-                                    }
-                                    .onFailure {
-                                        error = it.message ?: "ورود با QR ناموفق بود"
-                                    }
-                                loading = false
-                            }
-                        },
-                    )
-                } else {
-                    PremiumDashboard(
-                        username = store.username(),
-                        services = services,
-                        updateInfo = updateInfo,
-                        loading = loading,
-                        error = error,
-                        vpnState = vpnState,
-                        onRefresh = ::refreshServices,
-                        onConnect = ::connect,
-                        onDisconnect = { BluePanelVpnService.disconnect(context) },
-                        onLogout = {
-                            BluePanelVpnService.disconnect(context)
-                            scope.launch {
-                                api.logout()
-                                services = emptyList()
-                                loggedIn = false
-                                error = null
-                            }
-                        },
-                    )
+                when {
+                    !loggedIn && registerOpen -> {
+                        PhoneRegistrationScreen(
+                            api = api,
+                            sessionStore = store,
+                            onBack = { registerOpen = false },
+                            onAuthenticated = {
+                                registerOpen = false
+                                loggedIn = true
+                                storeOpen = true
+                            },
+                        )
+                    }
+
+                    !loggedIn -> {
+                        LoginScreen(
+                            loading = loading,
+                            error = error,
+                            updateInfo = updateInfo,
+                            onOpenRegister = { registerOpen = true },
+                            onLogin = { username, password ->
+                                scope.launch {
+                                    loading = true
+                                    error = null
+                                    runCatching { api.login(username, password) }
+                                        .onSuccess {
+                                            store.saveSession(it.accessToken, it.username)
+                                            loggedIn = true
+                                        }
+                                        .onFailure { error = it.message ?: "ورود ناموفق بود" }
+                                    loading = false
+                                }
+                            },
+                            onQrLogin = { payload ->
+                                scope.launch {
+                                    loading = true
+                                    error = null
+                                    runCatching { api.qrLogin(payload) }
+                                        .onSuccess {
+                                            store.saveSession(it.accessToken, it.username)
+                                            loggedIn = true
+                                        }
+                                        .onFailure {
+                                            error = it.message ?: "ورود با QR ناموفق بود"
+                                        }
+                                    loading = false
+                                }
+                            },
+                        )
+                    }
+
+                    storeOpen -> {
+                        StoreScreen(
+                            api = api,
+                            onBack = {
+                                storeOpen = false
+                                refreshServices()
+                            },
+                            onPurchased = ::refreshServices,
+                        )
+                    }
+
+                    else -> {
+                        PremiumDashboard(
+                            username = store.username(),
+                            services = services,
+                            updateInfo = updateInfo,
+                            loading = loading,
+                            error = error,
+                            vpnState = vpnState,
+                            onRefresh = ::refreshServices,
+                            onOpenStore = { storeOpen = true },
+                            onConnect = ::connect,
+                            onDisconnect = { BluePanelVpnService.disconnect(context) },
+                            onLogout = {
+                                BluePanelVpnService.disconnect(context)
+                                scope.launch {
+                                    api.logout()
+                                    services = emptyList()
+                                    loggedIn = false
+                                    error = null
+                                }
+                            },
+                        )
+                    }
                 }
             }
         }
@@ -283,6 +319,7 @@ private fun LoginScreen(
     loading: Boolean,
     error: String?,
     updateInfo: AppUpdateInfo?,
+    onOpenRegister: () -> Unit,
     onLogin: (String, String) -> Unit,
     onQrLogin: (String) -> Unit,
 ) {
@@ -368,6 +405,20 @@ private fun LoginScreen(
 
             Spacer(Modifier.height(10.dp))
             Button(
+                onClick = onOpenRegister,
+                enabled = !loading,
+                modifier = Modifier.fillMaxWidth().height(52.dp),
+                shape = RoundedCornerShape(18.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = Color(0xFF12333A),
+                    contentColor = Color.White,
+                ),
+            ) {
+                Text("ثبت‌نام با شماره موبایل و خرید سرویس", fontWeight = FontWeight.ExtraBold)
+            }
+
+            Spacer(Modifier.height(10.dp))
+            Button(
                 onClick = { scannerOpen = true },
                 enabled = !loading,
                 modifier = Modifier.fillMaxWidth().height(52.dp),
@@ -401,6 +452,455 @@ private fun LoginScreen(
 }
 
 @Composable
+private fun PhoneRegistrationScreen(
+    api: BluePanelApi,
+    sessionStore: SessionStore,
+    onBack: () -> Unit,
+    onAuthenticated: () -> Unit,
+) {
+    val scope = rememberCoroutineScope()
+    var phone by remember { mutableStateOf("") }
+    var code by remember { mutableStateOf("") }
+    var otpSent by remember { mutableStateOf(false) }
+    var loading by remember { mutableStateOf(false) }
+    var error by remember { mutableStateOf<String?>(null) }
+    var helper by remember { mutableStateOf("شماره موبایل را وارد کنید تا حساب BlueVPN شما ساخته شود.") }
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(
+                Brush.verticalGradient(
+                    listOf(Color(0xFF061014), Color(0xFF0A1D22), Color(0xFF071014)),
+                ),
+            )
+            .statusBarsPadding(),
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 24.dp, vertical = 28.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text("ساخت حساب", fontSize = 23.sp, fontWeight = FontWeight.Black)
+                Text(
+                    "بازگشت",
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(50))
+                        .clickable(enabled = !loading) { onBack() }
+                        .padding(horizontal = 14.dp, vertical = 8.dp),
+                    color = Accent,
+                    fontWeight = FontWeight.Bold,
+                )
+            }
+
+            Spacer(Modifier.height(28.dp))
+            Image(
+                painter = painterResource(R.drawable.blue_vpn_icon),
+                contentDescription = "Blue VPN",
+                modifier = Modifier.size(82.dp).clip(RoundedCornerShape(22.dp)),
+            )
+            Spacer(Modifier.height(20.dp))
+            Text(
+                if (otpSent) "تأیید شماره موبایل" else "خوش آمدید 👋",
+                fontSize = 24.sp,
+                fontWeight = FontWeight.Black,
+            )
+            Spacer(Modifier.height(8.dp))
+            Text(helper, color = Muted, fontSize = 12.sp)
+
+            Spacer(Modifier.height(28.dp))
+            OutlinedTextField(
+                value = phone,
+                onValueChange = { if (!otpSent) phone = it },
+                enabled = !otpSent && !loading,
+                modifier = Modifier.fillMaxWidth(),
+                singleLine = true,
+                label = { Text("شماره موبایل") },
+                placeholder = { Text("0912...") },
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
+                shape = RoundedCornerShape(18.dp),
+            )
+
+            if (otpSent) {
+                Spacer(Modifier.height(12.dp))
+                OutlinedTextField(
+                    value = code,
+                    onValueChange = { code = it.filter(Char::isDigit).take(6) },
+                    enabled = !loading,
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    label = { Text("کد ۶ رقمی") },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
+                    shape = RoundedCornerShape(18.dp),
+                )
+            }
+
+            if (!error.isNullOrBlank()) {
+                Spacer(Modifier.height(12.dp))
+                ErrorNotice(error!!)
+            }
+
+            Spacer(Modifier.height(20.dp))
+            Button(
+                onClick = {
+                    scope.launch {
+                        loading = true
+                        error = null
+                        if (!otpSent) {
+                            runCatching { api.requestMobileOtp(phone) }
+                                .onSuccess {
+                                    phone = it.phone
+                                    otpSent = true
+                                    helper = "کد تأیید برای $phone ارسال شد."
+                                }
+                                .onFailure { error = it.message ?: "ارسال کد ناموفق بود" }
+                        } else {
+                            runCatching { api.verifyMobileOtp(phone, code) }
+                                .onSuccess {
+                                    sessionStore.saveSession(it.accessToken, it.username)
+                                    onAuthenticated()
+                                }
+                                .onFailure { error = it.message ?: "تأیید شماره ناموفق بود" }
+                        }
+                        loading = false
+                    }
+                },
+                enabled = !loading && phone.isNotBlank() && (!otpSent || code.length == 6),
+                modifier = Modifier.fillMaxWidth().height(56.dp),
+                shape = RoundedCornerShape(18.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = Accent),
+            ) {
+                if (loading) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(22.dp),
+                        strokeWidth = 2.dp,
+                        color = Color(0xFF041517),
+                    )
+                } else {
+                    Text(
+                        if (otpSent) "تأیید و ورود به فروشگاه" else "دریافت کد تأیید",
+                        fontWeight = FontWeight.ExtraBold,
+                    )
+                }
+            }
+
+            if (otpSent) {
+                Spacer(Modifier.height(10.dp))
+                Text(
+                    "تغییر شماره",
+                    modifier = Modifier
+                        .clickable(enabled = !loading) {
+                            otpSent = false
+                            code = ""
+                            error = null
+                            helper = "شماره موبایل را وارد کنید تا حساب BlueVPN شما ساخته شود."
+                        }
+                        .padding(10.dp),
+                    color = Accent,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold,
+                )
+            }
+
+            Spacer(Modifier.height(24.dp))
+            Text(
+                "اگر بعداً همین شماره را در ربات تأیید کنید، سرویس‌های خریداری‌شده به حساب تلگرام شما متصل می‌شوند.",
+                color = Color.White.copy(alpha = 0.46f),
+                fontSize = 11.sp,
+            )
+        }
+    }
+}
+
+@Composable
+private fun StoreScreen(
+    api: BluePanelApi,
+    onBack: () -> Unit,
+    onPurchased: () -> Unit,
+) {
+    val scope = rememberCoroutineScope()
+    val uriHandler = LocalUriHandler.current
+    var catalog by remember { mutableStateOf<StoreCatalog?>(null) }
+    var loading by remember { mutableStateOf(true) }
+    var error by remember { mutableStateOf<String?>(null) }
+    var selectedGateway by remember { mutableStateOf("wallet") }
+    var pendingOrderId by remember { mutableStateOf<String?>(null) }
+    var statusMessage by remember { mutableStateOf<String?>(null) }
+
+    fun refresh() {
+        scope.launch {
+            loading = true
+            error = null
+            runCatching { api.storeCatalog() }
+                .onSuccess {
+                    catalog = it
+                    selectedGateway = when {
+                        "blupal" in it.gateways -> "blupal"
+                        "zarinpal" in it.gateways -> "zarinpal"
+                        else -> "wallet"
+                    }
+                }
+                .onFailure { error = it.message ?: "دریافت فروشگاه ناموفق بود" }
+            loading = false
+        }
+    }
+
+    LaunchedEffect(Unit) { refresh() }
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(
+                Brush.verticalGradient(
+                    listOf(Color(0xFF071014), Color(0xFF0B1B20), Color(0xFF071014)),
+                ),
+            )
+            .statusBarsPadding(),
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 20.dp, vertical = 20.dp),
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column {
+                    Text("فروشگاه BlueVPN", fontSize = 22.sp, fontWeight = FontWeight.Black)
+                    Text("انتخاب پلن و فعال‌سازی مستقیم داخل اپ", color = Muted, fontSize = 11.sp)
+                }
+                Text(
+                    "بازگشت",
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(50))
+                        .clickable { onBack() }
+                        .padding(horizontal = 14.dp, vertical = 8.dp),
+                    color = Accent,
+                    fontWeight = FontWeight.Bold,
+                )
+            }
+
+            Spacer(Modifier.height(18.dp))
+
+            catalog?.let { data ->
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(20.dp),
+                    colors = CardDefaults.cardColors(containerColor = Color(0xB3162228)),
+                ) {
+                    Column(Modifier.padding(16.dp)) {
+                        Text("روش پرداخت", fontWeight = FontWeight.ExtraBold)
+                        Spacer(Modifier.height(10.dp))
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            data.gateways.forEach { gateway ->
+                                val label = when (gateway) {
+                                    "blupal" -> "BluePal"
+                                    "zarinpal" -> "زرین‌پال"
+                                    else -> "کیف پول"
+                                }
+                                Button(
+                                    onClick = { selectedGateway = gateway },
+                                    modifier = Modifier.weight(1f),
+                                    shape = RoundedCornerShape(14.dp),
+                                    colors = ButtonDefaults.buttonColors(
+                                        containerColor = if (selectedGateway == gateway) Accent else Color(0xFF18242A),
+                                    ),
+                                ) {
+                                    Text(label, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                }
+                            }
+                        }
+                        Spacer(Modifier.height(8.dp))
+                        Text(
+                            "موجودی کیف پول: ${String.format(Locale.US, "%,d", data.balance)} تومان",
+                            color = Color.White.copy(alpha = 0.62f),
+                            fontSize = 11.sp,
+                        )
+                    }
+                }
+            }
+
+            if (!statusMessage.isNullOrBlank()) {
+                Spacer(Modifier.height(12.dp))
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(containerColor = Color(0xFF123038)),
+                    shape = RoundedCornerShape(16.dp),
+                ) {
+                    Text(statusMessage!!, modifier = Modifier.padding(14.dp), fontSize = 12.sp)
+                }
+            }
+
+            if (!error.isNullOrBlank()) {
+                Spacer(Modifier.height(12.dp))
+                ErrorNotice(error!!)
+            }
+
+            if (loading) {
+                Spacer(Modifier.height(40.dp))
+                Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                    CircularProgressIndicator(color = Accent)
+                }
+            } else {
+                Spacer(Modifier.height(14.dp))
+                val products = catalog?.products.orEmpty()
+                if (products.isEmpty()) {
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(20.dp),
+                    ) {
+                        Column(Modifier.padding(20.dp)) {
+                            Text("فعلاً پلن فعالی برای فروش وجود ندارد.", fontWeight = FontWeight.Bold)
+                            Spacer(Modifier.height(8.dp))
+                            Text(
+                                "پس از فعال‌کردن محصولات در پنل، همین‌جا نمایش داده می‌شوند.",
+                                color = Muted,
+                                fontSize = 11.sp,
+                            )
+                        }
+                    }
+                } else {
+                    products.forEach { plan ->
+                        StorePlanCard(
+                            plan = plan,
+                            loading = loading,
+                            onBuy = {
+                                scope.launch {
+                                    loading = true
+                                    error = null
+                                    statusMessage = null
+                                    runCatching {
+                                        api.checkout(plan.id, plan.panelId, selectedGateway)
+                                    }.onSuccess { checkout ->
+                                        if (checkout.status.equals("paid", ignoreCase = true)) {
+                                            statusMessage = "✅ سرویس با موفقیت فعال شد."
+                                            pendingOrderId = null
+                                            onPurchased()
+                                            refresh()
+                                        } else {
+                                            pendingOrderId = checkout.orderId
+                                            statusMessage = "پرداخت ساخته شد. پس از پرداخت، «بررسی پرداخت» را بزنید."
+                                            checkout.paymentUrl?.let(uriHandler::openUri)
+                                        }
+                                    }.onFailure {
+                                        error = it.message ?: "ایجاد سفارش ناموفق بود"
+                                    }
+                                    loading = false
+                                }
+                            },
+                        )
+                        Spacer(Modifier.height(12.dp))
+                    }
+                }
+            }
+
+            pendingOrderId?.let { orderId ->
+                Spacer(Modifier.height(4.dp))
+                Button(
+                    onClick = {
+                        scope.launch {
+                            loading = true
+                            error = null
+                            runCatching { api.orderStatus(orderId) }
+                                .onSuccess { order ->
+                                    if (order.status == "paid" && order.serviceId != null) {
+                                        statusMessage = "✅ پرداخت تأیید و سرویس فعال شد."
+                                        pendingOrderId = null
+                                        onPurchased()
+                                        refresh()
+                                    } else if (order.status == "delivery_error") {
+                                        statusMessage = "⚠️ پرداخت تأیید شده اما ساخت سرویس کامل نشده است؛ سفارش برای بررسی ثبت شد."
+                                    } else {
+                                        statusMessage = "پرداخت هنوز تأیید نشده است."
+                                    }
+                                }
+                                .onFailure { error = it.message ?: "بررسی پرداخت ناموفق بود" }
+                            loading = false
+                        }
+                    },
+                    enabled = !loading,
+                    modifier = Modifier.fillMaxWidth().height(54.dp),
+                    shape = RoundedCornerShape(18.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = Accent),
+                ) {
+                    Text("بررسی پرداخت", fontWeight = FontWeight.ExtraBold)
+                }
+            }
+
+            Spacer(Modifier.height(28.dp))
+        }
+    }
+}
+
+@Composable
+private fun StorePlanCard(
+    plan: StorePlan,
+    loading: Boolean,
+    onBuy: () -> Unit,
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(22.dp),
+        colors = CardDefaults.cardColors(containerColor = Color(0xD1121C22)),
+    ) {
+        Column(Modifier.padding(17.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.Top,
+            ) {
+                Column(Modifier.weight(1f)) {
+                    Text(plan.name, fontSize = 16.sp, fontWeight = FontWeight.Black)
+                    Text(plan.panelName, color = Accent, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                }
+                Text(
+                    "${String.format(Locale.US, "%,d", plan.price)} تومان",
+                    fontWeight = FontWeight.Black,
+                    fontSize = 14.sp,
+                )
+            }
+            Spacer(Modifier.height(10.dp))
+            Text(
+                buildString {
+                    append(if (plan.trafficGb <= 0) "حجم نامحدود" else "${plan.trafficGb} GB")
+                    append("  •  ")
+                    append(if (plan.timeDays <= 0) "بدون محدودیت زمانی" else "${plan.timeDays} روز")
+                },
+                color = Color.White.copy(alpha = 0.64f),
+                fontSize = 11.sp,
+            )
+            if (plan.description.isNotBlank()) {
+                Spacer(Modifier.height(7.dp))
+                Text(plan.description, color = Muted, fontSize = 10.sp)
+            }
+            Spacer(Modifier.height(14.dp))
+            Button(
+                onClick = onBuy,
+                enabled = !loading,
+                modifier = Modifier.fillMaxWidth().height(48.dp),
+                shape = RoundedCornerShape(15.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = Accent),
+            ) {
+                Text("خرید و فعال‌سازی", fontWeight = FontWeight.ExtraBold)
+            }
+        }
+    }
+}
+
+@Composable
 private fun PremiumDashboard(
     username: String,
     services: List<ServiceSummary>,
@@ -409,6 +909,7 @@ private fun PremiumDashboard(
     error: String?,
     vpnState: VpnConnectionState,
     onRefresh: () -> Unit,
+    onOpenStore: () -> Unit,
     onConnect: (ServiceSummary) -> Unit,
     onDisconnect: () -> Unit,
     onLogout: () -> Unit,
@@ -533,6 +1034,13 @@ private fun PremiumDashboard(
                             onClick = {
                                 menuOpen = false
                                 onRefresh()
+                            },
+                        )
+                        DropdownMenuItem(
+                            text = { Text("🛍 فروشگاه و خرید سرویس") },
+                            onClick = {
+                                menuOpen = false
+                                onOpenStore()
                             },
                         )
                         DropdownMenuItem(
