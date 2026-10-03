@@ -40,9 +40,11 @@ fails before publication if this certificate changes.
 ## Migration
 
 Android builds published before permanent signing used ephemeral debug keys.
-Users of those builds must uninstall the old app once before installing the
-first permanently signed Blue VPN APK. Keep the permanent keystore backed up
-securely; losing it would require another package-signature migration.
+BlueVPN Android 0.5.0 moves the official app to a clean application ID, so it
+can be installed alongside those legacy builds without first uninstalling them.
+After signing in and confirming the user's services are available, the legacy
+app can be removed. Keep the permanent keystore backed up securely; losing it
+would require another package-signature migration.
 
 
 ## Package identity reset
