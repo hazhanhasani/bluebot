@@ -229,11 +229,16 @@ final class AppClientAuth
         );
         $stmt->execute($fingerprints);
         $link = $stmt->fetch(PDO::FETCH_ASSOC);
-        $resolvedFromInvoiceCache = false;
+        $resolvedFromLegacySource = false;
+
+        if (!is_array($link)) {
+            $link = self::resolveQrLinkFromBluePanelSubscriptionUrl($pdo, $payload);
+            $resolvedFromLegacySource = is_array($link);
+        }
 
         if (!is_array($link)) {
             $link = self::resolveQrLinkFromInvoiceCache($pdo, $payload, $fingerprints);
-            $resolvedFromInvoiceCache = is_array($link);
+            $resolvedFromLegacySource = is_array($link);
         }
 
         if (!is_array($link)) {
@@ -255,7 +260,7 @@ final class AppClientAuth
             throw new RuntimeException('QR code is not linked to an active service');
         }
 
-        if ($resolvedFromInvoiceCache) {
+        if ($resolvedFromLegacySource) {
             self::rememberQrPayloads(
                 $pdo,
                 $userId,
@@ -651,6 +656,74 @@ final class AppClientAuth
         foreach (array_keys($fingerprints) as $fingerprint) {
             $stmt->execute([$fingerprint, $userId, $invoiceId, $now, $now]);
         }
+    }
+
+    /**
+     * Resolves Blue Panel's own subscription proxy URL directly to its invoice.
+     * Legacy QR images commonly contain https://<bot-domain>/sub/<invoice_id>,
+     * so they can be authenticated without having been fingerprinted earlier.
+     *
+     * @return array{user_id:string,invoice_id:string}|null
+     */
+    private static function resolveQrLinkFromBluePanelSubscriptionUrl(
+        PDO $pdo,
+        string $payload
+    ): ?array {
+        $value = trim(str_replace(["\r\n", "\r"], "\n", $payload));
+        if ($value === '' || str_contains($value, "\n")) {
+            return null;
+        }
+
+        $parts = parse_url($value);
+        if (!is_array($parts)) {
+            return null;
+        }
+
+        $scheme = strtolower((string) ($parts['scheme'] ?? ''));
+        $host = strtolower(rtrim((string) ($parts['host'] ?? ''), '.'));
+        if (!in_array($scheme, ['https', 'http'], true) || $host === '') {
+            return null;
+        }
+
+        $configuredHost = strtolower(trim((string) ($GLOBALS['domainhosts'] ?? '')));
+        $configuredHost = preg_replace('#^https?://#i', '', $configuredHost) ?? $configuredHost;
+        $configuredHost = strtolower(rtrim(strtok($configuredHost, '/'), '.'));
+
+        if ($configuredHost === '' || !hash_equals($configuredHost, $host)) {
+            return null;
+        }
+
+        $path = rawurldecode((string) ($parts['path'] ?? ''));
+        if (!preg_match('#^/sub/([A-Za-z0-9_-]{4,128})/?$#', $path, $match)) {
+            return null;
+        }
+
+        $invoiceId = (string) ($match[1] ?? '');
+        $placeholders = implode(',', array_fill(0, count(self::ELIGIBLE_STATUSES), '?'));
+        $stmt = $pdo->prepare(
+            "SELECT id_user,id_invoice
+             FROM invoice
+             WHERE id_invoice = ?
+               AND status IN ({$placeholders})
+             LIMIT 1"
+        );
+        $stmt->execute(array_merge([$invoiceId], self::ELIGIBLE_STATUSES));
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+
+        if (!is_array($row)) {
+            return null;
+        }
+
+        $userId = trim((string) ($row['id_user'] ?? ''));
+        $resolvedInvoiceId = trim((string) ($row['id_invoice'] ?? ''));
+        if ($userId === '' || $resolvedInvoiceId === '') {
+            return null;
+        }
+
+        return [
+            'user_id' => $userId,
+            'invoice_id' => $resolvedInvoiceId,
+        ];
     }
 
     /**

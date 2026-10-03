@@ -3440,6 +3440,20 @@ function sendMessageService($panel_info, $config, $sub_link, $username_service, 
     } elseif ($panel_info['config'] == "onconfig") {
         $out_put_qrcode = $config[0];
     }
+    if (
+        $out_put_qrcode !== ''
+        && function_exists('bluebotAppClientSyncQr')
+        && isset($GLOBALS['pdo'])
+        && $GLOBALS['pdo'] instanceof PDO
+    ) {
+        bluebotAppClientSyncQr(
+            $GLOBALS['pdo'],
+            (string) $user_id,
+            (string) $invoice_id,
+            (string) $out_put_qrcode
+        );
+    }
+
     if ($STATUS_SEND_MESSAGE_PHOTO) {
         if ($panel_info['type'] == "WGDashboard") {
             $urlimage = qrTempPath("{$panel_info['inboundid']}_{$invoice_id}.conf");
