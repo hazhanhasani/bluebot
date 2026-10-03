@@ -181,6 +181,7 @@ jobs:
             exit 1
           fi
 
+          grep -Fq "Verified using v1 scheme (JAR signing): true" <<<"$CERT_OUTPUT"
           grep -Fq "Verified using v2 scheme (APK Signature Scheme v2): true" <<<"$CERT_OUTPUT"
           grep -Fq "Verified using v3 scheme (APK Signature Scheme v3): true" <<<"$CERT_OUTPUT"
 
