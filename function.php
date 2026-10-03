@@ -1686,6 +1686,29 @@ function DirectPayment($order_id, $image = null)
             $textcreatuser = str_replace('{password}', $dataoutput['subscription_url'], $textcreatuser);
             update("invoice", "user_info", $dataoutput['subscription_url'], "id_invoice", $get_invoice['id_invoice']);
         }
+
+        require_once __DIR__ . '/src/Support/AppClientBot.php';
+        bluebotAppClientSyncQr(
+            $pdo,
+            (string) $get_invoice['id_user'],
+            (string) $get_invoice['id_invoice'],
+            bluebotAppClientQrPayloadList(
+                (string) ($dataoutput['subscription_url'] ?? ''),
+                is_array($dataoutput['configs'] ?? null) ? $dataoutput['configs'] : []
+            )
+        );
+        $textcreatuser .= bluebotAppClientCredentialsBlock(
+            $pdo,
+            (string) $get_invoice['id_user'],
+            (string) $get_invoice['id_invoice']
+        );
+        $Shoppinginfo = bluebotAppClientAppendCredentialButtons(
+            $pdo,
+            (string) $get_invoice['id_user'],
+            (string) $get_invoice['id_invoice'],
+            $Shoppinginfo
+        );
+
         sendMessageService($marzban_list_get, $dataoutput['configs'], $output_config_link, $dataoutput['username'], $Shoppinginfo, $textcreatuser, $get_invoice['id_invoice'], $get_invoice['id_user'], $image);
         $partsdic = explode("_", $Balance_id['Processing_value_four']);
         if ($partsdic[0] == "dis") {
