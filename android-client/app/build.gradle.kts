@@ -76,11 +76,11 @@ android {
     compileSdk = 37
 
     defaultConfig {
-        applicationId = "com.bluepanel.client"
+        applicationId = "com.bluepanel.bluevpn"
         minSdk = 26
         targetSdk = 37
-        versionCode = 17
-        versionName = "0.4.5"
+        versionCode = 18
+        versionName = "0.5.0"
 
         buildConfigField("String", "BLUEBOT_API_BASE", "\"${blueBotApi.get()}\"")
         buildConfigField("String", "XRAY_CORE_VERSION", "\"$libXrayVersion\"")

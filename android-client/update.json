@@ -1,8 +1,8 @@
 {
-  "latest_version_code": 17,
-  "latest_version_name": "0.4.5",
+  "latest_version_code": 18,
+  "latest_version_name": "0.5.0",
   "minimum_version_code": 4,
-  "download_url": "https://github.com/hazhanhasani/bluebot/releases/tag/v0.7.5",
-  "release_notes": "اگر نسخه نصب‌شده با کلید قدیمی/Debug ساخته شده باشد، Android اجازه نصب نسخه جدید روی همان برنامه را نمی‌دهد. یک‌بار Blue VPN قبلی را حذف کنید و سپس نسخه رسمی را از صفحه Release نصب کنید. سرویس‌ها روی سرور باقی می‌مانند و بعد از ورود دوباره برمی‌گردند.",
+  "download_url": "https://github.com/hazhanhasani/bluebot/releases/tag/v0.7.6",
+  "release_notes": "Blue VPN 0.5.0 با شناسه نصب جدید و امضای دائمی منتشر شده است تا با نسخه‌های قدیمی Debug تداخل نداشته باشد. این نسخه می‌تواند کنار نسخه قبلی نصب شود؛ بعد از ورود و اطمینان از نمایش سرویس‌ها، نسخه قدیمی را حذف کنید. از این نسخه به بعد بروزرسانی‌ها با همین شناسه و کلید ثابت انجام می‌شوند.",
   "check_interval_seconds": 21600
 }
