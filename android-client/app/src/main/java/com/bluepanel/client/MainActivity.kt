@@ -12,6 +12,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloat
@@ -1320,7 +1321,18 @@ private fun LocationArcCarousel(
     val selectedPosition = options.indexOfFirst { it.index == selectedIndex }.takeIf { it >= 0 } ?: 0
     val density = LocalDensity.current
     val haptic = LocalHapticFeedback.current
-    var dragOffsetPx by remember(options, selectedIndex) { mutableFloatStateOf(0f) }
+    val scope = rememberCoroutineScope()
+
+    var visualSelectedPosition by remember(options) { mutableStateOf(selectedPosition) }
+    var dragOffsetPx by remember(options) { mutableFloatStateOf(0f) }
+    var settling by remember(options) { mutableStateOf(false) }
+    val settleOffsetPx = remember(options) { Animatable(0f) }
+
+    LaunchedEffect(selectedPosition, options) {
+        if (!settling && kotlin.math.abs(dragOffsetPx) < 0.5f) {
+            visualSelectedPosition = selectedPosition
+        }
+    }
 
     CompositionLocalProvider(
         androidx.compose.ui.platform.LocalLayoutDirection provides LayoutDirection.Ltr,
@@ -1328,112 +1340,209 @@ private fun LocationArcCarousel(
         BoxWithConstraints(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(112.dp)
-                .pointerInput(options, selectedPosition, enabled) {
-                    if (!enabled || options.size <= 1) return@pointerInput
-                    val spacing = size.width / 4.65f
-                    detectHorizontalDragGestures(
-                        onDragStart = { dragOffsetPx = 0f },
-                        onHorizontalDrag = { change, dragAmount ->
-                            change.consume()
-                            dragOffsetPx = (dragOffsetPx + dragAmount)
-                                .coerceIn(-spacing * 1.15f, spacing * 1.15f)
-                        },
-                        onDragCancel = { dragOffsetPx = 0f },
-                        onDragEnd = {
-                            val threshold = spacing * 0.28f
-                            val delta = when {
-                                dragOffsetPx <= -threshold -> 1
-                                dragOffsetPx >= threshold -> -1
-                                else -> 0
-                            }
-                            if (delta != 0) {
-                                val next = Math.floorMod(selectedPosition + delta, options.size)
-                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                onSelect(options[next])
-                            }
-                            dragOffsetPx = 0f
-                        },
-                    )
-                },
+                .height(126.dp),
         ) {
             val widthPx = with(density) { maxWidth.toPx() }
-            val itemSpacingPx = widthPx / 4.65f
+            val itemSpacingPx = widthPx / 4.15f
             val centerX = widthPx / 2f
-            val selected = options[selectedPosition]
+            val horizontalRadiusPx = widthPx * 0.60f
+            val verticalRadiusPx = with(density) { 128.dp.toPx() }
+            val baseCenterYPx = with(density) { 34.dp.toPx() }
+            val focusShadowPx = with(density) { 12.dp.toPx() }
+            val sideShadowPx = with(density) { 2.dp.toPx() }
+            val renderedOffsetPx = if (settling) settleOffsetPx.value else dragOffsetPx
+            val safeVisualPosition = visualSelectedPosition.coerceIn(0, options.lastIndex)
+            val selected = options[safeVisualPosition]
 
-            Canvas(modifier = Modifier.fillMaxSize()) {
-                val inset = size.width * 0.08f
-                drawArc(
-                    color = Color.White.copy(alpha = if (loading) 0.055f else 0.10f),
-                    startAngle = 198f,
-                    sweepAngle = 144f,
-                    useCenter = false,
-                    topLeft = Offset(inset, -size.height * 0.14f),
-                    size = Size(size.width - inset * 2f, size.height * 1.52f),
-                    style = Stroke(width = 1.5f),
-                )
+            fun animateSelection(delta: Int, startOffsetPx: Float) {
+                if (settling) return
+                val safeDelta = delta.coerceIn(-2, 2)
+                settling = true
+                scope.launch {
+                    settleOffsetPx.snapTo(startOffsetPx)
+                    settleOffsetPx.animateTo(
+                        targetValue = -safeDelta * itemSpacingPx,
+                        animationSpec = spring(
+                            dampingRatio = 0.88f,
+                            stiffness = Spring.StiffnessMediumLow,
+                        ),
+                    )
+
+                    if (safeDelta != 0) {
+                        val next = Math.floorMod(
+                            safeVisualPosition + safeDelta,
+                            options.size,
+                        )
+                        visualSelectedPosition = next
+                        dragOffsetPx = 0f
+                        settleOffsetPx.snapTo(0f)
+                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                        onSelect(options[next])
+                    } else {
+                        dragOffsetPx = 0f
+                        settleOffsetPx.snapTo(0f)
+                    }
+                    settling = false
+                }
             }
 
-            options.forEachIndexed { position, location ->
-                val relative = circularDistance(position, selectedPosition, options.size)
-                if (kotlin.math.abs(relative) <= 2 || options.size <= 5) {
-                    val visualRelative = relative + (dragOffsetPx / itemSpacingPx)
-                    if (kotlin.math.abs(visualRelative) <= 2.45f) {
-                        val depth = kotlin.math.abs(visualRelative).coerceAtMost(2f)
-                        val bubbleSize = (58f - depth * 10f).dp
-                        val y = (7f + depth * depth * 13f).dp
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .pointerInput(options, safeVisualPosition, enabled, settling) {
+                        if (!enabled || options.size <= 1 || settling) return@pointerInput
+                        val spacing = size.width / 4.15f
+                        detectHorizontalDragGestures(
+                            onDragStart = {
+                                dragOffsetPx = 0f
+                            },
+                            onHorizontalDrag = { change, dragAmount ->
+                                change.consume()
+                                dragOffsetPx = (dragOffsetPx + dragAmount)
+                                    .coerceIn(-spacing * 1.12f, spacing * 1.12f)
+                            },
+                            onDragCancel = {
+                                animateSelection(delta = 0, startOffsetPx = dragOffsetPx)
+                            },
+                            onDragEnd = {
+                                val threshold = spacing * 0.18f
+                                val delta = when {
+                                    dragOffsetPx <= -threshold -> 1
+                                    dragOffsetPx >= threshold -> -1
+                                    else -> 0
+                                }
+                                animateSelection(delta = delta, startOffsetPx = dragOffsetPx)
+                            },
+                        )
+                    },
+            ) {
+                Canvas(modifier = Modifier.fillMaxSize()) {
+                    var previous: Offset? = null
+                    var step = -2.25f
+                    while (step <= 2.25f) {
+                        val angle = step * (PI / 7.4)
+                        val point = Offset(
+                            x = centerX + sin(angle).toFloat() * horizontalRadiusPx,
+                            y = baseCenterYPx +
+                                (1f - cos(angle).toFloat()) * verticalRadiusPx,
+                        )
+                        previous?.let {
+                            drawLine(
+                                color = Color.White.copy(
+                                    alpha = if (loading) 0.05f else 0.095f,
+                                ),
+                                start = it,
+                                end = point,
+                                strokeWidth = 1.35f,
+                                cap = StrokeCap.Round,
+                            )
+                        }
+                        previous = point
+                        step += 0.08f
+                    }
+                }
+
+                options.forEachIndexed { position, location ->
+                    val relative = circularDistance(
+                        position,
+                        safeVisualPosition,
+                        options.size,
+                    )
+                    val visualRelative = relative + (renderedOffsetPx / itemSpacingPx)
+
+                    if (kotlin.math.abs(visualRelative) <= 2.35f) {
+                        val depth = kotlin.math.abs(visualRelative).coerceAtMost(2.2f)
+                        val bubbleSize = (62f - depth * 8f)
+                            .coerceAtLeast(44f)
+                            .dp
                         val bubbleSizePx = with(density) { bubbleSize.toPx() }
-                        val xPx = centerX + (visualRelative * itemSpacingPx) - (bubbleSizePx / 2f)
-                        val yPx = with(density) { y.toPx() }
-                        val isFocused = kotlin.math.abs(visualRelative) < 0.48f
+                        val angle = visualRelative * (PI / 7.4)
+                        val bubbleCenterX = centerX +
+                            sin(angle).toFloat() * horizontalRadiusPx
+                        val bubbleCenterY = baseCenterYPx +
+                            (1f - cos(angle).toFloat()) * verticalRadiusPx
+                        val xPx = bubbleCenterX - (bubbleSizePx / 2f)
+                        val yPx = bubbleCenterY - (bubbleSizePx / 2f)
+                        val isFocused = kotlin.math.abs(visualRelative) < 0.42f
 
                         Box(
                             modifier = Modifier
-                                .offset { IntOffset(xPx.roundToInt(), yPx.roundToInt()) }
+                                .offset {
+                                    IntOffset(
+                                        xPx.roundToInt(),
+                                        yPx.roundToInt(),
+                                    )
+                                }
                                 .size(bubbleSize)
                                 .graphicsLayer {
-                                    alpha = (1f - depth * 0.23f).coerceIn(0.45f, 1f)
-                                    scaleX = if (isFocused) 1.05f else 1f
-                                    scaleY = if (isFocused) 1.05f else 1f
-                                    shadowElevation = if (isFocused) 18f else 4f
+                                    shape = CircleShape
+                                    clip = true
+                                    alpha = (1f - depth * 0.18f)
+                                        .coerceIn(0.50f, 1f)
+                                    scaleX = if (isFocused) 1.06f else 1f
+                                    scaleY = if (isFocused) 1.06f else 1f
+                                    shadowElevation = if (isFocused) {
+                                        focusShadowPx
+                                    } else {
+                                        sideShadowPx
+                                    }
                                 }
-                                .clip(CircleShape)
                                 .background(
-                                    if (isFocused) Color.White.copy(alpha = 0.18f)
-                                    else Color.Black.copy(alpha = 0.13f),
+                                    if (isFocused) {
+                                        Color.White.copy(alpha = 0.18f)
+                                    } else {
+                                        Color.Black.copy(alpha = 0.10f)
+                                    },
                                 )
-                                .clickable(enabled = enabled) {
-                                    if (location.index != selectedIndex) {
-                                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                        onSelect(location)
+                                .clickable(enabled = enabled && !settling) {
+                                    if (position != safeVisualPosition) {
+                                        val delta = circularDistance(
+                                            position,
+                                            safeVisualPosition,
+                                            options.size,
+                                        )
+                                        animateSelection(
+                                            delta = delta,
+                                            startOffsetPx = renderedOffsetPx,
+                                        )
                                     }
                                 },
                             contentAlignment = Alignment.Center,
                         ) {
-                            Text(location.flag, fontSize = if (isFocused) 30.sp else 23.sp)
+                            Text(
+                                text = location.flag,
+                                fontSize = if (isFocused) 31.sp else 24.sp,
+                            )
                         }
                     }
                 }
-            }
 
-            Column(
-                modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 1.dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
-            ) {
-                Text(
-                    text = if (loading) "در حال دریافت لوکیشن‌ها…" else selected.name,
-                    color = Color.White.copy(alpha = if (loading) 0.46f else 0.86f),
-                    fontSize = 10.sp,
-                    fontWeight = FontWeight.Bold,
-                    maxLines = 1,
-                )
-                if (!loading && options.size > 1) {
+                Column(
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .padding(bottom = 1.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                ) {
                     Text(
-                        "برای تغییر لوکیشن بکشید",
-                        color = Color.White.copy(alpha = 0.34f),
-                        fontSize = 8.sp,
+                        text = if (loading) {
+                            "در حال دریافت لوکیشن‌ها…"
+                        } else {
+                            selected.name
+                        },
+                        color = Color.White.copy(
+                            alpha = if (loading) 0.46f else 0.90f,
+                        ),
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 1,
                     )
+                    if (!loading && options.size > 1) {
+                        Text(
+                            "برای تغییر لوکیشن بکشید",
+                            color = Color.White.copy(alpha = 0.36f),
+                            fontSize = 8.sp,
+                        )
+                    }
                 }
             }
         }
