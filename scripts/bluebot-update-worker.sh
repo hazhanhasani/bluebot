@@ -8,6 +8,40 @@ RUNNING_FILE="$STATE_DIR/update-running.json"
 STATUS_FILE="$STATE_DIR/update-status.json"
 LOCK_FILE="/var/lock/bluebot-update.lock"
 LOG_FILE="/var/log/bluebot-update.log"
+SMS_KEY_FILE="$BOT_DIR/storage/sms.key"
+SMS_KEY_BACKUP="$STATE_DIR/sms.key.preserved"
+
+preserve_sms_key() {
+    if [ -s "$SMS_KEY_FILE" ]; then
+        cp -f "$SMS_KEY_FILE" "$SMS_KEY_BACKUP" 2>/dev/null || true
+        chmod 600 "$SMS_KEY_BACKUP" 2>/dev/null || true
+    fi
+}
+
+restore_sms_key() {
+    [ -s "$SMS_KEY_BACKUP" ] || return 0
+
+    mkdir -p "$(dirname "$SMS_KEY_FILE")" 2>/dev/null || true
+
+    local restore=0
+    if [ ! -s "$SMS_KEY_FILE" ]; then
+        restore=1
+    else
+        local current_hash backup_hash
+        current_hash="$(sha256sum "$SMS_KEY_FILE" 2>/dev/null | awk '{print $1}')"
+        backup_hash="$(sha256sum "$SMS_KEY_BACKUP" 2>/dev/null | awk '{print $1}')"
+        if [ -n "$backup_hash" ] && [ "$current_hash" != "$backup_hash" ]; then
+            restore=1
+        fi
+    fi
+
+    if [ "$restore" = "1" ]; then
+        cp -f "$SMS_KEY_BACKUP" "$SMS_KEY_FILE" 2>/dev/null || true
+    fi
+
+    chmod 600 "$SMS_KEY_FILE" 2>/dev/null || true
+    chown www-data:www-data "$SMS_KEY_FILE" 2>/dev/null || true
+}
 
 mkdir -p "$STATE_DIR"
 touch "$LOCK_FILE"
@@ -110,6 +144,11 @@ notify "🚀 بروزرسانی بلو پنل شروع شد. تا پایان ع�
 : > "$LOG_FILE"
 export TERM="${TERM:-xterm}"
 
+# The SMS API key is encrypted with this installation-local key. Keep it across
+# every updater implementation, including tools that replace the application
+# directory instead of extracting in-place.
+preserve_sms_key
+
 UPDATE_ARGS=(update --background)
 case "$INSTALLED_CHANNEL" in
     release) UPDATE_ARGS+=(--version "$REF") ;;
@@ -117,6 +156,7 @@ case "$INSTALLED_CHANNEL" in
 esac
 
 if /usr/local/bin/bluebot "${UPDATE_ARGS[@]}" >>"$LOG_FILE" 2>&1; then
+    restore_sms_key
     if [ -f "$BOT_DIR/scripts/update-state.php" ]; then
         php "$BOT_DIR/scripts/update-state.php" "$INSTALLED_CHANNEL" "$REF" >>"$LOG_FILE" 2>&1 || true
     fi
@@ -135,6 +175,7 @@ if /usr/local/bin/bluebot "${UPDATE_ARGS[@]}" >>"$LOG_FILE" 2>&1; then
     exit 0
 fi
 
+restore_sms_key
 write_status "failed" "Blue Panel update failed. See /var/log/bluebot-update.log"
 notify "❌ بروزرسانی بلو پنل ناموفق بود. برای تلاش دوباره دکمه زیر را بزنید." 1
 rm -f "$RUNNING_FILE"
