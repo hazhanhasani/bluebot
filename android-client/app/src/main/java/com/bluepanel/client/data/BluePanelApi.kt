@@ -33,6 +33,103 @@ class BluePanelApi(private val sessionStore: SessionStore) {
         LoginResult(token, account.getString("username"))
     }
 
+    suspend fun requestMobileOtp(phone: String): OtpRequestResult = withContext(Dispatchers.IO) {
+        val body = JSONObject()
+            .put("action", "mobile-otp-request")
+            .put("phone", phone.trim())
+            .put("device_id", sessionStore.deviceId)
+        val data = request("mobile-otp-request", "POST", body, authenticated = false)
+        OtpRequestResult(
+            phone = data.optString("phone"),
+            expiresIn = data.optInt("expires_in", 120),
+            resendAfter = data.optInt("resend_after", 60),
+        )
+    }
+
+    suspend fun verifyMobileOtp(phone: String, code: String): LoginResult = withContext(Dispatchers.IO) {
+        val body = JSONObject()
+            .put("action", "mobile-otp-verify")
+            .put("phone", phone.trim())
+            .put("code", code.trim())
+            .put("device_id", sessionStore.deviceId)
+        val data = request("mobile-otp-verify", "POST", body, authenticated = false)
+        val token = data.getString("access_token")
+        val account = data.getJSONObject("account")
+        LoginResult(token, account.optString("username", account.optString("phone")))
+    }
+
+    suspend fun storeCatalog(): StoreCatalog = withContext(Dispatchers.IO) {
+        val data = request("store-catalog", "GET", null, authenticated = true)
+        val rows = data.optJSONArray("products") ?: JSONArray()
+        val products = buildList {
+            for (index in 0 until rows.length()) {
+                val item = rows.getJSONObject(index)
+                add(
+                    StorePlan(
+                        id = item.optString("id"),
+                        name = item.optString("name"),
+                        description = item.optString("description"),
+                        price = item.optInt("price"),
+                        trafficGb = item.optInt("traffic_gb"),
+                        timeDays = item.optInt("time_days"),
+                        category = item.optString("category"),
+                        panelId = item.optString("panel_id"),
+                        panelName = item.optString("panel_name"),
+                    ),
+                )
+            }
+        }
+        val gatewaysJson = data.optJSONArray("gateways") ?: JSONArray()
+        val gateways = buildList {
+            for (index in 0 until gatewaysJson.length()) {
+                gatewaysJson.optString(index).takeIf { it.isNotBlank() }?.let(::add)
+            }
+        }
+        StoreCatalog(
+            products = products,
+            gateways = gateways,
+            balance = data.optInt("balance"),
+        )
+    }
+
+    suspend fun checkout(
+        productId: String,
+        panelId: String,
+        gateway: String,
+    ): CheckoutResult = withContext(Dispatchers.IO) {
+        val body = JSONObject()
+            .put("action", "store-checkout")
+            .put("product_id", productId)
+            .put("panel_id", panelId)
+            .put("gateway", gateway)
+        val data = request("store-checkout", "POST", body, authenticated = true)
+        CheckoutResult(
+            orderId = data.optString("order_id"),
+            invoiceId = data.optString("invoice_id"),
+            status = data.optString("status"),
+            paymentUrl = data.optString("payment_url")
+                .takeIf { it.isNotBlank() && it != "null" },
+            gateway = data.optString("gateway"),
+        )
+    }
+
+    suspend fun orderStatus(orderId: String): OrderStatus = withContext(Dispatchers.IO) {
+        val data = request(
+            "store-order-status",
+            "GET",
+            null,
+            authenticated = true,
+            params = mapOf("order_id" to orderId),
+        )
+        val service = data.optJSONObject("service")
+        OrderStatus(
+            orderId = data.optString("order_id"),
+            status = data.optString("status"),
+            gateway = data.optString("gateway"),
+            serviceId = service?.optString("id")?.takeIf { it.isNotBlank() },
+        )
+    }
+
     suspend fun updateInfo(): AppUpdateInfo = withContext(Dispatchers.IO) {
         val data = request("app-version", "GET", null, authenticated = false)
         val android = data.getJSONObject("android")
