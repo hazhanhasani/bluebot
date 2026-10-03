@@ -665,12 +665,21 @@ final class AppStoreAccount
 
             throw new InvalidArgumentException('درگاه پرداخت معتبر نیست.');
         } catch (Throwable $e) {
-            $pdo->prepare(
-                "DELETE FROM Payment_report WHERE id_order=? AND payment_Status<>'paid'"
-            )->execute([$orderId]);
-            $pdo->prepare(
-                "DELETE FROM invoice WHERE id_invoice=? AND Status='Unpaid'"
-            )->execute([$invoiceId]);
+            $paymentStateStmt = $pdo->prepare(
+                "SELECT payment_Status FROM Payment_report WHERE id_order=? LIMIT 1"
+            );
+            $paymentStateStmt->execute([$orderId]);
+            $paymentState = strtolower((string) ($paymentStateStmt->fetchColumn() ?: ''));
+
+            if ($paymentState === '' || $paymentState === 'unpaid') {
+                $pdo->prepare(
+                    "DELETE FROM Payment_report WHERE id_order=? AND payment_Status='Unpaid'"
+                )->execute([$orderId]);
+                $pdo->prepare(
+                    "DELETE FROM invoice WHERE id_invoice=? AND Status='Unpaid'"
+                )->execute([$invoiceId]);
+            }
+
             throw $e;
         }
     }
