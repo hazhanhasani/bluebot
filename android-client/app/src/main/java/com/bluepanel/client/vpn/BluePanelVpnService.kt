@@ -48,12 +48,15 @@ class BluePanelVpnService : VpnService() {
             ACTION_DISCONNECT -> disconnect(stopService = true)
             ACTION_CONNECT -> {
                 val serviceId = intent.getStringExtra(EXTRA_SERVICE_ID).orEmpty()
+                val locationIndex = intent
+                    .getIntExtra(EXTRA_LOCATION_INDEX, -1)
+                    .takeIf { it >= 0 }
                 if (serviceId.isBlank()) {
                     publish(VpnConnectionState.Error("سرویس انتخاب نشده است"))
                     stopSelf()
                 } else {
                     startForeground(NOTIFICATION_ID, notification("در حال اتصال…"))
-                    connect(serviceId)
+                    connect(serviceId, locationIndex)
                 }
             }
         }
@@ -71,7 +74,7 @@ class BluePanelVpnService : VpnService() {
         super.onDestroy()
     }
 
-    private fun connect(serviceId: String) {
+    private fun connect(serviceId: String, locationIndex: Int?) {
         connectJob?.cancel()
         connectJob = serviceScope.launch {
             try {
@@ -83,7 +86,7 @@ class BluePanelVpnService : VpnService() {
                 check(profile.status.lowercase() !in setOf("expired", "disabled", "limited", "end_of_time", "end_of_volume")) {
                     "این اشتراک در حال حاضر قابل اتصال نیست"
                 }
-                val sourceText = api.connectionText(profile)
+                val sourceText = api.connectionText(profile, locationIndex)
 
                 val tun = Builder()
                     .setSession("Blue VPN")
@@ -106,6 +109,7 @@ class BluePanelVpnService : VpnService() {
                 publish(
                     VpnConnectionState.Connected(
                         serviceId = serviceId,
+                        locationIndex = locationIndex,
                         productName = profile.productName,
                         username = profile.username,
                         traffic = profile.traffic,
@@ -232,16 +236,20 @@ class BluePanelVpnService : VpnService() {
         private const val ACTION_CONNECT = "com.bluepanel.client.CONNECT"
         private const val ACTION_DISCONNECT = "com.bluepanel.client.DISCONNECT"
         private const val EXTRA_SERVICE_ID = "service_id"
+        private const val EXTRA_LOCATION_INDEX = "location_index"
         private const val CHANNEL_ID = "bluepanel_vpn"
         private const val NOTIFICATION_ID = 2401
 
         private val _state = MutableStateFlow<VpnConnectionState>(VpnConnectionState.Disconnected)
         val state: StateFlow<VpnConnectionState> = _state.asStateFlow()
 
-        fun connect(context: Context, serviceId: String) {
+        fun connect(context: Context, serviceId: String, locationIndex: Int? = null) {
             val intent = Intent(context, BluePanelVpnService::class.java)
                 .setAction(ACTION_CONNECT)
                 .putExtra(EXTRA_SERVICE_ID, serviceId)
+                .apply {
+                    locationIndex?.let { putExtra(EXTRA_LOCATION_INDEX, it) }
+                }
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 context.startForegroundService(intent)
             } else {
@@ -260,6 +268,7 @@ sealed interface VpnConnectionState {
     data object Connecting : VpnConnectionState
     data class Connected(
         val serviceId: String,
+        val locationIndex: Int?,
         val productName: String,
         val username: String,
         val traffic: TrafficInfo,
