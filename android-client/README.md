@@ -18,9 +18,10 @@ First-party Android client for BlueBot customers. Each app username/password is 
 3. BlueBot generates credentials for that subscription only.
 4. The customer signs in to Blue VPN.
 5. Blue VPN retrieves only the service bound to those credentials.
-6. The customer taps **Connect** and the connection profile is loaded in memory.
+6. Available Xray locations are rendered as a swipeable arc of country flags.
+7. The customer selects a location and taps **Connect**; only that route is handed to the in-memory Xray engine.
 
-The UI never displays subscription URLs or share links.
+The UI never displays subscription URLs or share links. Location labels are derived in memory from the active service profile and are not persisted.
 
 ## API endpoint
 
