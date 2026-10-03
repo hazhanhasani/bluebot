@@ -169,7 +169,7 @@ jobs:
           printf '%s\n' "$CERT_OUTPUT"
 
           CERT_SHA256="$(printf '%s\n' "$CERT_OUTPUT" |
-            sed -n -E 's/^(Signer #1|V[0-9]+ Signer): certificate SHA-256 digest: //p' |
+            sed -n -E 's/^(Signer #1|V[0-9.]+ Signer): certificate SHA-256 digest: //p' |
             head -n 1 |
             tr '[:upper:]' '[:lower:]' |
             tr -d ':[:space:]')"
@@ -180,6 +180,13 @@ jobs:
             echo "Actual:   $CERT_SHA256" >&2
             exit 1
           fi
+
+          grep -Fq "Verified using v2 scheme (APK Signature Scheme v2): true" <<<"$CERT_OUTPUT"
+          grep -Fq "Verified using v3 scheme (APK Signature Scheme v3): true" <<<"$CERT_OUTPUT"
+
+          ZIPALIGN="$(find "$ANDROID_HOME/build-tools" -type f -name zipalign | sort -V | tail -1)"
+          test -x "$ZIPALIGN"
+          "$ZIPALIGN" -c -P 16 -v 4 "$APK"
 
       - name: Prepare Android release asset
         id: android
