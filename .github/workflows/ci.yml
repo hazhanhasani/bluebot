@@ -70,6 +70,9 @@ jobs:
       - name: Product panel scope contract
         run: php tests/product_panel_scope_contract.php
 
+      - name: App storefront account contract
+        run: php tests/app_store_account_contract.php
+
       - name: SMS panel contract
         run: php tests/sms_panel_contract.php
 
