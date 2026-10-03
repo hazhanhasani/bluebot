@@ -70,13 +70,12 @@ committed to this repository.
 - Subscription payloads remain in memory.
 - Panel administrator credentials are never returned to Android.
 - Official APK releases are verified against a pinned signing-certificate SHA-256.
-- Stable APKs are signed with v2 and v3 schemes and checked with `zipalign -P 16`.
-- Releases up to BlueBot v0.6.2 were CI debug-signed. Android cannot update those installs with the permanent production key introduced in v0.6.3, so those legacy builds require a one-time uninstall/reinstall migration.
+- Stable APKs are signed with v1, v2 and v3 schemes and checked with `zipalign -P 16`.
+- Releases up to BlueBot v0.6.2 were CI debug-signed with ephemeral keys. BlueVPN Android 0.5.0 resets the install identity to `com.bluepanel.bluevpn`, so it can be installed alongside those legacy builds. All future official releases keep this package identity and the permanent production key.
 
 ## Branding
 
 The launcher name is **Blue VPN** and the launcher/application icon is stored at
 `app/src/main/res/drawable-nodpi/blue_vpn_icon.png`.
 
-Internal package and class names remain `com.bluepanel.client` / `BluePanel*`
-to keep Android package identity and installed-app continuity stable.
+The Android application ID is `com.bluepanel.bluevpn`. Internal Kotlin namespace and class names remain `com.bluepanel.client` / `BluePanel*` so the codebase does not need a risky package refactor.
