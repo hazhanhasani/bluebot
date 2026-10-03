@@ -26,6 +26,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -102,6 +103,7 @@ import com.bluepanel.client.data.SessionStore
 import com.bluepanel.client.data.StoreCatalog
 import com.bluepanel.client.data.StorePlan
 import com.bluepanel.client.data.TrafficInfo
+import com.bluepanel.client.data.VpnLocation
 import com.bluepanel.client.ui.QrScannerOverlay
 import com.bluepanel.client.util.PersianDateTime
 import com.bluepanel.client.vpn.BluePanelVpnService
@@ -149,6 +151,7 @@ private fun BlueVpnApp() {
             var loading by remember { mutableStateOf(loggedIn) }
             var error by remember { mutableStateOf<String?>(null) }
             var pendingServiceId by remember { mutableStateOf<String?>(null) }
+            var pendingLocationIndex by remember { mutableStateOf<Int?>(null) }
             var updateInfo by remember { mutableStateOf<AppUpdateInfo?>(null) }
             val vpnState by BluePanelVpnService.state.collectAsState()
 
@@ -156,9 +159,11 @@ private fun BlueVpnApp() {
                 ActivityResultContracts.StartActivityForResult(),
             ) { result ->
                 val id = pendingServiceId
+                val locationIndex = pendingLocationIndex
                 pendingServiceId = null
+                pendingLocationIndex = null
                 if (result.resultCode == Activity.RESULT_OK && id != null) {
-                    BluePanelVpnService.connect(context, id)
+                    BluePanelVpnService.connect(context, id, locationIndex)
                 } else if (id != null) {
                     error = "برای اتصال، مجوز VPN لازم است."
                 }
@@ -185,7 +190,7 @@ private fun BlueVpnApp() {
                 }
             }
 
-            fun connect(service: ServiceSummary) {
+            fun connect(service: ServiceSummary, locationIndex: Int?) {
                 if (Build.VERSION.SDK_INT >= 33 &&
                     ContextCompat.checkSelfPermission(
                         context,
@@ -197,9 +202,10 @@ private fun BlueVpnApp() {
 
                 val intent = VpnService.prepare(context)
                 if (intent == null) {
-                    BluePanelVpnService.connect(context, service.id)
+                    BluePanelVpnService.connect(context, service.id, locationIndex)
                 } else {
                     pendingServiceId = service.id
+                    pendingLocationIndex = locationIndex
                     vpnPermission.launch(intent)
                 }
             }
@@ -298,6 +304,7 @@ private fun BlueVpnApp() {
 
                     else -> {
                         PremiumDashboard(
+                            api = api,
                             username = store.username(),
                             services = services,
                             updateInfo = updateInfo,
@@ -949,6 +956,7 @@ private fun StorePlanCard(
 
 @Composable
 private fun PremiumDashboard(
+    api: BluePanelApi,
     username: String,
     services: List<ServiceSummary>,
     updateInfo: AppUpdateInfo?,
@@ -957,7 +965,7 @@ private fun PremiumDashboard(
     vpnState: VpnConnectionState,
     onRefresh: () -> Unit,
     onOpenStore: () -> Unit,
-    onConnect: (ServiceSummary) -> Unit,
+    onConnect: (ServiceSummary, Int?) -> Unit,
     onDisconnect: () -> Unit,
     onLogout: () -> Unit,
 ) {
@@ -977,6 +985,45 @@ private fun PremiumDashboard(
     val connected = vpnState as? VpnConnectionState.Connected
     val isConnected = connected != null
     val isConnecting = vpnState is VpnConnectionState.Connecting
+
+    val automaticLocation = remember {
+        VpnLocation(index = -1, name = "خودکار", flag = "🌐")
+    }
+    var locations by remember { mutableStateOf(listOf(automaticLocation)) }
+    var selectedLocationIndex by remember { mutableStateOf(-1) }
+    var locationsLoading by remember { mutableStateOf(false) }
+
+    LaunchedEffect(selected?.id) {
+        locations = listOf(automaticLocation)
+        selectedLocationIndex = -1
+        locationsLoading = false
+        val service = selected
+        if (service != null && service.supported) {
+            locationsLoading = true
+            val resolved = runCatching { api.serviceLocations(service.id) }
+                .getOrElse { listOf(automaticLocation) }
+                .ifEmpty { listOf(automaticLocation) }
+            locations = resolved
+            val connectedLocation = (vpnState as? VpnConnectionState.Connected)
+                ?.takeIf { it.serviceId == service.id }
+                ?.locationIndex
+                ?: -1
+            selectedLocationIndex = resolved
+                .firstOrNull { it.index == connectedLocation }
+                ?.index
+                ?: resolved.first().index
+            locationsLoading = false
+        }
+    }
+
+    LaunchedEffect(connected?.serviceId, connected?.locationIndex) {
+        if (connected != null && connected.serviceId == selected?.id) {
+            val activeIndex = connected.locationIndex ?: -1
+            if (locations.any { it.index == activeIndex }) {
+                selectedLocationIndex = activeIndex
+            }
+        }
+    }
 
     var visualState by remember { mutableStateOf<VpnConnectionState>(vpnState) }
     LaunchedEffect(vpnState) {
@@ -1150,7 +1197,30 @@ private fun PremiumDashboard(
                 ErrorNotice(error)
             }
 
-            Spacer(Modifier.height(8.dp))
+            Spacer(Modifier.height(4.dp))
+
+            LocationArcCarousel(
+                locations = locations,
+                selectedIndex = selectedLocationIndex,
+                loading = locationsLoading,
+                enabled = !visualIsConnecting && selected?.supported == true,
+                onSelect = { location ->
+                    if (location.index != selectedLocationIndex) {
+                        selectedLocationIndex = location.index
+                        val service = selected
+                        val activeConnection = vpnState as? VpnConnectionState.Connected
+                        if (
+                            service != null &&
+                            activeConnection?.serviceId == service.id &&
+                            (activeConnection.locationIndex ?: -1) != location.index
+                        ) {
+                            onConnect(service, location.index.takeIf { it >= 0 })
+                        }
+                    }
+                },
+            )
+
+            Spacer(Modifier.height(2.dp))
 
             ConnectionStage(
                 modifier = Modifier
@@ -1172,7 +1242,10 @@ private fun PremiumDashboard(
                 onToggle = {
                     when {
                         isConnected || isConnecting -> onDisconnect()
-                        selected != null && selected.supported -> onConnect(selected)
+                        selected != null && selected.supported -> onConnect(
+                            selected,
+                            selectedLocationIndex.takeIf { it >= 0 },
+                        )
                     }
                 },
             )
@@ -1231,6 +1304,149 @@ private fun StatusStrip(
             fontSize = 12.sp,
         )
     }
+}
+
+@Composable
+private fun LocationArcCarousel(
+    locations: List<VpnLocation>,
+    selectedIndex: Int,
+    loading: Boolean,
+    enabled: Boolean,
+    onSelect: (VpnLocation) -> Unit,
+) {
+    val options = locations.ifEmpty {
+        listOf(VpnLocation(index = -1, name = "خودکار", flag = "🌐"))
+    }
+    val selectedPosition = options.indexOfFirst { it.index == selectedIndex }.takeIf { it >= 0 } ?: 0
+    val density = LocalDensity.current
+    val haptic = LocalHapticFeedback.current
+    var dragOffsetPx by remember(options, selectedIndex) { mutableFloatStateOf(0f) }
+
+    CompositionLocalProvider(
+        androidx.compose.ui.platform.LocalLayoutDirection provides LayoutDirection.Ltr,
+    ) {
+        BoxWithConstraints(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(112.dp)
+                .pointerInput(options, selectedPosition, enabled) {
+                    if (!enabled || options.size <= 1) return@pointerInput
+                    val spacing = size.width / 4.65f
+                    detectHorizontalDragGestures(
+                        onDragStart = { dragOffsetPx = 0f },
+                        onHorizontalDrag = { change, dragAmount ->
+                            change.consume()
+                            dragOffsetPx = (dragOffsetPx + dragAmount)
+                                .coerceIn(-spacing * 1.15f, spacing * 1.15f)
+                        },
+                        onDragCancel = { dragOffsetPx = 0f },
+                        onDragEnd = {
+                            val threshold = spacing * 0.28f
+                            val delta = when {
+                                dragOffsetPx <= -threshold -> 1
+                                dragOffsetPx >= threshold -> -1
+                                else -> 0
+                            }
+                            if (delta != 0) {
+                                val next = Math.floorMod(selectedPosition + delta, options.size)
+                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                onSelect(options[next])
+                            }
+                            dragOffsetPx = 0f
+                        },
+                    )
+                },
+        ) {
+            val widthPx = with(density) { maxWidth.toPx() }
+            val itemSpacingPx = widthPx / 4.65f
+            val centerX = widthPx / 2f
+            val selected = options[selectedPosition]
+
+            Canvas(modifier = Modifier.fillMaxSize()) {
+                val inset = size.width * 0.08f
+                drawArc(
+                    color = Color.White.copy(alpha = if (loading) 0.055f else 0.10f),
+                    startAngle = 198f,
+                    sweepAngle = 144f,
+                    useCenter = false,
+                    topLeft = Offset(inset, -size.height * 0.14f),
+                    size = Size(size.width - inset * 2f, size.height * 1.52f),
+                    style = Stroke(width = 1.5f),
+                )
+            }
+
+            options.forEachIndexed { position, location ->
+                val relative = circularDistance(position, selectedPosition, options.size)
+                if (kotlin.math.abs(relative) <= 2 || options.size <= 5) {
+                    val visualRelative = relative + (dragOffsetPx / itemSpacingPx)
+                    if (kotlin.math.abs(visualRelative) <= 2.45f) {
+                        val depth = kotlin.math.abs(visualRelative).coerceAtMost(2f)
+                        val bubbleSize = (58f - depth * 10f).dp
+                        val y = (7f + depth * depth * 13f).dp
+                        val bubbleSizePx = with(density) { bubbleSize.toPx() }
+                        val xPx = centerX + (visualRelative * itemSpacingPx) - (bubbleSizePx / 2f)
+                        val yPx = with(density) { y.toPx() }
+                        val isFocused = kotlin.math.abs(visualRelative) < 0.48f
+
+                        Box(
+                            modifier = Modifier
+                                .offset { IntOffset(xPx.roundToInt(), yPx.roundToInt()) }
+                                .size(bubbleSize)
+                                .graphicsLayer {
+                                    alpha = (1f - depth * 0.23f).coerceIn(0.45f, 1f)
+                                    scaleX = if (isFocused) 1.05f else 1f
+                                    scaleY = if (isFocused) 1.05f else 1f
+                                    shadowElevation = if (isFocused) 18f else 4f
+                                }
+                                .clip(CircleShape)
+                                .background(
+                                    if (isFocused) Color.White.copy(alpha = 0.18f)
+                                    else Color.Black.copy(alpha = 0.13f),
+                                )
+                                .clickable(enabled = enabled) {
+                                    if (location.index != selectedIndex) {
+                                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                        onSelect(location)
+                                    }
+                                },
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Text(location.flag, fontSize = if (isFocused) 30.sp else 23.sp)
+                        }
+                    }
+                }
+            }
+
+            Column(
+                modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 1.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                Text(
+                    text = if (loading) "در حال دریافت لوکیشن‌ها…" else selected.name,
+                    color = Color.White.copy(alpha = if (loading) 0.46f else 0.86f),
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 1,
+                )
+                if (!loading && options.size > 1) {
+                    Text(
+                        "برای تغییر لوکیشن بکشید",
+                        color = Color.White.copy(alpha = 0.34f),
+                        fontSize = 8.sp,
+                    )
+                }
+            }
+        }
+    }
+}
+
+private fun circularDistance(position: Int, selectedPosition: Int, count: Int): Int {
+    if (count <= 1) return 0
+    var distance = position - selectedPosition
+    val half = count / 2
+    if (distance > half) distance -= count
+    if (distance < -half) distance += count
+    return distance
 }
 
 @Composable

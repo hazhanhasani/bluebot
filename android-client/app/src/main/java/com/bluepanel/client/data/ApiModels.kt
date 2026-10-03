@@ -14,6 +14,12 @@ data class ServiceSummary(
     val supported: Boolean,
 )
 
+data class VpnLocation(
+    val index: Int,
+    val name: String,
+    val flag: String,
+)
+
 data class TrafficInfo(
     val totalBytes: Long,
     val usedBytes: Long,
