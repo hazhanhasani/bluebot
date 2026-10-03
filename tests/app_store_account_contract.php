@@ -25,6 +25,8 @@ $checks = [
     [$account, 'public static function catalog', 'Store catalog service is missing.'],
     [$account, 'public static function createCheckout', 'Store checkout service is missing.'],
     [$account, "'getconfigafterpay|' . $username", 'Checkout does not reuse the production DirectPayment delivery state.'],
+    [$account, 'markPaymentDeliveryError', 'Paid checkout delivery failures must be marked for review.'],
+    [$account, "\$paymentState === '' || \$paymentState === 'unpaid'", 'Checkout cleanup must preserve paid delivery errors.'],
     [$client, "if (\$action === 'mobile-otp-request')", 'Android API does not expose mobile OTP request.'],
     [$client, "if (\$action === 'mobile-otp-verify')", 'Android API does not expose mobile OTP verification.'],
     [$client, "if (\$action === 'store-catalog')", 'Android API does not expose storefront catalog.'],
@@ -38,6 +40,7 @@ $checks = [
     [$ui, 'private fun PhoneRegistrationScreen', 'Android phone registration UI is missing.'],
     [$ui, 'private fun StoreScreen', 'Android storefront UI is missing.'],
     [$ui, 'ثبت‌نام با شماره موبایل و خرید سرویس', 'Android login screen does not expose storefront registration.'],
+    [$ui, 'order.status == "paid" && order.serviceId != null', 'Android must not report purchase success without a delivered service.'],
     [$accountTable, 'UNIQUE KEY uq_app_mobile_phone (phone)', 'Mobile phone uniqueness is not enforced by schema.'],
     [$sessionTable, 'UNIQUE KEY uq_app_mobile_token (token_hash)', 'Mobile session token uniqueness is not enforced by schema.'],
 ];
