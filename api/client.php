@@ -284,26 +284,28 @@ function clientPublicOtpError(Throwable $error): string
         return 'ارسال کد تأیید انجام نشد. کمی بعد دوباره تلاش کنید.';
     }
 
-    $safeNeedles = [
-        'تأیید پیامکی شماره در پنل مدیریت فعال نیست',
-        'شماره موبایل معتبر نیست',
-        'ثانیه تا ارسال دوباره کد صبر کنید',
-        'API Key',
-        'کد پترن ثبت نشده',
-        'شماره خط ارسال معتبر نیست',
-        'پترن فعال برای',
-        'ارسال پیامک',
-        'pattern',
-        'recipient',
-        'line_number',
-    ];
-    foreach ($safeNeedles as $needle) {
-        if (mb_stripos($message, $needle, 0, 'UTF-8') !== false) {
-            return 'ارسال کد تأیید انجام نشد: ' . mb_substr($message, 0, 220, 'UTF-8');
-        }
+    if (mb_stripos($message, 'شماره موبایل معتبر نیست', 0, 'UTF-8') !== false) {
+        return 'شماره موبایل معتبر نیست.';
+    }
+    if (mb_stripos($message, 'ثانیه تا ارسال دوباره کد صبر کنید', 0, 'UTF-8') !== false) {
+        return $message;
+    }
+    if (mb_stripos($message, 'تأیید پیامکی شماره در پنل مدیریت فعال نیست', 0, 'UTF-8') !== false) {
+        return 'تأیید شماره با پیامک در تنظیمات ربات فعال نیست.';
+    }
+    if (mb_stripos($message, 'API Key', 0, 'UTF-8') !== false) {
+        return 'تنظیمات ارسال پیامک ربات کامل نیست. کلید مشترک پیامک در سرور در دسترس نیست.';
+    }
+    if (mb_stripos($message, 'پترن', 0, 'UTF-8') !== false
+        || mb_stripos($message, 'pattern', 0, 'UTF-8') !== false) {
+        return 'پترن «تأیید شماره موبایل» ربات در دسترس نیست.';
+    }
+    if (mb_stripos($message, 'شماره خط ارسال معتبر نیست', 0, 'UTF-8') !== false
+        || mb_stripos($message, 'line_number', 0, 'UTF-8') !== false) {
+        return 'خط ارسال پیامک ربات در دسترس نیست.';
     }
 
-    return 'ارسال کد تأیید انجام نشد. تنظیمات پیامک و پترن «تأیید شماره موبایل» را بررسی کنید.';
+    return 'ارسال کد تأیید از سامانه پیامک ربات انجام نشد. کمی بعد دوباره تلاش کنید.';
 }
 
 $method = strtoupper((string) ($_SERVER['REQUEST_METHOD'] ?? 'GET'));
