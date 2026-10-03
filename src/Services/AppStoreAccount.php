@@ -565,7 +565,10 @@ final class AppStoreAccount
                 DirectPayment($orderId);
                 $invoice = self::invoice($pdo, $invoiceId);
                 if (!is_array($invoice) || (string) ($invoice['Status'] ?? '') !== 'active') {
-                    throw new RuntimeException('ساخت سرویس کامل نشد.');
+                    if (function_exists('markPaymentDeliveryError')) {
+                        markPaymentDeliveryError($orderId, 'App checkout paid but service provisioning did not become active.');
+                    }
+                    throw new RuntimeException('پرداخت انجام شد اما ساخت سرویس کامل نشد؛ مبلغ یا سرویس نیاز به بررسی دارد.');
                 }
 
                 return [
@@ -699,7 +702,8 @@ final class AppStoreAccount
 
         $parts = explode('|', (string) ($payment['id_invoice'] ?? ''), 2);
         $service = null;
-        if (($parts[0] ?? '') === 'getconfigafterpay' && !empty($parts[1])) {
+        $deliveryExpected = ($parts[0] ?? '') === 'getconfigafterpay' && !empty($parts[1]);
+        if ($deliveryExpected) {
             $invoiceStmt = $pdo->prepare(
                 "SELECT * FROM invoice
                  WHERE id_user=? AND username=?
@@ -707,7 +711,16 @@ final class AppStoreAccount
             );
             $invoiceStmt->execute([$userId, $parts[1]]);
             $row = $invoiceStmt->fetch(PDO::FETCH_ASSOC);
-            if (is_array($row)) {
+            $serviceStatus = is_array($row)
+                ? strtolower((string) ($row['Status'] ?? ''))
+                : '';
+            if (is_array($row) && in_array($serviceStatus, [
+                'active',
+                'end_of_time',
+                'end_of_volume',
+                'sendedwarn',
+                'send_on_hold',
+            ], true)) {
                 $service = [
                     'id' => (string) ($row['id_invoice'] ?? ''),
                     'username' => (string) ($row['username'] ?? ''),
@@ -716,9 +729,20 @@ final class AppStoreAccount
             }
         }
 
+        $paymentStatus = strtolower((string) ($payment['payment_Status'] ?? ''));
+        if ($deliveryExpected && $paymentStatus === 'paid' && $service === null) {
+            if (function_exists('markPaymentDeliveryError')) {
+                markPaymentDeliveryError(
+                    (string) ($payment['id_order'] ?? ''),
+                    'Paid app checkout has no active provisioned service.'
+                );
+            }
+            $paymentStatus = 'delivery_error';
+        }
+
         return [
             'order_id' => (string) ($payment['id_order'] ?? ''),
-            'status' => strtolower((string) ($payment['payment_Status'] ?? '')),
+            'status' => $paymentStatus,
             'gateway' => strtolower((string) ($payment['Payment_Method'] ?? '')),
             'service' => $service,
         ];
