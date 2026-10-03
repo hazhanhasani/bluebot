@@ -105,6 +105,9 @@ jobs:
       - name: Runtime debug contract
         run: php tests/runtime_debug_contract.php
 
+      - name: Panel QR resolver logic
+        run: php tests/panel_qr_resolver_test.php
+
       - name: Trusted proxy webhook tests
         run: php tests/trusted_proxy_test.php
 

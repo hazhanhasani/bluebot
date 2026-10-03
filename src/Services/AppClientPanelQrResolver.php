@@ -99,7 +99,7 @@ final class AppClientPanelQrResolver
                         continue;
                     }
 
-                    if (!self::runtimeMatches($runtime, $signatures)) {
+                    if (!self::runtimeMatches($runtime, $signatures, $identities)) {
                         continue;
                     }
 
@@ -391,6 +391,12 @@ final class AppClientPanelQrResolver
             if ($normalized !== '' && isset($lookup[$normalized])) {
                 return true;
             }
+
+            foreach (self::identities($value) as $identity) {
+                if (isset($lookup[$identity])) {
+                    return true;
+                }
+            }
         }
         return false;
     }
@@ -437,8 +443,11 @@ final class AppClientPanelQrResolver
         return array_slice(array_values(array_unique($out)), 0, 300);
     }
 
-    private static function runtimeMatches(array $runtime, array $targetSignatures): bool
-    {
+    private static function runtimeMatches(
+        array $runtime,
+        array $targetSignatures,
+        array $targetIdentities
+    ): bool {
         $values = [];
 
         $subscription = trim((string) ($runtime['subscription_url'] ?? ''));
@@ -449,7 +458,7 @@ final class AppClientPanelQrResolver
         foreach (['links', 'configs'] as $key) {
             $source = $runtime[$key] ?? [];
             if (is_string($source)) {
-                $source = preg_split('/\R+/', $source) ?: [];
+                $source = preg_split('/\\R+/', $source) ?: [];
             }
             if (is_array($source)) {
                 foreach ($source as $item) {
@@ -460,9 +469,17 @@ final class AppClientPanelQrResolver
             }
         }
 
+        $identityLookup = array_fill_keys($targetIdentities, true);
+
         foreach ($values as $value) {
             if (array_intersect($targetSignatures, self::signatures($value)) !== []) {
                 return true;
+            }
+
+            foreach (self::identities($value) as $identity) {
+                if (isset($identityLookup[$identity])) {
+                    return true;
+                }
             }
         }
 
@@ -571,13 +588,13 @@ final class AppClientPanelQrResolver
     {
         $values = [];
 
-        foreach (preg_split('/\R+/', trim($payload)) ?: [] as $line) {
+        foreach (preg_split('/\\R+/', trim($payload)) ?: [] as $line) {
             $line = trim((string) $line);
             if ($line === '') {
                 continue;
             }
 
-            if (preg_match_all('/\b[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\b/i', $line, $matches)) {
+            if (preg_match_all('/\\b[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\\b/i', $line, $matches)) {
                 foreach ($matches[0] as $match) {
                     $values[] = strtolower((string) $match);
                 }
@@ -620,8 +637,11 @@ final class AppClientPanelQrResolver
             if ($path !== '') {
                 $segments = explode('/', $path);
                 $last = rawurldecode((string) end($segments));
-                if ($last !== '' && strlen($last) <= 190) {
+                if ($last !== '' && strlen($last) <= 512) {
                     $values[] = strtolower($last);
+                    foreach (self::encodedTokenClaims($last) as $claim) {
+                        $values[] = $claim;
+                    }
                 }
             }
         }
@@ -630,6 +650,48 @@ final class AppClientPanelQrResolver
             $values,
             static fn(string $value): bool => $value !== '' && strlen($value) <= 512
         )));
+    }
+
+    /**
+     * Extract stable printable claims from signed/base64url subscription tokens.
+     * Some panels expose a numeric user/service id in the token while their
+     * admin catalog omits the public subscription URL.
+     *
+     * @return array<int,string>
+     */
+    private static function encodedTokenClaims(string $token): array
+    {
+        $claims = [];
+        $parts = preg_split('/\\./', trim($token), -1, PREG_SPLIT_NO_EMPTY) ?: [];
+
+        foreach (array_slice($parts, 0, 4) as $part) {
+            if (
+                strlen($part) < 4
+                || strlen($part) > 768
+                || preg_match('/^[A-Za-z0-9_-]+$/', $part) !== 1
+            ) {
+                continue;
+            }
+
+            $decoded = self::base64UrlDecode($part);
+            if (
+                $decoded === null
+                || $decoded === ''
+                || strlen($decoded) > 1024
+                || preg_match('/^[\\x20-\\x7E]+$/', $decoded) !== 1
+            ) {
+                continue;
+            }
+
+            foreach (preg_split('/[^A-Za-z0-9._@-]+/', $decoded, -1, PREG_SPLIT_NO_EMPTY) ?: [] as $value) {
+                $value = strtolower(trim((string) $value));
+                if ($value !== '' && strlen($value) <= 190) {
+                    $claims[] = $value;
+                }
+            }
+        }
+
+        return array_values(array_unique($claims));
     }
 
     /**
