@@ -64,6 +64,35 @@ final class AppClientAuth
             CONSTRAINT fk_app_client_account FOREIGN KEY (account_id) REFERENCES app_client_accounts(id) ON DELETE CASCADE
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
 
+        $pdo->exec("CREATE TABLE IF NOT EXISTS app_client_panel_sessions (
+            id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+            token_hash CHAR(64) NOT NULL,
+            device_hash CHAR(64) NOT NULL,
+            panel_name VARCHAR(190) NOT NULL,
+            service_username VARCHAR(190) NOT NULL,
+            service_key VARCHAR(64) NOT NULL,
+            source_fingerprint CHAR(64) NOT NULL,
+            created_at DATETIME NOT NULL,
+            expires_at DATETIME NOT NULL,
+            last_seen_at DATETIME NOT NULL,
+            revoked_at DATETIME NULL,
+            PRIMARY KEY (id),
+            UNIQUE KEY uq_app_client_panel_token (token_hash),
+            KEY idx_app_client_panel_service (panel_name, service_username),
+            KEY idx_app_client_panel_expiry (expires_at)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+
+        $pdo->exec("CREATE TABLE IF NOT EXISTS app_client_panel_qr_links (
+            fingerprint CHAR(64) NOT NULL,
+            panel_name VARCHAR(190) NOT NULL,
+            service_username VARCHAR(190) NOT NULL,
+            service_key VARCHAR(64) NOT NULL,
+            created_at DATETIME NOT NULL,
+            updated_at DATETIME NOT NULL,
+            PRIMARY KEY (fingerprint),
+            KEY idx_app_client_panel_qr_service (panel_name, service_username)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+
         $pdo->exec("CREATE TABLE IF NOT EXISTS app_client_login_guards (
             identifier_hash CHAR(64) NOT NULL PRIMARY KEY,
             failures INT UNSIGNED NOT NULL DEFAULT 0,
@@ -242,8 +271,42 @@ final class AppClientAuth
         }
 
         if (!is_array($link)) {
+            $storedPanel = self::storedPanelQrMatch($pdo, $fingerprints);
+            if (is_array($storedPanel)) {
+                try {
+                    $session = self::issuePanelSession($pdo, $storedPanel, $deviceId, $fingerprints);
+                    $pdo->prepare("DELETE FROM app_client_login_guards WHERE identifier_hash = ?")
+                        ->execute([$guard]);
+                    return $session;
+                } catch (Throwable $e) {
+                    // Stale panel mappings are removed so a fresh connected-panel
+                    // discovery can repair them below.
+                    self::forgetPanelQrMatch($pdo, $fingerprints);
+                }
+            }
+        }
+
+        if (
+            !is_array($link)
+            && class_exists('AppClientPanelQrResolver')
+        ) {
+            try {
+                $panelMatch = AppClientPanelQrResolver::resolve($pdo, $payload);
+            } catch (Throwable $e) {
+                $panelMatch = null;
+            }
+
+            if (is_array($panelMatch)) {
+                $session = self::issuePanelSession($pdo, $panelMatch, $deviceId, $fingerprints);
+                $pdo->prepare("DELETE FROM app_client_login_guards WHERE identifier_hash = ?")
+                    ->execute([$guard]);
+                return $session;
+            }
+        }
+
+        if (!is_array($link)) {
             self::failed($pdo, $guard);
-            throw new RuntimeException('QR code is not linked to an active service');
+            throw new RuntimeException('QR code is not linked to a connected panel service');
         }
 
         $userId = (string) $link['user_id'];
@@ -350,6 +413,9 @@ final class AppClientAuth
             throw new RuntimeException('Authentication required');
         }
 
+        $tokenHash = hash('sha256', trim($token));
+        $deviceHash = hash('sha256', trim($deviceId));
+
         $stmt = $pdo->prepare(
             "SELECT
                 s.id AS session_id,
@@ -366,58 +432,113 @@ final class AppClientAuth
                AND s.expires_at > UTC_TIMESTAMP()
              LIMIT 1"
         );
-        $stmt->execute([hash('sha256', trim($token))]);
+        $stmt->execute([$tokenHash]);
         $row = $stmt->fetch(PDO::FETCH_ASSOC);
 
         if (
-            !is_array($row)
-            || (int) $row['enabled'] !== 1
-            || trim((string) ($row['invoice_id'] ?? '')) === ''
-            || !hash_equals(
-                (string) $row['device_hash'],
-                hash('sha256', trim($deviceId))
-            )
+            is_array($row)
+            && (int) ($row['enabled'] ?? 0) === 1
+            && trim((string) ($row['invoice_id'] ?? '')) !== ''
+            && hash_equals((string) $row['device_hash'], $deviceHash)
         ) {
-            throw new RuntimeException('Authentication required');
+            $user = self::user($pdo, (string) $row['user_id']);
+            $service = self::serviceForUser(
+                $pdo,
+                (string) $row['user_id'],
+                (string) $row['invoice_id']
+            );
+
+            if (
+                is_array($user)
+                && (string) ($user['User_Status'] ?? '') !== 'block'
+                && is_array($service)
+            ) {
+                $pdo->prepare("UPDATE app_client_sessions SET last_seen_at = ? WHERE id = ?")
+                    ->execute([self::now(), (int) $row['session_id']]);
+
+                return [
+                    'session_id' => (int) $row['session_id'],
+                    'account_id' => (int) $row['account_id'],
+                    'username' => (string) $row['username'],
+                    'user_id' => (string) $row['user_id'],
+                    'invoice_id' => (string) $row['invoice_id'],
+                    'service' => $service,
+                    'user' => $user,
+                    'session_type' => 'invoice',
+                ];
+            }
         }
 
-        $user = self::user($pdo, (string) $row['user_id']);
-        $service = self::serviceForUser(
-            $pdo,
-            (string) $row['user_id'],
-            (string) $row['invoice_id']
+        $panelStmt = $pdo->prepare(
+            "SELECT
+                id AS session_id,
+                device_hash,
+                panel_name,
+                service_username,
+                service_key,
+                source_fingerprint
+             FROM app_client_panel_sessions
+             WHERE token_hash = ?
+               AND revoked_at IS NULL
+               AND expires_at > UTC_TIMESTAMP()
+             LIMIT 1"
         );
+        $panelStmt->execute([$tokenHash]);
+        $panelRow = $panelStmt->fetch(PDO::FETCH_ASSOC);
 
         if (
-            !is_array($user)
-            || (string) ($user['User_Status'] ?? '') === 'block'
-            || !is_array($service)
+            is_array($panelRow)
+            && hash_equals((string) ($panelRow['device_hash'] ?? ''), $deviceHash)
         ) {
-            throw new RuntimeException('Authentication required');
+            $service = self::panelService(
+                $pdo,
+                (string) $panelRow['panel_name'],
+                (string) $panelRow['service_username'],
+                (string) $panelRow['service_key']
+            );
+
+            if (is_array($service)) {
+                $pdo->prepare(
+                    "UPDATE app_client_panel_sessions SET last_seen_at = ? WHERE id = ?"
+                )->execute([self::now(), (int) $panelRow['session_id']]);
+
+                return [
+                    'session_id' => (int) $panelRow['session_id'],
+                    'account_id' => 0,
+                    'username' => (string) $panelRow['service_username'],
+                    'user_id' => '',
+                    'invoice_id' => (string) $panelRow['service_key'],
+                    'service' => $service,
+                    'user' => [],
+                    'session_type' => 'panel',
+                ];
+            }
+
+            $pdo->prepare(
+                "UPDATE app_client_panel_sessions SET revoked_at = ? WHERE id = ?"
+            )->execute([self::now(), (int) $panelRow['session_id']]);
         }
 
-        $pdo->prepare("UPDATE app_client_sessions SET last_seen_at = ? WHERE id = ?")
-            ->execute([self::now(), (int) $row['session_id']]);
-
-        return [
-            'session_id' => (int) $row['session_id'],
-            'account_id' => (int) $row['account_id'],
-            'username' => (string) $row['username'],
-            'user_id' => (string) $row['user_id'],
-            'invoice_id' => (string) $row['invoice_id'],
-            'service' => $service,
-            'user' => $user,
-        ];
+        throw new RuntimeException('Authentication required');
     }
 
     public static function logout(PDO $pdo, string $token): void
     {
         self::ensureSchema($pdo);
+        $tokenHash = hash('sha256', trim($token));
+        $now = self::now();
+
         $pdo->prepare(
             "UPDATE app_client_sessions
              SET revoked_at = ?
              WHERE token_hash = ? AND revoked_at IS NULL"
-        )->execute([self::now(), hash('sha256', trim($token))]);
+        )->execute([$now, $tokenHash]);
+
+        $pdo->prepare(
+            "UPDATE app_client_panel_sessions
+             SET revoked_at = ?
+             WHERE token_hash = ? AND revoked_at IS NULL"
+        )->execute([$now, $tokenHash]);
     }
 
     private static function migrateCredentialSecret(PDO $pdo): void
@@ -527,6 +648,221 @@ final class AppClientAuth
             'service' => $service,
             'user' => $user,
         ];
+    }
+
+    /**
+     * @param array{panel_name:string,username:string,service_key:string} $match
+     * @param array<int,string> $fingerprints
+     */
+    private static function issuePanelSession(
+        PDO $pdo,
+        array $match,
+        string $deviceId,
+        array $fingerprints
+    ): array {
+        $panelName = trim((string) ($match['panel_name'] ?? ''));
+        $serviceUsername = trim((string) ($match['username'] ?? ''));
+        $serviceKey = trim((string) ($match['service_key'] ?? ''));
+
+        if ($panelName === '' || $serviceUsername === '' || $serviceKey === '') {
+            throw new RuntimeException('Invalid connected panel service');
+        }
+
+        $service = self::panelService($pdo, $panelName, $serviceUsername, $serviceKey);
+        if (!is_array($service)) {
+            throw new RuntimeException('Connected panel service is unavailable');
+        }
+
+        $token = self::random(32);
+        $tokenHash = hash('sha256', $token);
+        $deviceHash = hash('sha256', trim($deviceId));
+        $now = self::now();
+        $expires = gmdate('Y-m-d H:i:s', time() + self::SESSION_TTL);
+        $sourceFingerprint = (string) ($fingerprints[0] ?? hash('sha256', $panelName . "\0" . $serviceUsername));
+
+        $pdo->prepare(
+            "UPDATE app_client_panel_sessions
+             SET revoked_at = ?
+             WHERE panel_name = ?
+               AND service_username = ?
+               AND device_hash = ?
+               AND revoked_at IS NULL"
+        )->execute([$now, $panelName, $serviceUsername, $deviceHash]);
+
+        $pdo->prepare(
+            "INSERT INTO app_client_panel_sessions
+                (token_hash,device_hash,panel_name,service_username,service_key,source_fingerprint,created_at,expires_at,last_seen_at)
+             VALUES (?,?,?,?,?,?,?,?,?)"
+        )->execute([
+            $tokenHash,
+            $deviceHash,
+            $panelName,
+            $serviceUsername,
+            $serviceKey,
+            $sourceFingerprint,
+            $now,
+            $expires,
+            $now,
+        ]);
+
+        self::rememberPanelQrMatch(
+            $pdo,
+            $fingerprints,
+            $panelName,
+            $serviceUsername,
+            $serviceKey
+        );
+
+        return [
+            'token' => $token,
+            'expires_at' => $expires,
+            'expires_in' => self::SESSION_TTL,
+            'account' => [
+                'username' => $serviceUsername,
+                'user_id' => '',
+                'invoice_id' => $serviceKey,
+            ],
+            'service' => $service,
+            'user' => [],
+            'session_type' => 'panel',
+        ];
+    }
+
+    private static function panelService(
+        PDO $pdo,
+        string $panelName,
+        string $serviceUsername,
+        string $serviceKey
+    ): ?array {
+        if (!class_exists('ManagePanel')) {
+            return null;
+        }
+
+        $stmt = $pdo->prepare(
+            "SELECT name_panel,type FROM marzban_panel WHERE name_panel = ? LIMIT 1"
+        );
+        $stmt->execute([$panelName]);
+        $panel = $stmt->fetch(PDO::FETCH_ASSOC);
+        if (!is_array($panel)) {
+            return null;
+        }
+
+        $type = strtolower(trim((string) ($panel['type'] ?? '')));
+        if (in_array($type, ['manualsale', 'wgdashboard', 'ibsng', 'mikrotik'], true)) {
+            return null;
+        }
+
+        try {
+            $manager = new ManagePanel();
+            $runtime = $manager->DataUser($panelName, $serviceUsername);
+        } catch (Throwable $e) {
+            return null;
+        }
+
+        if (
+            !is_array($runtime)
+            || strtolower(trim((string) ($runtime['status'] ?? ''))) === 'unsuccessful'
+        ) {
+            return null;
+        }
+
+        return [
+            'id_invoice' => $serviceKey,
+            'id_user' => '',
+            'username' => trim((string) ($runtime['username'] ?? $serviceUsername)) ?: $serviceUsername,
+            'name_product' => 'سرویس پنل • ' . $panelName,
+            'note' => 'Connected panel service',
+            'Service_location' => $panelName,
+            'status' => (string) ($runtime['status'] ?? 'active'),
+            'time_sell' => null,
+            'source_type' => 'panel',
+        ];
+    }
+
+    /**
+     * @param array<int,string> $fingerprints
+     * @return array{panel_name:string,username:string,service_key:string}|null
+     */
+    private static function storedPanelQrMatch(PDO $pdo, array $fingerprints): ?array
+    {
+        if ($fingerprints === []) {
+            return null;
+        }
+
+        $placeholders = implode(',', array_fill(0, count($fingerprints), '?'));
+        $stmt = $pdo->prepare(
+            "SELECT panel_name,service_username,service_key
+             FROM app_client_panel_qr_links
+             WHERE fingerprint IN ({$placeholders})
+             LIMIT 1"
+        );
+        $stmt->execute($fingerprints);
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+
+        if (!is_array($row)) {
+            return null;
+        }
+
+        return [
+            'panel_name' => (string) $row['panel_name'],
+            'username' => (string) $row['service_username'],
+            'service_key' => (string) $row['service_key'],
+        ];
+    }
+
+    /**
+     * @param array<int,string> $fingerprints
+     */
+    private static function rememberPanelQrMatch(
+        PDO $pdo,
+        array $fingerprints,
+        string $panelName,
+        string $serviceUsername,
+        string $serviceKey
+    ): void {
+        if ($fingerprints === []) {
+            return;
+        }
+
+        $now = self::now();
+        $stmt = $pdo->prepare(
+            "INSERT INTO app_client_panel_qr_links
+                (fingerprint,panel_name,service_username,service_key,created_at,updated_at)
+             VALUES (?,?,?,?,?,?)
+             ON DUPLICATE KEY UPDATE
+                panel_name = VALUES(panel_name),
+                service_username = VALUES(service_username),
+                service_key = VALUES(service_key),
+                updated_at = VALUES(updated_at)"
+        );
+
+        foreach (array_unique($fingerprints) as $fingerprint) {
+            if (preg_match('/^[a-f0-9]{64}$/', (string) $fingerprint) !== 1) {
+                continue;
+            }
+            $stmt->execute([
+                $fingerprint,
+                $panelName,
+                $serviceUsername,
+                $serviceKey,
+                $now,
+                $now,
+            ]);
+        }
+    }
+
+    /**
+     * @param array<int,string> $fingerprints
+     */
+    private static function forgetPanelQrMatch(PDO $pdo, array $fingerprints): void
+    {
+        if ($fingerprints === []) {
+            return;
+        }
+        $placeholders = implode(',', array_fill(0, count($fingerprints), '?'));
+        $pdo->prepare(
+            "DELETE FROM app_client_panel_qr_links WHERE fingerprint IN ({$placeholders})"
+        )->execute($fingerprints);
     }
 
     private static function encryptPassword(string $password): string

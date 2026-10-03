@@ -49,6 +49,8 @@ $zarinpal = $read('payment/zarinpal.php');
 $diagnostics = $read('src/Support/Diagnostics.php');
 $appClientBot = $read('src/Support/AppClientBot.php');
 $appClientAuth = $read('src/Services/AppClientAuth.php');
+$appClientPanelQrResolver = $read('src/Services/AppClientPanelQrResolver.php');
+$clientApi = $read('api/client.php');
 $androidQrScanner = $read('android-client/app/src/main/java/com/bluepanel/client/ui/QrScannerOverlay.kt');
 
 $mustContain = [
@@ -150,6 +152,20 @@ $mustContain = [
     [$functions, 'bluebotAppClientSyncQr(', 'QR generation must persist the exact payload shown to the customer.'],
     [$appClientAuth, 'LOCATE(?, user_info) > 0', 'QR cache backfill must match the exact cached service payload.'],
     [$appClientAuth, 'rememberQrPayloads', 'QR cache backfill must persist recovered fingerprints.'],
+    [$appClientAuth, 'app_client_panel_sessions', 'Panel-only QR login must have isolated device-bound sessions.'],
+    [$appClientAuth, 'storedPanelQrMatch', 'Panel QR mappings must be cached after a successful connected-panel match.'],
+    [$appClientAuth, 'issuePanelSession', 'Panel-only services must receive a dedicated Blue VPN session.'],
+    [$appClientAuth, "'session_type' => 'panel'", 'Authorized panel-only sessions must remain distinguishable from invoice sessions.'],
+    [$appClientPanelQrResolver, 'final class AppClientPanelQrResolver', 'Connected-panel QR resolver is missing.'],
+    [$appClientPanelQrResolver, "'marzban' => self::marzbanCatalog", 'Connected-panel QR resolver must support Marzban catalogs.'],
+    [$appClientPanelQrResolver, "'marzneshin' => self::responseData", 'Connected-panel QR resolver must support Marzneshin catalogs.'],
+    [$appClientPanelQrResolver, "'solidlayer' => self::responseData", 'Connected-panel QR resolver must support SolidLayer catalogs.'],
+    [$appClientPanelQrResolver, "'hiddify' => self::responseData", 'Connected-panel QR resolver must support Hiddify catalogs.'],
+    [$appClientPanelQrResolver, "'x-ui_single' => self::responseData", 'Connected-panel QR resolver must support 3X-UI catalogs.'],
+    [$appClientPanelQrResolver, "'alireza_single' => self::alirezaCatalog", 'Connected-panel QR resolver must support Alireza X-UI catalogs.'],
+    [$appClientPanelQrResolver, "'s_ui' => self::suiCatalog", 'Connected-panel QR resolver must support S-UI catalogs.'],
+    [$appClientPanelQrResolver, "'rebecca' => self::rebeccaCatalog", 'Connected-panel QR resolver must support Rebecca catalogs.'],
+    [$clientApi, "'connected_panel_qr_login' => true", 'Android client API must advertise connected-panel QR login support.'],
     [$androidQrScanner, 'ActivityResultContracts.GetContent()', 'Android QR scanner must support gallery image selection.'],
     [$androidQrScanner, 'InputImage.fromFilePath(context, uri)', 'Android QR gallery flow must decode the selected image.'],
 
