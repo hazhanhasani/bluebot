@@ -607,20 +607,56 @@ final class BluebotSms
             throw new RuntimeException('نوع پیام ناشناخته است.');
         }
 
-        $patternCode = self::ensurePatternForEvent($eventKey);
-        if ($patternCode === '') {
-            // A pattern may have been approved moments ago while the local cache
-            // is still inside its TTL. Force one provider refresh before failing.
-            $patternCode = self::ensurePatternForEvent($eventKey, true);
+        self::seedTemplates();
+        $clean = self::cleanParams($spec, $params);
+
+        // Fast path: an already mapped provider pattern is authoritative enough
+        // to attempt delivery. Do not make OTP depend on listing every provider
+        // pattern first; some providers intermittently reject/timeout the catalog
+        // endpoint while the send-pattern endpoint is perfectly healthy.
+        $stmt = $pdo->prepare(
+            'SELECT pattern_code FROM sms_templates WHERE event_key=? LIMIT 1'
+        );
+        $stmt->execute([$eventKey]);
+        $mappedCode = trim((string) ($stmt->fetchColumn() ?: ''));
+
+        if ($mappedCode !== '') {
+            try {
+                return self::sendPattern($phone, $mappedCode, $clean);
+            } catch (Throwable $firstError) {
+                self::log('Mapped SMS pattern send failed; attempting provider resync', [
+                    'event' => $eventKey,
+                    'pattern' => $mappedCode,
+                    'error' => $firstError->getMessage(),
+                ]);
+
+                try {
+                    $refreshedCode = self::ensurePatternForEvent($eventKey, true);
+                    if ($refreshedCode !== '' && $refreshedCode !== $mappedCode) {
+                        return self::sendPattern($phone, $refreshedCode, $clean);
+                    }
+                } catch (Throwable $refreshError) {
+                    self::log('SMS pattern recovery refresh failed', [
+                        'event' => $eventKey,
+                        'error' => $refreshError->getMessage(),
+                    ]);
+                }
+
+                // Preserve the provider's original send error because it is more
+                // actionable than a secondary catalog-refresh failure.
+                throw $firstError;
+            }
         }
+
+        $patternCode = self::ensurePatternForEvent($eventKey, true);
         if ($patternCode === '') {
             throw new RuntimeException(
                 'پترن فعال برای «' . ($spec['title'] ?? $eventKey)
-                . '» پیدا نشد. فهرست پترن‌ها تازه‌سازی شد؛ انتخاب این رویداد را در بخش پترن‌ها بررسی کنید.'
+                . '» پیدا نشد. در بخش پیامک، پترن این رویداد را بررسی کنید.'
             );
         }
 
-        return self::sendPattern($phone, $patternCode, self::cleanParams($spec, $params));
+        return self::sendPattern($phone, $patternCode, $clean);
     }
 
     public static function refreshPatterns(bool $force = true): array

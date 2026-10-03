@@ -281,6 +281,17 @@ private fun BlueVpnApp() {
                                 storeOpen = false
                                 refreshServices()
                             },
+                            onRequireAccount = {
+                                BluePanelVpnService.disconnect(context)
+                                scope.launch {
+                                    api.logout()
+                                    services = emptyList()
+                                    storeOpen = false
+                                    loggedIn = false
+                                    registerOpen = true
+                                    error = null
+                                }
+                            },
                             onPurchased = ::refreshServices,
                         )
                     }
@@ -623,6 +634,7 @@ private fun PhoneRegistrationScreen(
 private fun StoreScreen(
     api: BluePanelApi,
     onBack: () -> Unit,
+    onRequireAccount: () -> Unit,
     onPurchased: () -> Unit,
 ) {
     val scope = rememberCoroutineScope()
@@ -693,42 +705,76 @@ private fun StoreScreen(
             Spacer(Modifier.height(18.dp))
 
             catalog?.let { data ->
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(20.dp),
-                    colors = CardDefaults.cardColors(containerColor = Color(0xB3162228)),
-                ) {
-                    Column(Modifier.padding(16.dp)) {
-                        Text("روش پرداخت", fontWeight = FontWeight.ExtraBold)
-                        Spacer(Modifier.height(10.dp))
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                if (data.requiresAccount) {
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(22.dp),
+                        colors = CardDefaults.cardColors(containerColor = Color(0xD112262C)),
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(20.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally,
                         ) {
-                            data.gateways.forEach { gateway ->
-                                val label = when (gateway) {
-                                    "blupal" -> "BluePal"
-                                    "zarinpal" -> "زرین‌پال"
-                                    else -> "کیف پول"
-                                }
-                                Button(
-                                    onClick = { selectedGateway = gateway },
-                                    modifier = Modifier.weight(1f),
-                                    shape = RoundedCornerShape(14.dp),
-                                    colors = ButtonDefaults.buttonColors(
-                                        containerColor = if (selectedGateway == gateway) Accent else Color(0xFF18242A),
-                                    ),
-                                ) {
-                                    Text(label, fontSize = 10.sp, fontWeight = FontWeight.Bold)
-                                }
+                            Text(
+                                "برای خرید، حساب خود را متصل کنید",
+                                fontSize = 17.sp,
+                                fontWeight = FontWeight.Black,
+                            )
+                            Spacer(Modifier.height(8.dp))
+                            Text(
+                                "ورود با QR برای اتصال سرویس کافی است، اما خرید به یک حساب تأییدشده با شماره موبایل نیاز دارد.",
+                                color = Color.White.copy(alpha = 0.60f),
+                                fontSize = 11.sp,
+                            )
+                            Spacer(Modifier.height(16.dp))
+                            Button(
+                                onClick = onRequireAccount,
+                                modifier = Modifier.fillMaxWidth().height(50.dp),
+                                shape = RoundedCornerShape(16.dp),
+                                colors = ButtonDefaults.buttonColors(containerColor = Accent),
+                            ) {
+                                Text("ساخت / اتصال حساب با شماره موبایل", fontWeight = FontWeight.ExtraBold)
                             }
                         }
-                        Spacer(Modifier.height(8.dp))
-                        Text(
-                            "موجودی کیف پول: ${String.format(Locale.US, "%,d", data.balance)} تومان",
-                            color = Color.White.copy(alpha = 0.62f),
-                            fontSize = 11.sp,
-                        )
+                    }
+                } else {
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(20.dp),
+                        colors = CardDefaults.cardColors(containerColor = Color(0xB3162228)),
+                    ) {
+                        Column(Modifier.padding(16.dp)) {
+                            Text("روش پرداخت", fontWeight = FontWeight.ExtraBold)
+                            Spacer(Modifier.height(10.dp))
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            ) {
+                                data.gateways.forEach { gateway ->
+                                    val label = when (gateway) {
+                                        "blupal" -> "BluePal"
+                                        "zarinpal" -> "زرین‌پال"
+                                        else -> "کیف پول"
+                                    }
+                                    Button(
+                                        onClick = { selectedGateway = gateway },
+                                        modifier = Modifier.weight(1f),
+                                        shape = RoundedCornerShape(14.dp),
+                                        colors = ButtonDefaults.buttonColors(
+                                            containerColor = if (selectedGateway == gateway) Accent else Color(0xFF18242A),
+                                        ),
+                                    ) {
+                                        Text(label, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                    }
+                                }
+                            }
+                            Spacer(Modifier.height(8.dp))
+                            Text(
+                                "موجودی کیف پول: ${String.format(Locale.US, "%,d", data.balance)} تومان",
+                                color = Color.White.copy(alpha = 0.62f),
+                                fontSize = 11.sp,
+                            )
+                        }
                     }
                 }
             }
@@ -757,7 +803,8 @@ private fun StoreScreen(
             } else {
                 Spacer(Modifier.height(14.dp))
                 val products = catalog?.products.orEmpty()
-                if (products.isEmpty()) {
+                val requiresAccount = catalog?.requiresAccount == true
+                if (products.isEmpty() && !requiresAccount) {
                     Card(
                         modifier = Modifier.fillMaxWidth(),
                         shape = RoundedCornerShape(20.dp),
@@ -772,7 +819,7 @@ private fun StoreScreen(
                             )
                         }
                     }
-                } else {
+                } else if (!requiresAccount) {
                     products.forEach { plan ->
                         StorePlanCard(
                             plan = plan,

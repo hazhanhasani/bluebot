@@ -89,6 +89,7 @@ class BluePanelApi(private val sessionStore: SessionStore) {
             products = products,
             gateways = gateways,
             balance = data.optInt("balance"),
+            requiresAccount = data.optBoolean("requires_account", false),
         )
     }
 
