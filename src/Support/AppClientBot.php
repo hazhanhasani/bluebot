@@ -138,6 +138,94 @@ function bluebotAppClientCredentialsBlock(PDO $pdo, string $userId, string $invo
     }
 }
 
+
+function bluebotAppClientCredentialCopyRow(
+    PDO $pdo,
+    string $userId,
+    string $invoiceId
+): array {
+    try {
+        $credentials = AppClientAuth::credentialsForService($pdo, $userId, $invoiceId);
+        $username = trim((string) ($credentials['username'] ?? ''));
+        $password = (string) ($credentials['password'] ?? '');
+
+        if ($username === '' || $password === '') {
+            return [];
+        }
+
+        return [
+            [
+                'text' => '📋 کپی نام کاربری',
+                'copy_text' => ['text' => $username],
+            ],
+            [
+                'text' => '🔑 کپی رمز عبور',
+                'copy_text' => ['text' => $password],
+            ],
+        ];
+    } catch (Throwable $e) {
+        if (function_exists('bluebotLog')) {
+            bluebotLog('warning', 'Unable to build app credential copy buttons', [
+                'user_id' => $userId,
+                'invoice_id' => $invoiceId,
+                'reason' => $e->getMessage(),
+            ]);
+        }
+        return [];
+    }
+}
+
+function bluebotAppClientAppendCredentialButtons(
+    PDO $pdo,
+    string $userId,
+    string $invoiceId,
+    array|string|null $markup
+): string {
+    $decoded = is_array($markup)
+        ? $markup
+        : json_decode((string) ($markup ?? ''), true);
+
+    if (!is_array($decoded)) {
+        $decoded = ['inline_keyboard' => []];
+    }
+    if (!isset($decoded['inline_keyboard']) || !is_array($decoded['inline_keyboard'])) {
+        $decoded['inline_keyboard'] = [];
+    }
+
+    $row = bluebotAppClientCredentialCopyRow($pdo, $userId, $invoiceId);
+    if ($row !== []) {
+        $decoded['inline_keyboard'][] = $row;
+    }
+
+    return json_encode(
+        $decoded,
+        JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES
+    ) ?: '{"inline_keyboard":[]}';
+}
+
+/**
+ * @param array<int,string>|string|null $configs
+ * @return array<int,string>
+ */
+function bluebotAppClientQrPayloadList(string $subscriptionUrl, array|string|null $configs): array
+{
+    $payloads = [];
+    $subscriptionUrl = trim($subscriptionUrl);
+    if ($subscriptionUrl !== '') {
+        $payloads[] = $subscriptionUrl;
+    }
+
+    $values = is_array($configs) ? $configs : [$configs];
+    foreach ($values as $value) {
+        $value = trim((string) $value);
+        if ($value !== '') {
+            $payloads[] = $value;
+        }
+    }
+
+    return array_values(array_unique($payloads));
+}
+
 /**
  * @param array<int,string>|string $payloads
  */
