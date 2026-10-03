@@ -144,6 +144,9 @@ $mustContain = [
     [$functions, "require_once __DIR__ . '/src/Support/AppClientBot.php';", 'Paid callback delivery must load app credential helpers.'],
     [$functions, 'bluebotAppClientCredentialsBlock(', 'Paid callback delivery must include app credentials.'],
     [$appClientAuth, 'self::credentialsForService($pdo, $userId, $invoiceId);', 'QR login must auto-provision service-scoped credentials.'],
+    [$appClientAuth, 'resolveQrLinkFromInvoiceCache', 'QR login must backfill legacy service QR mappings from invoice cache.'],
+    [$appClientAuth, 'LOCATE(?, user_info) > 0', 'QR cache backfill must match the exact cached service payload.'],
+    [$appClientAuth, 'rememberQrPayloads', 'QR cache backfill must persist recovered fingerprints.'],
     [$androidQrScanner, 'ActivityResultContracts.GetContent()', 'Android QR scanner must support gallery image selection.'],
     [$androidQrScanner, 'InputImage.fromFilePath(context, uri)', 'Android QR gallery flow must decode the selected image.'],
 

@@ -200,28 +200,7 @@ final class AppClientAuth
             "DELETE FROM app_client_qr_links WHERE user_id = ? AND invoice_id = ?"
         )->execute([$userId, $invoiceId]);
 
-        $values = is_array($payloads) ? $payloads : [$payloads];
-        $fingerprints = [];
-        foreach ($values as $payload) {
-            foreach (self::qrFingerprints((string) $payload) as $fingerprint) {
-                $fingerprints[$fingerprint] = true;
-            }
-        }
-
-        $now = self::now();
-        $stmt = $pdo->prepare(
-            "INSERT INTO app_client_qr_links
-                (fingerprint,user_id,invoice_id,created_at,updated_at)
-             VALUES (?,?,?,?,?)
-             ON DUPLICATE KEY UPDATE
-                user_id = VALUES(user_id),
-                invoice_id = VALUES(invoice_id),
-                updated_at = VALUES(updated_at)"
-        );
-
-        foreach (array_keys($fingerprints) as $fingerprint) {
-            $stmt->execute([$fingerprint, $userId, $invoiceId, $now, $now]);
-        }
+        self::rememberQrPayloads($pdo, $userId, $invoiceId, $payloads);
     }
 
     public static function authenticateQr(
@@ -250,6 +229,12 @@ final class AppClientAuth
         );
         $stmt->execute($fingerprints);
         $link = $stmt->fetch(PDO::FETCH_ASSOC);
+        $resolvedFromInvoiceCache = false;
+
+        if (!is_array($link)) {
+            $link = self::resolveQrLinkFromInvoiceCache($pdo, $payload, $fingerprints);
+            $resolvedFromInvoiceCache = is_array($link);
+        }
 
         if (!is_array($link)) {
             self::failed($pdo, $guard);
@@ -268,6 +253,18 @@ final class AppClientAuth
         ) {
             self::failed($pdo, $guard);
             throw new RuntimeException('QR code is not linked to an active service');
+        }
+
+        if ($resolvedFromInvoiceCache) {
+            self::rememberQrPayloads(
+                $pdo,
+                $userId,
+                $invoiceId,
+                [
+                    $payload,
+                    (string) ($service['user_info'] ?? ''),
+                ]
+            );
         }
 
         // Ensure an app account exists even if the user never used /app.
@@ -617,6 +614,119 @@ final class AppClientAuth
         }
         $decoded = base64_decode(strtr($value, '-_', '+/'), true);
         return is_string($decoded) ? $decoded : null;
+    }
+
+    /**
+     * @param array<int,string>|string $payloads
+     */
+    private static function rememberQrPayloads(
+        PDO $pdo,
+        string $userId,
+        string $invoiceId,
+        array|string $payloads
+    ): void {
+        $values = is_array($payloads) ? $payloads : [$payloads];
+        $fingerprints = [];
+        foreach ($values as $payload) {
+            foreach (self::qrFingerprints((string) $payload) as $fingerprint) {
+                $fingerprints[$fingerprint] = true;
+            }
+        }
+
+        if ($fingerprints === []) {
+            return;
+        }
+
+        $now = self::now();
+        $stmt = $pdo->prepare(
+            "INSERT INTO app_client_qr_links
+                (fingerprint,user_id,invoice_id,created_at,updated_at)
+             VALUES (?,?,?,?,?)
+             ON DUPLICATE KEY UPDATE
+                user_id = VALUES(user_id),
+                invoice_id = VALUES(invoice_id),
+                updated_at = VALUES(updated_at)"
+        );
+
+        foreach (array_keys($fingerprints) as $fingerprint) {
+            $stmt->execute([$fingerprint, $userId, $invoiceId, $now, $now]);
+        }
+    }
+
+    /**
+     * Backfills QR ownership for services created before QR fingerprint syncing
+     * existed. Only active invoices whose cached user_info contains the exact
+     * scanned subscription/config value are eligible, and ambiguous matches are
+     * rejected.
+     *
+     * @param array<int,string> $fingerprints
+     * @return array{user_id:string,invoice_id:string}|null
+     */
+    private static function resolveQrLinkFromInvoiceCache(
+        PDO $pdo,
+        string $payload,
+        array $fingerprints
+    ): ?array {
+        if (!self::hasColumn($pdo, 'invoice', 'user_info')) {
+            return null;
+        }
+
+        $needles = [];
+        $normalized = str_replace(["\r\n", "\r"], "\n", trim($payload));
+        foreach (array_merge([$normalized], preg_split('/\n+/', $normalized) ?: []) as $value) {
+            $value = trim((string) $value);
+            if (
+                $value !== ''
+                && strlen($value) <= 8192
+                && self::isSupportedQrValue($value)
+            ) {
+                $needles[$value] = true;
+            }
+        }
+
+        $needles = array_slice(array_keys($needles), 0, 8);
+        if ($needles === []) {
+            return null;
+        }
+
+        $statusPlaceholders = implode(',', array_fill(0, count(self::ELIGIBLE_STATUSES), '?'));
+        $contains = implode(
+            ' OR ',
+            array_fill(0, count($needles), 'LOCATE(?, user_info) > 0')
+        );
+
+        $stmt = $pdo->prepare(
+            "SELECT id_invoice,id_user,user_info
+             FROM invoice
+             WHERE status IN ({$statusPlaceholders})
+               AND user_info IS NOT NULL
+               AND user_info <> ''
+               AND ({$contains})
+             LIMIT 3"
+        );
+        $stmt->execute(array_merge(self::ELIGIBLE_STATUSES, $needles));
+        $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+        $matches = [];
+        foreach (is_array($rows) ? $rows : [] as $row) {
+            $cachedFingerprints = self::qrFingerprints((string) ($row['user_info'] ?? ''));
+            if (array_intersect($fingerprints, $cachedFingerprints) === []) {
+                continue;
+            }
+
+            $userId = trim((string) ($row['id_user'] ?? ''));
+            $invoiceId = trim((string) ($row['id_invoice'] ?? ''));
+            if ($userId === '' || $invoiceId === '') {
+                continue;
+            }
+
+            $matches[$userId . "\0" . $invoiceId] = [
+                'user_id' => $userId,
+                'invoice_id' => $invoiceId,
+            ];
+        }
+
+        return count($matches) === 1 ? array_values($matches)[0] : null;
     }
 
     /**
