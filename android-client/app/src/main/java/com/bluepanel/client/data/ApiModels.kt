@@ -64,6 +64,7 @@ data class StoreCatalog(
     val products: List<StorePlan>,
     val gateways: List<String>,
     val balance: Int,
+    val requiresAccount: Boolean,
 )
 
 data class CheckoutResult(
