@@ -40,3 +40,43 @@ data class AppUpdateInfo(
     val releaseNotes: String,
     val checkIntervalSeconds: Long,
 )
+
+
+data class OtpRequestResult(
+    val phone: String,
+    val expiresIn: Int,
+    val resendAfter: Int,
+)
+
+data class StorePlan(
+    val id: String,
+    val name: String,
+    val description: String,
+    val price: Int,
+    val trafficGb: Int,
+    val timeDays: Int,
+    val category: String,
+    val panelId: String,
+    val panelName: String,
+)
+
+data class StoreCatalog(
+    val products: List<StorePlan>,
+    val gateways: List<String>,
+    val balance: Int,
+)
+
+data class CheckoutResult(
+    val orderId: String,
+    val invoiceId: String,
+    val status: String,
+    val paymentUrl: String?,
+    val gateway: String,
+)
+
+data class OrderStatus(
+    val orderId: String,
+    val status: String,
+    val gateway: String,
+    val serviceId: String?,
+)
