@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -69,6 +70,8 @@ fun QrScannerOverlay(
     }
     var permissionRequested by remember { mutableStateOf(false) }
     var cameraProvider by remember { mutableStateOf<ProcessCameraProvider?>(null) }
+    var galleryBusy by remember { mutableStateOf(false) }
+    var scanError by remember { mutableStateOf<String?>(null) }
 
     val analyzerExecutor = remember { Executors.newSingleThreadExecutor() }
     val consumed = remember { AtomicBoolean(false) }
@@ -77,6 +80,47 @@ fun QrScannerOverlay(
             .setBarcodeFormats(Barcode.FORMAT_QR_CODE)
             .build()
         BarcodeScanning.getClient(options)
+    }
+
+    val galleryLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.GetContent(),
+    ) { uri ->
+        if (uri == null) {
+            return@rememberLauncherForActivityResult
+        }
+
+        galleryBusy = true
+        scanError = null
+        consumed.set(false)
+
+        val input = runCatching {
+            InputImage.fromFilePath(context, uri)
+        }.getOrElse {
+            galleryBusy = false
+            scanError = "خواندن تصویر انتخاب‌شده ممکن نشد."
+            return@rememberLauncherForActivityResult
+        }
+
+        scanner.process(input)
+            .addOnSuccessListener { barcodes ->
+                val raw = barcodes
+                    .firstOrNull { !it.rawValue.isNullOrBlank() }
+                    ?.rawValue
+                    ?.trim()
+                    .orEmpty()
+
+                if (raw.isNotEmpty() && consumed.compareAndSet(false, true)) {
+                    onResult(raw)
+                } else if (raw.isEmpty()) {
+                    scanError = "QR معتبری داخل این تصویر پیدا نشد."
+                }
+            }
+            .addOnFailureListener {
+                scanError = "تشخیص QR از تصویر ناموفق بود."
+            }
+            .addOnCompleteListener {
+                galleryBusy = false
+            }
     }
 
     val permissionLauncher = rememberLauncherForActivityResult(
@@ -136,6 +180,23 @@ fun QrScannerOverlay(
                         ) {
                             Text("اجازه دسترسی به دوربین", color = Color(0xFF031719))
                         }
+                    }
+                    Spacer(Modifier.height(10.dp))
+                    Button(
+                        onClick = { galleryLauncher.launch("image/*") },
+                        enabled = !galleryBusy,
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF17242B)),
+                        shape = RoundedCornerShape(16.dp),
+                    ) {
+                        Text(if (galleryBusy) "در حال بررسی تصویر…" else "انتخاب QR از گالری")
+                    }
+                    if (!scanError.isNullOrBlank()) {
+                        Spacer(Modifier.height(10.dp))
+                        Text(
+                            scanError.orEmpty(),
+                            color = Color(0xFFFF9B92),
+                            fontSize = 12.sp,
+                        )
                     }
                     Spacer(Modifier.height(10.dp))
                     Button(
@@ -247,17 +308,46 @@ fun QrScannerOverlay(
                         )
                     }
 
-                    Button(
-                        onClick = onClose,
+                    Column(
                         modifier = Modifier
                             .align(Alignment.BottomCenter)
-                            .padding(bottom = 40.dp),
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = Color(0xCC151A21),
-                        ),
-                        shape = RoundedCornerShape(18.dp),
+                            .fillMaxWidth()
+                            .padding(start = 28.dp, end = 28.dp, bottom = 34.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
                     ) {
-                        Text("بستن اسکنر")
+                        if (!scanError.isNullOrBlank()) {
+                            Text(
+                                scanError.orEmpty(),
+                                color = Color(0xFFFF9B92),
+                                fontSize = 12.sp,
+                            )
+                            Spacer(Modifier.height(10.dp))
+                        }
+                        Button(
+                            onClick = { galleryLauncher.launch("image/*") },
+                            enabled = !galleryBusy,
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = ScannerAccent,
+                                contentColor = Color(0xFF031719),
+                            ),
+                            shape = RoundedCornerShape(18.dp),
+                        ) {
+                            Text(
+                                if (galleryBusy) "در حال بررسی تصویر…" else "انتخاب QR از گالری",
+                            )
+                        }
+                        Spacer(Modifier.height(10.dp))
+                        Button(
+                            onClick = onClose,
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = Color(0xCC151A21),
+                            ),
+                            shape = RoundedCornerShape(18.dp),
+                        ) {
+                            Text("بستن اسکنر")
+                        }
                     }
                 }
             }
