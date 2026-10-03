@@ -1,8 +1,8 @@
 {
-  "latest_version_code": 16,
-  "latest_version_name": "0.4.4",
+  "latest_version_code": 17,
+  "latest_version_name": "0.5.0",
   "minimum_version_code": 4,
-  "download_url": "https://github.com/hazhanhasani/bluebot/releases/download/v0.7.4/blue-vpn-android-v0.7.4.apk",
-  "release_notes": "سازگاری نصب Android سخت‌گیرانه‌تر شد: APK رسمی با امضای v2/v3، گواهی ثابت و بررسی zipalign منتشر می‌شود. اگر نسخه نصب‌شده شما 0.6.2 یا قدیمی‌تر/Debug است، به‌دلیل تغییر کلید امضا در نسخه‌های قدیمی یک‌بار باید نسخه قبلی را حذف و سپس این نسخه را نصب کنید؛ سرویس‌های شما روی سرور باقی می‌مانند و بعد از ورود دوباره برمی‌گردند.",
+  "download_url": "https://github.com/hazhanhasani/bluebot/releases/download/v0.7.5/blue-vpn-android-v0.7.5.apk",
+  "release_notes": "نسخه 0.5.0 با شناسه نصب جدید و امضای دائمی منتشر شده است تا با buildهای قدیمی Debug تداخل نداشته باشد. این نسخه می‌تواند کنار نسخه قبلی نصب شود؛ بعد از ورود و اطمینان از سرویس‌ها، نسخه قدیمی را حذف کنید. از این نسخه به بعد بروزرسانی‌ها با همان کلید ثابت انجام می‌شوند.",
   "check_interval_seconds": 21600
 }
