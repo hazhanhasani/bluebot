@@ -306,8 +306,9 @@ class BluePanelApi(private val sessionStore: SessionStore) {
         val flag = extractRegionalFlag(rawLabel)
             ?: inferCountryFlag(rawLabel)
             ?: "🌐"
-        val cleanName = rawLabel
+        val cleanName = stripRegionalFlags(rawLabel)
             .replace(flag, "")
+            .replace(Regex("\\s{2,}"), " ")
             .trim()
             .trim('-', '_', '|', '•')
             .trim()
@@ -315,6 +316,28 @@ class BluePanelApi(private val sessionStore: SessionStore) {
             .take(36)
 
         return VpnLocation(index = index, name = cleanName, flag = flag)
+    }
+
+    private fun stripRegionalFlags(text: String): String {
+        val points = text.codePoints().toArray()
+        return buildString {
+            var cursor = 0
+            while (cursor < points.size) {
+                val first = points[cursor]
+                val second = points.getOrNull(cursor + 1)
+                val isFlagPair = second != null &&
+                    first in 0x1F1E6..0x1F1FF &&
+                    second in 0x1F1E6..0x1F1FF
+
+                if (isFlagPair) {
+                    cursor += 2
+                    continue
+                }
+
+                append(String(Character.toChars(first)))
+                cursor += 1
+            }
+        }
     }
 
     private fun extractRegionalFlag(text: String): String? {
