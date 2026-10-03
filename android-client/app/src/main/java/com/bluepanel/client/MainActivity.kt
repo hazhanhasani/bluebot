@@ -21,6 +21,7 @@ import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -54,7 +55,6 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
@@ -73,6 +73,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
@@ -1120,32 +1121,22 @@ private fun PremiumDashboard(
                     ) {
                         MenuGlyph()
                     }
-                    DropdownMenu(
+                    QuickActionsMenu(
                         expanded = menuOpen,
                         onDismissRequest = { menuOpen = false },
-                    ) {
-                        DropdownMenuItem(
-                            text = { Text("بروزرسانی سرویس") },
-                            onClick = {
-                                menuOpen = false
-                                onRefresh()
-                            },
-                        )
-                        DropdownMenuItem(
-                            text = { Text("🛍 فروشگاه و خرید سرویس") },
-                            onClick = {
-                                menuOpen = false
-                                onOpenStore()
-                            },
-                        )
-                        DropdownMenuItem(
-                            text = { Text("خروج از حساب") },
-                            onClick = {
-                                menuOpen = false
-                                onLogout()
-                            },
-                        )
-                    }
+                        onRefresh = {
+                            menuOpen = false
+                            onRefresh()
+                        },
+                        onOpenStore = {
+                            menuOpen = false
+                            onOpenStore()
+                        },
+                        onLogout = {
+                            menuOpen = false
+                            onLogout()
+                        },
+                    )
                 }
 
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -2241,6 +2232,253 @@ private fun LivingBackground(
             ),
             radius = size.minDimension * 0.75f,
             center = Offset(glowX, size.height * 0.34f),
+        )
+    }
+}
+
+@Composable
+private fun QuickActionsMenu(
+    expanded: Boolean,
+    onDismissRequest: () -> Unit,
+    onRefresh: () -> Unit,
+    onOpenStore: () -> Unit,
+    onLogout: () -> Unit,
+) {
+    DropdownMenu(
+        expanded = expanded,
+        onDismissRequest = onDismissRequest,
+        modifier = Modifier
+            .width(292.dp)
+            .padding(horizontal = 8.dp, vertical = 8.dp),
+        shape = RoundedCornerShape(28.dp),
+        containerColor = Color(0xF20A1B20),
+        tonalElevation = 0.dp,
+        shadowElevation = 22.dp,
+        border = BorderStroke(1.dp, Accent.copy(alpha = 0.34f)),
+    ) {
+        Box(
+            modifier = Modifier
+                .width(42.dp)
+                .height(4.dp)
+                .align(Alignment.CenterHorizontally)
+                .clip(RoundedCornerShape(50))
+                .background(Accent.copy(alpha = 0.36f)),
+        )
+
+        Spacer(Modifier.height(8.dp))
+
+        QuickActionItem(
+            title = "بروزرسانی سرویس",
+            subtitle = "دریافت آخرین اطلاعات",
+            accent = Accent,
+            icon = {
+                RefreshGlyph(
+                    spinning = false,
+                    modifier = Modifier.size(22.dp),
+                    color = Accent,
+                )
+            },
+            onClick = onRefresh,
+        )
+
+        Spacer(Modifier.height(8.dp))
+
+        QuickActionItem(
+            title = "فروشگاه و خرید سرویس",
+            subtitle = "پلن‌ها و سرویس‌های جدید",
+            accent = Color(0xFF5DE6B8),
+            icon = {
+                StoreGlyph(
+                    modifier = Modifier.size(22.dp),
+                    color = Color(0xFF5DE6B8),
+                )
+            },
+            onClick = onOpenStore,
+        )
+
+        Spacer(Modifier.height(8.dp))
+
+        QuickActionItem(
+            title = "خروج از حساب",
+            subtitle = "پایان نشست فعلی",
+            accent = Color(0xFFFF6B78),
+            icon = {
+                LogoutGlyph(
+                    modifier = Modifier.size(22.dp),
+                    color = Color(0xFFFF6B78),
+                )
+            },
+            onClick = onLogout,
+        )
+    }
+}
+
+@Composable
+private fun QuickActionItem(
+    title: String,
+    subtitle: String,
+    accent: Color,
+    icon: @Composable () -> Unit,
+    onClick: () -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(68.dp)
+            .clip(RoundedCornerShape(20.dp))
+            .background(
+                Brush.horizontalGradient(
+                    listOf(
+                        accent.copy(alpha = 0.18f),
+                        Color.White.copy(alpha = 0.035f),
+                        Color.Black.copy(alpha = 0.08f),
+                    ),
+                ),
+            )
+            .clickable(onClick = onClick)
+            .padding(horizontal = 12.dp, vertical = 9.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(
+            modifier = Modifier
+                .size(48.dp)
+                .clip(CircleShape)
+                .background(
+                    Brush.radialGradient(
+                        listOf(
+                            accent.copy(alpha = 0.30f),
+                            accent.copy(alpha = 0.10f),
+                            Color.Transparent,
+                        ),
+                    ),
+                ),
+            contentAlignment = Alignment.Center,
+        ) {
+            icon()
+        }
+
+        Spacer(Modifier.width(12.dp))
+
+        Column(
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.Center,
+        ) {
+            Text(
+                title,
+                color = Color.White,
+                fontSize = 13.sp,
+                fontWeight = FontWeight.ExtraBold,
+            )
+            Spacer(Modifier.height(2.dp))
+            Text(
+                subtitle,
+                color = Color.White.copy(alpha = 0.48f),
+                fontSize = 9.sp,
+                fontWeight = FontWeight.Medium,
+            )
+        }
+
+        Spacer(Modifier.width(8.dp))
+
+        MenuChevronGlyph(
+            modifier = Modifier.size(16.dp),
+            color = Color.White.copy(alpha = 0.50f),
+        )
+    }
+}
+
+@Composable
+private fun StoreGlyph(
+    modifier: Modifier = Modifier.size(22.dp),
+    color: Color = Color.White,
+) {
+    Canvas(modifier = modifier) {
+        val stroke = size.minDimension * 0.095f
+        val bodyLeft = size.width * 0.18f
+        val bodyTop = size.height * 0.32f
+        val bodyWidth = size.width * 0.64f
+        val bodyHeight = size.height * 0.54f
+
+        drawRoundRect(
+            color = color,
+            topLeft = Offset(bodyLeft, bodyTop),
+            size = Size(bodyWidth, bodyHeight),
+            cornerRadius = CornerRadius(size.minDimension * 0.10f),
+            style = Stroke(width = stroke),
+        )
+        drawArc(
+            color = color,
+            startAngle = 180f,
+            sweepAngle = 180f,
+            useCenter = false,
+            topLeft = Offset(size.width * 0.33f, size.height * 0.12f),
+            size = Size(size.width * 0.34f, size.height * 0.40f),
+            style = Stroke(width = stroke, cap = StrokeCap.Round),
+        )
+    }
+}
+
+@Composable
+private fun LogoutGlyph(
+    modifier: Modifier = Modifier.size(22.dp),
+    color: Color = Color.White,
+) {
+    Canvas(modifier = modifier) {
+        val stroke = size.minDimension * 0.095f
+
+        drawRoundRect(
+            color = color,
+            topLeft = Offset(size.width * 0.10f, size.height * 0.12f),
+            size = Size(size.width * 0.48f, size.height * 0.76f),
+            cornerRadius = CornerRadius(size.minDimension * 0.08f),
+            style = Stroke(width = stroke),
+        )
+
+        val y = size.height * 0.50f
+        drawLine(
+            color = color,
+            start = Offset(size.width * 0.38f, y),
+            end = Offset(size.width * 0.90f, y),
+            strokeWidth = stroke,
+            cap = StrokeCap.Round,
+        )
+        drawLine(
+            color = color,
+            start = Offset(size.width * 0.72f, size.height * 0.34f),
+            end = Offset(size.width * 0.90f, y),
+            strokeWidth = stroke,
+            cap = StrokeCap.Round,
+        )
+        drawLine(
+            color = color,
+            start = Offset(size.width * 0.72f, size.height * 0.66f),
+            end = Offset(size.width * 0.90f, y),
+            strokeWidth = stroke,
+            cap = StrokeCap.Round,
+        )
+    }
+}
+
+@Composable
+private fun MenuChevronGlyph(
+    modifier: Modifier = Modifier.size(16.dp),
+    color: Color = Color.White,
+) {
+    Canvas(modifier = modifier) {
+        val stroke = size.minDimension * 0.12f
+        drawLine(
+            color = color,
+            start = Offset(size.width * 0.62f, size.height * 0.22f),
+            end = Offset(size.width * 0.36f, size.height * 0.50f),
+            strokeWidth = stroke,
+            cap = StrokeCap.Round,
+        )
+        drawLine(
+            color = color,
+            start = Offset(size.width * 0.36f, size.height * 0.50f),
+            end = Offset(size.width * 0.62f, size.height * 0.78f),
+            strokeWidth = stroke,
+            cap = StrokeCap.Round,
         )
     }
 }
