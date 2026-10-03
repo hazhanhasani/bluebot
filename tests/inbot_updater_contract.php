@@ -161,6 +161,12 @@ if ($worker === false || !str_contains($worker, 'بروزرسانی بلو پن�
 if ($worker === false || !str_contains($worker, 'INSTALLED_CHANNEL')) {
     $failures[] = 'Update worker does not preserve the resolved installed source channel.';
 }
+if ($worker === false
+    || !str_contains($worker, 'preserve_sms_key')
+    || !str_contains($worker, 'restore_sms_key')
+    || !str_contains($worker, 'storage/sms.key')) {
+    $failures[] = 'Update worker must preserve the installation-local SMS encryption key.';
+}
 if ($worker === false || !str_contains($worker, 'UPDATE_ARGS+=(--version "$REF")')) {
     $failures[] = 'Release updates must be pinned to the queued release tag.';
 }

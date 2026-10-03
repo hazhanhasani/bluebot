@@ -186,6 +186,100 @@ final class BluebotSms
         }
     }
 
+    /**
+     * Resolve the single SMS provider credential shared by the bot, Android app,
+     * cron jobs and the web panel. Android never owns a second API key.
+     *
+     * Legacy plaintext values are migrated in-place once. Environment fallbacks
+     * are useful for managed hosts where secrets are injected outside the DB.
+     */
+    private static function providerApiKey(array $settings): string
+    {
+        global $pdo;
+
+        $persist = static function (string $plain) use ($pdo): void {
+            $plain = trim($plain);
+            if ($plain === '') {
+                return;
+            }
+            try {
+                $encrypted = self::encryptSecret($plain);
+                $stmt = $pdo->prepare(
+                    'UPDATE sms_settings SET api_key_enc=?,updated_at=? WHERE id=1'
+                );
+                $stmt->execute([$encrypted, time()]);
+            } catch (Throwable $e) {
+                self::log('SMS shared API key persistence failed', [
+                    'error' => $e->getMessage(),
+                ]);
+            }
+        };
+
+        $stored = trim((string) ($settings['api_key_enc'] ?? ''));
+        if ($stored !== '') {
+            $decrypted = self::decryptSecret($stored);
+            if ($decrypted !== '') {
+                return $decrypted;
+            }
+
+            // Compatibility with old/manual installations that stored the API
+            // key directly in api_key_enc before encrypted storage was enabled.
+            if (!str_starts_with($stored, 'gcm1:')
+                && strlen($stored) >= 12
+                && strlen($stored) <= 1000
+                && preg_match('/\s/u', $stored) !== 1) {
+                $persist($stored);
+                return $stored;
+            }
+        }
+
+        // Reuse any server-level secret already supplied to the bot runtime.
+        // This keeps Android OTP and Telegram OTP on one provider credential.
+        foreach ([
+            'BLUEBOT_SMS_API_KEY',
+            'FARAZSMS_API_KEY',
+            'IRANPAYAMAK_API_KEY',
+        ] as $name) {
+            $value = getenv($name);
+            if (is_string($value) && trim($value) !== '') {
+                $value = trim($value);
+                $persist($value);
+                return $value;
+            }
+        }
+
+        foreach ([
+            'BLUEBOT_SMS_API_KEY',
+            'FARAZSMS_API_KEY',
+            'IRANPAYAMAK_API_KEY',
+        ] as $name) {
+            if (defined($name)) {
+                $value = trim((string) constant($name));
+                if ($value !== '') {
+                    $persist($value);
+                    return $value;
+                }
+            }
+        }
+
+        foreach ([
+            'bluebot_sms_api_key',
+            'farazsms_api_key',
+            'iranpayamak_api_key',
+            'sms_api_key',
+            'smsApiKey',
+        ] as $name) {
+            $value = $GLOBALS[$name] ?? null;
+            if (is_scalar($value) && trim((string) $value) !== '') {
+                $value = trim((string) $value);
+                $persist($value);
+                return $value;
+            }
+        }
+
+        return '';
+    }
+
     public static function encryptSecret(string $secret): string
     {
         $secret = trim($secret);
@@ -395,7 +489,7 @@ final class BluebotSms
         global $pdo;
 
         $settings = self::settings();
-        $apiKey = self::decryptSecret((string) ($settings['api_key_enc'] ?? ''));
+        $apiKey = self::providerApiKey($settings);
         if ($apiKey === '') {
             throw new RuntimeException('ابتدا API Key فراز اس‌ام‌اس را ذخیره کنید.');
         }
@@ -565,7 +659,7 @@ final class BluebotSms
     public static function sendPattern(string $phone, string $patternCode, array $params): array
     {
         $settings = self::settings();
-        $apiKey = self::decryptSecret((string) ($settings['api_key_enc'] ?? ''));
+        $apiKey = self::providerApiKey($settings);
         if ($apiKey === '') {
             throw new RuntimeException('API Key فراز اس‌ام‌اس / ایران‌پیامک ثبت نشده است.');
         }
@@ -662,7 +756,7 @@ final class BluebotSms
     public static function refreshPatterns(bool $force = true): array
     {
         $settings = self::settings();
-        $apiKey = self::decryptSecret((string) ($settings['api_key_enc'] ?? ''));
+        $apiKey = self::providerApiKey($settings);
         if ($apiKey === '') {
             throw new RuntimeException('ابتدا API Key فراز اس‌ام‌اس را ذخیره کنید.');
         }

@@ -18,6 +18,8 @@ $sessionTable = (string) @file_get_contents($root . '/db/tables/app_mobile_sessi
 $checks = [
     [$account, 'final class AppStoreAccount', 'Mobile store account service is missing.'],
     [$account, 'public static function requestOtp', 'Mobile OTP request flow is missing.'],
+    [$account, 'BluebotSms::requestPhoneOtp', 'Android registration must call the exact bot OTP service instead of a separate SMS integration.'],
+    [$sms, "sendTemplateNow('phone_verification'", 'Android and Telegram OTP must share the same phone_verification pattern.'],
     [$sms, 'Mapped SMS pattern send failed; attempting provider resync', 'OTP should try its stored mapped pattern before catalog refresh.'],
     [$account, 'public static function verifyOtp', 'Mobile OTP verification flow is missing.'],
     [$account, 'public static function linkTelegramUserByPhone', 'Phone-based Telegram account linking is missing.'],
@@ -34,6 +36,7 @@ $checks = [
     [$client, "if (\$action === 'store-catalog')", 'Android API does not expose storefront catalog.'],
     [$client, "'requires_account' => true", 'Panel-only sessions must expose an account-registration storefront state.'],
     [$client, 'clientPublicOtpError', 'OTP failures must expose safe actionable diagnostics.'],
+    [$client, 'تنظیمات ارسال پیامک ربات کامل نیست', 'Android OTP must describe shared bot SMS configuration without exposing a separate provider setup.'],
     [$client, "if (\$action === 'store-checkout')", 'Android API does not expose storefront checkout.'],
     [$client, "if (\$sessionType === 'mobile')", 'Android API does not return all services for mobile accounts.'],
     [$bot, 'AppStoreAccount::linkTelegramUserByPhone', 'Telegram phone verification does not link app accounts.'],
