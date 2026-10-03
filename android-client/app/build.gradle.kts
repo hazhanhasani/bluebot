@@ -79,8 +79,8 @@ android {
         applicationId = "com.bluepanel.bluevpn"
         minSdk = 26
         targetSdk = 37
-        versionCode = 18
-        versionName = "0.5.0"
+        versionCode = 19
+        versionName = "0.5.1"
 
         buildConfigField("String", "BLUEBOT_API_BASE", "\"${blueBotApi.get()}\"")
         buildConfigField("String", "XRAY_CORE_VERSION", "\"$libXrayVersion\"")
