@@ -43,3 +43,14 @@ Android builds published before permanent signing used ephemeral debug keys.
 Users of those builds must uninstall the old app once before installing the
 first permanently signed Blue VPN APK. Keep the permanent keystore backed up
 securely; losing it would require another package-signature migration.
+
+
+## Package identity reset
+
+BlueVPN Android 0.5.0 uses the application ID:
+
+```text
+com.bluepanel.bluevpn
+```
+
+This one-time reset avoids package-signature collisions with legacy CI debug builds that used ephemeral signing keys. The Kotlin namespace remains `com.bluepanel.client`. Future releases must keep both the new application ID and the permanent signing certificate unchanged.
