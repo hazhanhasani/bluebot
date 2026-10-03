@@ -79,8 +79,8 @@ android {
         applicationId = "com.bluepanel.client"
         minSdk = 26
         targetSdk = 37
-        versionCode = 16
-        versionName = "0.4.4"
+        versionCode = 17
+        versionName = "0.4.5"
 
         buildConfigField("String", "BLUEBOT_API_BASE", "\"${blueBotApi.get()}\"")
         buildConfigField("String", "XRAY_CORE_VERSION", "\"$libXrayVersion\"")
