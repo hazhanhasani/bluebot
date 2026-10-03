@@ -2919,6 +2919,17 @@ if ($text == "/start" || $datain == "start" || $text == "start") {
     if ($marzban['type'] == "Manualsale") {
         $userinfo = select("manualsell", "*", "username", $nameloc['username'], "select");
         $textinfo = sprintf($textbotlang['users']['status']['infoBasic'], $status_var, $DataUserOut['username'], $nameloc['id_invoice'], $userinfo['contentrecord']);
+        $textinfo .= bluebotAppClientCredentialsBlock(
+            $pdo,
+            (string) $from_id,
+            (string) $nameloc['id_invoice']
+        );
+        $keyboardsetting = bluebotAppClientAppendCredentialButtons(
+            $pdo,
+            (string) $from_id,
+            (string) $nameloc['id_invoice'],
+            $keyboardsetting
+        );
         if ($user['step'] == "getuseragnetservice") {
             sendmessage($from_id, $textinfo, $keyboardsetting, 'html');
         } elseif ($datain == "productcheckdata") {
@@ -3123,6 +3134,31 @@ if ($text == "/start" || $datain == "start" || $text == "start") {
         }
         $textinfo = sprintf($textbotlang['users']['status']['infoFull'], $status_var, $DataUserOut['username'], $userpassword, $nameconfig, $nameloc['Service_location'], $nameloc['name_product'], $LastTraffic, $usedTrafficGb, $RemainingVolume, $Percent, $expirationDate, $day, $textconnect);
     }
+
+    $blueAppQrPayloads = bluebotAppClientQrPayloadList(
+        (string) ($DataUserOut['subscription_url'] ?? ''),
+        is_array($DataUserOut['links'] ?? null) ? $DataUserOut['links'] : []
+    );
+    if ($blueAppQrPayloads !== []) {
+        bluebotAppClientSyncQr(
+            $pdo,
+            (string) $from_id,
+            (string) $nameloc['id_invoice'],
+            $blueAppQrPayloads
+        );
+    }
+    $textinfo .= bluebotAppClientCredentialsBlock(
+        $pdo,
+        (string) $from_id,
+        (string) $nameloc['id_invoice']
+    );
+    $keyboardsetting = bluebotAppClientAppendCredentialButtons(
+        $pdo,
+        (string) $from_id,
+        (string) $nameloc['id_invoice'],
+        $keyboardsetting
+    );
+
     if ($user['step'] == "getuseragnetservice") {
         sendmessage($from_id, $textinfo, $keyboardsetting, 'html');
     } elseif ($datain == "productcheckdata") {
@@ -5092,6 +5128,16 @@ if ($text == "/start" || $datain == "start" || $text == "start") {
         }
     }
 
+    bluebotAppClientSyncQr(
+        $pdo,
+        (string) $from_id,
+        (string) $randomString,
+        bluebotAppClientQrPayloadList(
+            (string) ($dataoutput['subscription_url'] ?? ''),
+            is_array($dataoutput['configs'] ?? null) ? $dataoutput['configs'] : []
+        )
+    );
+
     $usertestinfo = json_encode([
         'inline_keyboard' => [
             [
@@ -5115,6 +5161,17 @@ if ($text == "/start" || $datain == "start" || $text == "start") {
         $textcreatuser = str_replace('{password}', $dataoutput['subscription_url'], $textcreatuser);
         update("invoice", "user_info", $dataoutput['subscription_url'], "id_invoice", $randomString);
     }
+    $textcreatuser .= bluebotAppClientCredentialsBlock(
+        $pdo,
+        (string) $from_id,
+        (string) $randomString
+    );
+    $usertestinfo = bluebotAppClientAppendCredentialButtons(
+        $pdo,
+        (string) $from_id,
+        (string) $randomString,
+        $usertestinfo
+    );
     sendMessageService($marzban_list_get, $dataoutput['configs'], $output_config_link, $dataoutput['username'], $usertestinfo, $textcreatuser, $randomString);
     sendmessage($from_id, $textbotlang['users']['selectoption'], $keyboard, 'HTML');
     step('home', $from_id);
@@ -6083,6 +6140,15 @@ if ($text == "/start" || $datain == "start" || $text == "start") {
         return;
     }
     update("invoice", "Status", "active", "username", $username_ac);
+    bluebotAppClientSyncQr(
+        $pdo,
+        (string) $from_id,
+        (string) $randomString,
+        bluebotAppClientQrPayloadList(
+            (string) ($dataoutput['subscription_url'] ?? ''),
+            is_array($dataoutput['configs'] ?? null) ? $dataoutput['configs'] : []
+        )
+    );
     $output_config_link = "";
     $config = "";
     $output_config_link = $marzban_list_get['sublink'] == "onsublink" ? $dataoutput['subscription_url'] : "";
@@ -6114,6 +6180,17 @@ if ($text == "/start" || $datain == "start" || $text == "start") {
         $textcreatuser = str_replace('{password}', $dataoutput['subscription_url'], $textcreatuser);
         update("invoice", "user_info", $dataoutput['subscription_url'], "id_invoice", $randomString);
     }
+    $textcreatuser .= bluebotAppClientCredentialsBlock(
+        $pdo,
+        (string) $from_id,
+        (string) $randomString
+    );
+    $Shoppinginfo = bluebotAppClientAppendCredentialButtons(
+        $pdo,
+        (string) $from_id,
+        (string) $randomString,
+        $Shoppinginfo
+    );
     sendMessageService($marzban_list_get, $dataoutput['configs'], $output_config_link, $dataoutput['username'], $Shoppinginfo, $textcreatuser, $randomString);
     try {
         $smsDelivery = BluebotSms::queueAndDispatchForUser(
@@ -6650,7 +6727,27 @@ if ($text == "/start" || $datain == "start" || $text == "start") {
         $textcreatuser = str_replace('{config}', "<code>{$output_config_link}</code>", $textcreatuser);
         $textcreatuser = str_replace('{links}', "<code>{$config}</code>", $textcreatuser);
         $textcreatuser = str_replace('{links2}', "{$output_config_link}", $textcreatuser);
-        sendMessageService($marzban_list_get, $dataoutput['configs'], $output_config_link, $dataoutput['username'], $Shoppinginfo, $textcreatuser, $randomString);
+        bluebotAppClientSyncQr(
+            $pdo,
+            (string) $from_id,
+            (string) $randomString,
+            bluebotAppClientQrPayloadList(
+                (string) ($dataoutput['subscription_url'] ?? ''),
+                is_array($dataoutput['configs'] ?? null) ? $dataoutput['configs'] : []
+            )
+        );
+        $textcreatuser .= bluebotAppClientCredentialsBlock(
+            $pdo,
+            (string) $from_id,
+            (string) $randomString
+        );
+        $serviceShoppingInfo = bluebotAppClientAppendCredentialButtons(
+            $pdo,
+            (string) $from_id,
+            (string) $randomString,
+            $Shoppinginfo
+        );
+        sendMessageService($marzban_list_get, $dataoutput['configs'], $output_config_link, $dataoutput['username'], $serviceShoppingInfo, $textcreatuser, $randomString);
     }
     sendmessage($from_id, $textbotlang['users']['selectoption'], $keyboard, 'HTML');
     $balanceformatsell = number_format((float) selectValue("user", "Balance", "id", $from_id, 0), 0);

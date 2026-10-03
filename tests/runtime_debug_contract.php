@@ -47,6 +47,9 @@ $vpnUpdateFunc = $read('vpnbot/update/func.php');
 $iranpay1 = $read('payment/iranpay1.php');
 $zarinpal = $read('payment/zarinpal.php');
 $diagnostics = $read('src/Support/Diagnostics.php');
+$appClientBot = $read('src/Support/AppClientBot.php');
+$appClientAuth = $read('src/Services/AppClientAuth.php');
+$androidQrScanner = $read('android-client/app/src/main/java/com/bluepanel/client/ui/QrScannerOverlay.kt');
 
 $mustContain = [
     [$functions, "\$allowed = ['fa', 'en', 'ru', 'zh'];", 'languagechange() must only select bundled locales.'],
@@ -132,6 +135,17 @@ $mustContain = [
     [$diagnostics, "orders_stale_processing", 'Runtime /debug must report stale processing digital orders.'],
     [$diagnostics, "Partial review:", 'Runtime /debug partial-order line missing.'],
     [$diagnostics, "Stale processing (>30m):", 'Runtime /debug stale-processing line missing.'],
+    [$appClientBot, 'function bluebotAppClientCredentialCopyRow', 'App client credentials must expose copy buttons.'],
+    [$appClientBot, "'copy_text' => ['text' => \$username]", 'App username must use Telegram copy_text.'],
+    [$appClientBot, "'copy_text' => ['text' => \$password]", 'App password must use Telegram copy_text.'],
+    [$appClientBot, 'function bluebotAppClientQrPayloadList', 'App QR payload normalization helper missing.'],
+    [$botIndex, 'bluebotAppClientCredentialsBlock(', 'Bot service flows must expose app credentials without requiring /app.'],
+    [$botIndex, 'bluebotAppClientSyncQr(', 'Bot service flows must synchronize subscription/config QR fingerprints.'],
+    [$functions, "require_once __DIR__ . '/src/Support/AppClientBot.php';", 'Paid callback delivery must load app credential helpers.'],
+    [$functions, 'bluebotAppClientCredentialsBlock(', 'Paid callback delivery must include app credentials.'],
+    [$appClientAuth, 'self::credentialsForService($pdo, $userId, $invoiceId);', 'QR login must auto-provision service-scoped credentials.'],
+    [$androidQrScanner, 'ActivityResultContracts.GetContent()', 'Android QR scanner must support gallery image selection.'],
+    [$androidQrScanner, 'InputImage.fromFilePath(context, uri)', 'Android QR gallery flow must decode the selected image.'],
 
 
 ];
