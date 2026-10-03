@@ -197,6 +197,24 @@ final class BluebotSms
     {
         global $pdo;
 
+        $persist = static function (string $plain) use ($pdo): void {
+            $plain = trim($plain);
+            if ($plain === '') {
+                return;
+            }
+            try {
+                $encrypted = self::encryptSecret($plain);
+                $stmt = $pdo->prepare(
+                    'UPDATE sms_settings SET api_key_enc=?,updated_at=? WHERE id=1'
+                );
+                $stmt->execute([$encrypted, time()]);
+            } catch (Throwable $e) {
+                self::log('SMS shared API key persistence failed', [
+                    'error' => $e->getMessage(),
+                ]);
+            }
+        };
+
         $stored = trim((string) ($settings['api_key_enc'] ?? ''));
         if ($stored !== '') {
             $decrypted = self::decryptSecret($stored);
@@ -210,18 +228,23 @@ final class BluebotSms
                 && strlen($stored) >= 12
                 && strlen($stored) <= 1000
                 && preg_match('/\s/u', $stored) !== 1) {
-                try {
-                    $encrypted = self::encryptSecret($stored);
-                    $stmt = $pdo->prepare(
-                        'UPDATE sms_settings SET api_key_enc=?,updated_at=? WHERE id=1'
-                    );
-                    $stmt->execute([$encrypted, time()]);
-                } catch (Throwable $e) {
-                    self::log('SMS legacy API key migration failed', [
-                        'error' => $e->getMessage(),
-                    ]);
-                }
+                $persist($stored);
                 return $stored;
+            }
+        }
+
+        // Reuse any server-level secret already supplied to the bot runtime.
+        // This keeps Android OTP and Telegram OTP on one provider credential.
+        foreach ([
+            'BLUEBOT_SMS_API_KEY',
+            'FARAZSMS_API_KEY',
+            'IRANPAYAMAK_API_KEY',
+        ] as $name) {
+            $value = getenv($name);
+            if (is_string($value) && trim($value) !== '') {
+                $value = trim($value);
+                $persist($value);
+                return $value;
             }
         }
 
@@ -230,12 +253,27 @@ final class BluebotSms
             'FARAZSMS_API_KEY',
             'IRANPAYAMAK_API_KEY',
         ] as $name) {
-            $value = getenv($name);
-            if (is_string($value)) {
-                $value = trim($value);
+            if (defined($name)) {
+                $value = trim((string) constant($name));
                 if ($value !== '') {
+                    $persist($value);
                     return $value;
                 }
+            }
+        }
+
+        foreach ([
+            'bluebot_sms_api_key',
+            'farazsms_api_key',
+            'iranpayamak_api_key',
+            'sms_api_key',
+            'smsApiKey',
+        ] as $name) {
+            $value = $GLOBALS[$name] ?? null;
+            if (is_scalar($value) && trim((string) $value) !== '') {
+                $value = trim((string) $value);
+                $persist($value);
+                return $value;
             }
         }
 
