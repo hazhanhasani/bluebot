@@ -277,6 +277,35 @@ function clientMobileAuthResponse(array $session): never
     ]);
 }
 
+function clientPublicOtpError(Throwable $error): string
+{
+    $message = trim(strip_tags($error->getMessage()));
+    if ($message === '') {
+        return 'ارسال کد تأیید انجام نشد. کمی بعد دوباره تلاش کنید.';
+    }
+
+    $safeNeedles = [
+        'تأیید پیامکی شماره در پنل مدیریت فعال نیست',
+        'شماره موبایل معتبر نیست',
+        'ثانیه تا ارسال دوباره کد صبر کنید',
+        'API Key',
+        'کد پترن ثبت نشده',
+        'شماره خط ارسال معتبر نیست',
+        'پترن فعال برای',
+        'ارسال پیامک',
+        'pattern',
+        'recipient',
+        'line_number',
+    ];
+    foreach ($safeNeedles as $needle) {
+        if (mb_stripos($message, $needle, 0, 'UTF-8') !== false) {
+            return 'ارسال کد تأیید انجام نشد: ' . mb_substr($message, 0, 220, 'UTF-8');
+        }
+    }
+
+    return 'ارسال کد تأیید انجام نشد. تنظیمات پیامک و پترن «تأیید شماره موبایل» را بررسی کنید.';
+}
+
 $method = strtoupper((string) ($_SERVER['REQUEST_METHOD'] ?? 'GET'));
 $body = $method === 'POST' ? clientBody() : [];
 $action = trim((string) ($_GET['action'] ?? ($body['action'] ?? '')));
@@ -321,7 +350,10 @@ if ($action === 'mobile-otp-request') {
         bluebotLog('warning', 'Android mobile OTP request failed', [
             'reason' => $e->getMessage(),
         ]);
-        clientResponse(false, 'ارسال کد تأیید انجام نشد. کمی بعد دوباره تلاش کنید.', [], 429);
+        $status = str_contains($e->getMessage(), 'ثانیه تا ارسال دوباره')
+            ? 429
+            : 503;
+        clientResponse(false, clientPublicOtpError($e), [], $status);
     }
 }
 
@@ -606,11 +638,18 @@ if ($action === 'store-catalog') {
         clientResponse(false, 'Method not allowed', [], 405);
     }
     if ($userId === '') {
-        clientResponse(false, 'Store requires a linked Blue Panel account', [], 403);
+        clientResponse(true, 'account_required', [
+            'requires_account' => true,
+            'products' => [],
+            'gateways' => [],
+            'balance' => 0,
+        ]);
     }
 
     try {
-        clientResponse(true, 'ok', AppStoreAccount::catalog($pdo, $userId));
+        $catalog = AppStoreAccount::catalog($pdo, $userId);
+        $catalog['requires_account'] = false;
+        clientResponse(true, 'ok', $catalog);
     } catch (Throwable $e) {
         bluebotLog('warning', 'Android store catalog failed', [
             'user_id' => $userId,
@@ -625,7 +664,12 @@ if ($action === 'store-checkout') {
         clientResponse(false, 'Method not allowed', [], 405);
     }
     if ($userId === '') {
-        clientResponse(false, 'Store requires a linked Blue Panel account', [], 403);
+        clientResponse(
+            false,
+            'برای خرید، ابتدا حساب BlueVPN را با شماره موبایل تأیید و متصل کنید.',
+            ['requires_account' => true],
+            403
+        );
     }
 
     try {
@@ -655,7 +699,12 @@ if ($action === 'store-order-status') {
         clientResponse(false, 'Method not allowed', [], 405);
     }
     if ($userId === '') {
-        clientResponse(false, 'Store requires a linked Blue Panel account', [], 403);
+        clientResponse(
+            false,
+            'برای بررسی سفارش، ابتدا حساب BlueVPN را با شماره موبایل تأیید کنید.',
+            ['requires_account' => true],
+            403
+        );
     }
 
     try {
