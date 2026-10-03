@@ -11,6 +11,7 @@ require_once __DIR__ . '/../function.php';
 require_once __DIR__ . '/utils.php';
 require_once __DIR__ . '/../botapi.php';
 require_once __DIR__ . '/../panels.php';
+require_once __DIR__ . '/../src/Services/AppClientPanelQrResolver.php';
 require_once __DIR__ . '/../src/Services/AppClientAuth.php';
 
 header('Content-Type: application/json; charset=utf-8');
@@ -255,9 +256,10 @@ $action = trim((string) ($_GET['action'] ?? ($body['action'] ?? '')));
 if ($action === 'health') {
     clientResponse(true, 'ok', [
         'api' => 'bluepanel-client',
-        'version' => 3,
+        'version' => 4,
         'service_scoped_accounts' => true,
         'qr_login' => true,
+        'connected_panel_qr_login' => true,
     ]);
 }
 
@@ -330,7 +332,7 @@ if ($action === 'qr-login') {
     } catch (Throwable $e) {
         clientResponse(
             false,
-            'این QR با هیچ سرویس فعال فعلی تطبیق داده نشد. QR لینک اشتراک یا کانفیگ همان سرویس را اسکن کنید.',
+            'این QR در سرویس‌های پنل‌های متصل به ربات پیدا نشد. QR اصلی Subscription یا کانفیگ همان سرویس را اسکن کنید.',
             [],
             401
         );
@@ -408,8 +410,11 @@ if ($action === 'service') {
         clientResponse(false, 'Service not found', [], 404);
     }
 
-    $invoice = AppClientAuth::serviceForUser($pdo, $userId, $invoiceId);
-    if (!is_array($invoice)) {
+    $invoice = $sessionService;
+    if (
+        !is_array($invoice)
+        || !hash_equals((string) ($invoice['id_invoice'] ?? ''), $invoiceId)
+    ) {
         clientResponse(false, 'Service not found', [], 404);
     }
 
