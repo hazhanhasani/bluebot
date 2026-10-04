@@ -9,6 +9,7 @@ date_default_timezone_set('Asia/Tehran');
 require_once __DIR__ . '/../config.php';
 require_once __DIR__ . '/../function.php';
 require_once __DIR__ . '/utils.php';
+require_once __DIR__ . '/client-routing.php';
 require_once __DIR__ . '/../botapi.php';
 require_once __DIR__ . '/../panels.php';
 require_once __DIR__ . '/../src/Services/AppClientPanelQrResolver.php';
@@ -179,6 +180,76 @@ function clientExtractConnection(array $runtime): array
     ];
 }
 
+
+function clientResolveSessionInvoice(
+    PDO $pdo,
+    string $sessionType,
+    string $userId,
+    string $invoiceId,
+    array $sessionService,
+    string $requestedId
+): ?array {
+    if ($requestedId === '') {
+        return null;
+    }
+
+    if ($sessionType === 'mobile') {
+        $invoice = AppClientAuth::serviceForUser($pdo, $userId, $requestedId);
+        return is_array($invoice) ? $invoice : null;
+    }
+
+    if (!hash_equals($invoiceId, $requestedId)) {
+        return null;
+    }
+
+    return is_array($sessionService)
+        && hash_equals((string) ($sessionService['id_invoice'] ?? ''), $invoiceId)
+        ? $sessionService
+        : null;
+}
+
+function clientRuntimeConnection(array $invoice): array
+{
+    global $ManagePanel;
+
+    $panel = select(
+        'marzban_panel',
+        '*',
+        'name_panel',
+        (string) ($invoice['Service_location'] ?? ''),
+        'select'
+    );
+    if (!is_array($panel)) {
+        throw new InvalidArgumentException('Service panel not found');
+    }
+
+    $panelType = (string) ($panel['type'] ?? '');
+    if (clientPanelProtocol($panelType) !== 'xray') {
+        throw new InvalidArgumentException('This service is not supported by the Android client');
+    }
+
+    $runtime = $ManagePanel->DataUser(
+        (string) ($invoice['Service_location'] ?? ''),
+        (string) ($invoice['username'] ?? '')
+    );
+    if (!is_array($runtime) || (string) ($runtime['status'] ?? '') === 'Unsuccessful') {
+        throw new RuntimeException('Service data unavailable');
+    }
+
+    $connection = clientExtractConnection($runtime);
+    $links = clientRoutingConnectionLinks($connection);
+    if ($links === []) {
+        throw new InvalidArgumentException('No compatible Xray connection profile is available');
+    }
+
+    return [
+        'panel_type' => $panelType,
+        'runtime' => $runtime,
+        'connection' => $connection,
+        'links' => $links,
+    ];
+}
+
 function clientServiceSummary(array $invoice, ?array $panel): array
 {
     $panelType = is_array($panel) ? (string) ($panel['type'] ?? '') : '';
@@ -318,13 +389,15 @@ $action = trim((string) ($_GET['action'] ?? ($body['action'] ?? '')));
 if ($action === 'health') {
     clientResponse(true, 'ok', [
         'api' => 'bluepanel-client',
-        'version' => 5,
+        'version' => 6,
         'service_scoped_accounts' => true,
         'mobile_accounts' => true,
         'storefront' => true,
         'phone_account_linking' => true,
         'qr_login' => true,
         'connected_panel_qr_login' => true,
+        'smart_location_routing' => true,
+        'hidden_config_labels' => true,
     ]);
 }
 
@@ -526,6 +599,100 @@ if ($action === 'services') {
             ),
         ],
     ]);
+}
+
+
+if ($action === 'locations') {
+    if ($method !== 'GET') {
+        clientResponse(false, 'Method not allowed', [], 405);
+    }
+
+    $requestedId = trim((string) ($_GET['id'] ?? ''));
+    $invoice = clientResolveSessionInvoice(
+        $pdo,
+        $sessionType,
+        $userId,
+        $invoiceId,
+        $sessionService,
+        $requestedId
+    );
+    if (!is_array($invoice)) {
+        clientResponse(false, 'Service not found', [], 404);
+    }
+
+    try {
+        $bundle = clientRuntimeConnection($invoice);
+        clientResponse(true, 'ok', [
+            'locations' => clientRoutingPublicLocations($bundle['links']),
+        ]);
+    } catch (InvalidArgumentException $e) {
+        clientResponse(false, $e->getMessage(), [], 422);
+    } catch (Throwable $e) {
+        bluebotLog('warning', 'Android location discovery failed', [
+            'user_id' => $userId,
+            'invoice_id' => $requestedId,
+            'reason' => $e->getMessage(),
+        ]);
+        clientResponse(false, 'Location data unavailable', [], 502);
+    }
+}
+
+if ($action === 'connection') {
+    if ($method !== 'POST') {
+        clientResponse(false, 'Method not allowed', [], 405);
+    }
+
+    $requestedId = trim((string) ($body['id'] ?? ''));
+    $invoice = clientResolveSessionInvoice(
+        $pdo,
+        $sessionType,
+        $userId,
+        $invoiceId,
+        $sessionService,
+        $requestedId
+    );
+    if (!is_array($invoice)) {
+        clientResponse(false, 'Service not found', [], 404);
+    }
+
+    $locationIndex = null;
+    if (array_key_exists('location_index', $body) && $body['location_index'] !== null && $body['location_index'] !== '') {
+        if (!is_numeric($body['location_index'])) {
+            clientResponse(false, 'Invalid location', [], 422);
+        }
+        $locationIndex = (int) $body['location_index'];
+        if ($locationIndex < 0) {
+            $locationIndex = null;
+        }
+    }
+
+    try {
+        $bundle = clientRuntimeConnection($invoice);
+        $selected = clientRoutingSelectForLocation($bundle['links'], $locationIndex);
+
+        bluebotLog('info', 'Android smart route selected', [
+            'user_id' => $userId,
+            'invoice_id' => $requestedId,
+            'location_index' => $selected['location']['index'] ?? null,
+            'latency_ms' => $selected['latency_ms'] !== null
+                ? round((float) $selected['latency_ms'], 1)
+                : null,
+        ]);
+
+        clientResponse(true, 'ok', [
+            'source' => $selected['link'],
+            'location' => $selected['location'],
+        ]);
+    } catch (InvalidArgumentException $e) {
+        clientResponse(false, $e->getMessage(), [], 422);
+    } catch (Throwable $e) {
+        bluebotLog('warning', 'Android smart route selection failed', [
+            'user_id' => $userId,
+            'invoice_id' => $requestedId,
+            'reason' => $e->getMessage(),
+        ]);
+        clientResponse(false, 'Connection route unavailable', [], 502);
+    }
 }
 
 if ($action === 'service') {
