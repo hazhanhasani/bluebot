@@ -19,7 +19,7 @@ require(Regex("^\\d+\\.\\d+\\.\\d+$").matches(stableVersion)) {
 }
 
 val updateManifestText = rootProject.file("update.json").readText()
-val androidVersionCode = Regex("\\"latest_version_code\\"\\s*:\\s*(\\d+)")
+val androidVersionCode = Regex("""latest_version_code"\s*:\s*(\d+)""")
     .find(updateManifestText)
     ?.groupValues
     ?.get(1)
