@@ -58,6 +58,25 @@ jobs:
           echo "version=$FILE_VERSION" >> "$GITHUB_OUTPUT"
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
 
+      - name: Verify Android release metadata
+        shell: bash
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+
+          MANIFEST_VERSION="$(sed -n -E 's/^[[:space:]]*"latest_version_name":[[:space:]]*"([^"]+)".*$/\1/p' android-client/update.json | head -n1)"
+          MANIFEST_CODE="$(sed -n -E 's/^[[:space:]]*"latest_version_code":[[:space:]]*([0-9]+).*$/\1/p' android-client/update.json | head -n1)"
+          MANIFEST_URL="$(sed -n -E 's/^[[:space:]]*"download_url":[[:space:]]*"([^"]+)".*$/\1/p' android-client/update.json | head -n1)"
+          EXPECTED_URL="https://github.com/hazhanhasani/bluebot/releases/download/v$VERSION/blue-vpn-android-v$VERSION.apk"
+
+          test "$MANIFEST_VERSION" = "$VERSION"
+          [[ "$MANIFEST_CODE" =~ ^[1-9][0-9]*$ ]]
+          test "$MANIFEST_URL" = "$EXPECTED_URL"
+
+          grep -Fq 'versionCode = androidVersionCode' android-client/app/build.gradle.kts
+          grep -Fq 'versionName = stableVersion' android-client/app/build.gradle.kts
+
       - name: Verify permanent Android signing secrets
         shell: bash
         env:
