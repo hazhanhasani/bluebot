@@ -1,8 +1,8 @@
 {
-  "latest_version_code": 20,
-  "latest_version_name": "0.5.2",
+  "latest_version_code": 21,
+  "latest_version_name": "0.7.9",
   "minimum_version_code": 4,
-  "download_url": "https://github.com/hazhanhasani/bluebot/releases/download/v0.7.8/blue-vpn-android-v0.7.8.apk",
-  "release_notes": "رفع مشکلات چرخه اتصال VPN، ورود اپ و نشست‌های Mini App؛ بهبود پایداری نسخه جدید.",
+  "download_url": "https://github.com/hazhanhasani/bluebot/releases/download/v0.7.9/blue-vpn-android-v0.7.9.apk",
+  "release_notes": "مسیریابی هوشمند لوکیشن‌ها، مخفی‌سازی نام کانفیگ‌ها، انتخاب خودکار بهترین سرور هر لوکیشن و همگام‌سازی کامل نسخه اندروید.",
   "check_interval_seconds": 21600
 }
