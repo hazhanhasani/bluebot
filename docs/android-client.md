@@ -65,14 +65,15 @@ upstream sockets outside the Android VPN route and prevents routing loops.
 
 ## Release identity and signing
 
-The Android application ID remains `com.bluepanel.client`. Official release
+The Android application ID is `com.bluepanel.bluevpn`; the internal Kotlin
+namespace remains `com.bluepanel.client`. Official release
 APKs are built with one permanent Blue VPN signing key. GitHub Actions refuses
 to publish a release APK if the signing secrets are absent or if the produced
 certificate does not match the pinned public SHA-256 fingerprint.
 
-The 0.6.1/0.6.2 Android artifacts used temporary debug keys. Moving to the first
-permanently signed APK therefore requires a one-time uninstall of those old
-debug-signed builds. All releases after that first migration can update in place
-as long as the permanent key is preserved.
+The 0.6.1/0.6.2 Android artifacts used temporary debug keys. Blue VPN 0.5.0
+introduced `com.bluepanel.bluevpn` so it can be installed alongside those legacy
+builds. Future releases keep this application ID and the permanent key to allow
+updates in place.
 
 See `docs/android-signing.md`.

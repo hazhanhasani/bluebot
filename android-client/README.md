@@ -76,6 +76,6 @@ committed to this repository.
 ## Branding
 
 The launcher name is **Blue VPN** and the launcher/application icon is stored at
-`app/src/main/res/drawable-nodpi/blue_vpn_icon.png`.
+`app/src/main/res/drawable-nodpi/blue_vpn_icon.webp`.
 
 The Android application ID is `com.bluepanel.bluevpn`. Internal Kotlin namespace and class names remain `com.bluepanel.client` / `BluePanel*` to avoid an unnecessary source-package refactor.

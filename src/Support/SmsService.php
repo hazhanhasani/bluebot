@@ -354,14 +354,21 @@ final class BluebotSms
         return $key;
     }
 
-    public static function normalizePhone(string $raw): string
+    private static function normalizeDigits(string $raw): string
     {
-        $raw = strtr(trim($raw), [
+        // The three-argument strtr form translates individual bytes and
+        // corrupts UTF-8 digits. Replace whole Persian/Arabic characters.
+        return strtr($raw, [
             '۰'=>'0','۱'=>'1','۲'=>'2','۳'=>'3','۴'=>'4',
             '۵'=>'5','۶'=>'6','۷'=>'7','۸'=>'8','۹'=>'9',
             '٠'=>'0','١'=>'1','٢'=>'2','٣'=>'3','٤'=>'4',
             '٥'=>'5','٦'=>'6','٧'=>'7','٨'=>'8','٩'=>'9',
         ]);
+    }
+
+    public static function normalizePhone(string $raw): string
+    {
+        $raw = self::normalizeDigits(trim($raw));
         $raw = preg_replace('/[^0-9+]/', '', $raw) ?: '';
         if (str_starts_with($raw, '0098')) {
             $raw = '+98' . substr($raw, 4);
@@ -391,7 +398,7 @@ final class BluebotSms
             }
             $value = trim((string) $params[$name]);
             if (self::normalizeVariableType((string) ($var['type'] ?? 'string')) === 'number') {
-                $value = strtr($value, '۰۱۲۳۴۵۶۷۸۹', '0123456789');
+                $value = self::normalizeDigits($value);
                 $value = preg_replace('/\D+/', '', $value) ?: '';
                 if ($value === '') {
                     throw new RuntimeException('پارامتر ' . $name . ' باید عددی باشد.');
@@ -464,7 +471,7 @@ final class BluebotSms
             ?? $row['from']
             ?? ''
         ));
-        $number = preg_replace('/\s+/', '', strtr($number, '۰۱۲۳۴۵۶۷۸۹', '0123456789')) ?: '';
+        $number = preg_replace('/\s+/', '', self::normalizeDigits($number)) ?: '';
         if ($number === '' || !preg_match('/^[+0-9A-Za-z_-]{3,32}$/', $number)) {
             return null;
         }
@@ -561,7 +568,7 @@ final class BluebotSms
 
         // Resilience fallback only: keep the last verified line if the provider
         // is temporarily unavailable. New API keys refresh and replace it.
-        $line = preg_replace('/\s+/', '', strtr((string) ($settings['from_number'] ?? ''), '۰۱۲۳۴۵۶۷۸۹', '0123456789')) ?: '';
+        $line = preg_replace('/\s+/', '', self::normalizeDigits((string) ($settings['from_number'] ?? ''))) ?: '';
         return preg_match('/^[+0-9A-Za-z_-]{3,32}$/', $line) ? $line : '';
     }
 
@@ -1784,7 +1791,7 @@ final class BluebotSms
     {
         global $pdo;
 
-        $code = strtr(trim($code), '۰۱۲۳۴۵۶۷۸۹', '0123456789');
+        $code = self::normalizeDigits(trim($code));
         $code = preg_replace('/\D+/', '', $code) ?: '';
         if (strlen($code) !== 6) {
             throw new RuntimeException('کد تأیید باید دقیقاً ۶ رقم باشد.');

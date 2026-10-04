@@ -27,7 +27,7 @@ function loadTestSourceFunction(string $path, string $name): void
         for (; $i < $count; $i++) {
             $token = $tokens[$i];
             $source .= is_array($token) ? $token[1] : $token;
-            if ($token === '{') {
+            if ($token === '{' || (is_array($token) && in_array($token[0], [T_CURLY_OPEN, T_DOLLAR_OPEN_CURLY_BRACES], true))) {
                 $bodyStarted = true;
                 $depth++;
             } elseif ($token === '}' && $bodyStarted && --$depth === 0) {
@@ -39,4 +39,3 @@ function loadTestSourceFunction(string $path, string $name): void
 
     throw new RuntimeException('Test function not found: ' . $name);
 }
-

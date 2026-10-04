@@ -471,7 +471,7 @@ class BluePanelApi(private val sessionStore: SessionStore) {
                 connection.setRequestProperty("X-Device-Id", sessionStore.deviceId)
 
                 if (authenticated) {
-                    val token = sessionStore.token() ?: error("Session expired")
+                    val token = requireSessionToken(sessionStore.token())
                     connection.setRequestProperty("Authorization", "Bearer $token")
                 }
 
@@ -503,22 +503,7 @@ class BluePanelApi(private val sessionStore: SessionStore) {
                     ?.use { it.readText() }
                     .orEmpty()
 
-                val root = runCatching { JSONObject(raw) }
-                    .getOrElse {
-                        error(
-                            if (status == 405) {
-                                "ورود توسط وب‌سرور با روش اشتباه دریافت شد (HTTP 405)."
-                            } else {
-                                "Invalid server response (HTTP $status)"
-                            },
-                        )
-                    }
-
-                if (!root.optBoolean("success", false)) {
-                    error(root.optString("message", "Request failed"))
-                }
-
-                return root.optJSONObject("data") ?: JSONObject()
+                return parseApiResponse(raw, status)
             } finally {
                 connection.disconnect()
             }
@@ -548,4 +533,26 @@ class BluePanelApi(private val sessionStore: SessionStore) {
             308,
         )
     }
+}
+
+internal fun requireSessionToken(token: String?): String =
+    token?.takeIf { it.isNotBlank() } ?: throw ApiException(401, "Session expired")
+
+internal fun parseApiResponse(raw: String, status: Int): JSONObject {
+    val root = runCatching { JSONObject(raw) }.getOrElse {
+        throw ApiException(
+            status,
+            if (status == 405) {
+                "ورود توسط وب‌سرور با روش اشتباه دریافت شد (HTTP 405)."
+            } else {
+                "Invalid server response (HTTP $status)"
+            },
+        )
+    }
+
+    if (status !in 200..299 || !root.optBoolean("success", false)) {
+        throw ApiException(status, root.optString("message", "Request failed"))
+    }
+
+    return root.optJSONObject("data") ?: JSONObject()
 }
