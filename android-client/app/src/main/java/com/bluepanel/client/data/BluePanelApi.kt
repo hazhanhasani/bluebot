@@ -1,6 +1,5 @@
 package com.bluepanel.client.data
 
-import android.util.Base64
 import com.bluepanel.client.BuildConfig
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -8,10 +7,7 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URI
-import java.net.URLDecoder
 import java.net.URLEncoder
-import java.nio.charset.StandardCharsets
-import java.util.Locale
 
 class BluePanelApi(private val sessionStore: SessionStore) {
     suspend fun login(username: String, password: String): LoginResult = withContext(Dispatchers.IO) {
@@ -207,211 +203,48 @@ class BluePanelApi(private val sessionStore: SessionStore) {
         sessionStore.clear()
     }
 
-    suspend fun serviceLocations(id: String): List<VpnLocation> {
-        val profile = service(id)
-        val sourceText = connectionText(profile)
-        val locations = extractShareLinks(sourceText)
-            .mapIndexed { index, link -> locationFromLink(index, link) }
-            .distinctBy { "${it.flag}|${it.name.lowercase(Locale.ROOT)}" }
-
-        return locations.ifEmpty {
-            listOf(VpnLocation(index = -1, name = "خودکار", flag = "🌐"))
-        }
+    suspend fun serviceLocations(id: String): List<VpnLocation> = withContext(Dispatchers.IO) {
+        val data = request(
+            "locations",
+            "GET",
+            null,
+            authenticated = true,
+            params = mapOf("id" to id),
+        )
+        val rows = data.optJSONArray("locations") ?: JSONArray()
+        buildList {
+            add(VpnLocation(index = -1, name = "خودکار", flag = "🌐"))
+            for (index in 0 until rows.length()) {
+                val item = rows.getJSONObject(index)
+                val locationIndex = item.optInt("index", -1)
+                if (locationIndex < 0) continue
+                add(
+                    VpnLocation(
+                        index = locationIndex,
+                        name = item.optString("name", "لوکیشن").ifBlank { "لوکیشن" },
+                        flag = item.optString("flag", "🌐").ifBlank { "🌐" },
+                    ),
+                )
+            }
+        }.distinctBy { it.index }
     }
 
     suspend fun connectionText(
         profile: ConnectionProfile,
         locationIndex: Int? = null,
     ): String = withContext(Dispatchers.IO) {
-        val sourceText = if (profile.links.isNotEmpty()) {
-            profile.links.joinToString("\n")
-        } else {
-            val url = profile.subscriptionUrl ?: error("No connection profile received")
-            val uri = URI(url)
-            require(uri.scheme.equals("https", ignoreCase = true)) {
-                "Subscription URL must use HTTPS"
-            }
-            val connection = uri.toURL().openConnection() as HttpURLConnection
-            try {
-                connection.requestMethod = "GET"
-                connection.connectTimeout = 12_000
-                connection.readTimeout = 15_000
-                connection.setRequestProperty(
-                    "User-Agent",
-                    "BluePanel-Android/${BuildConfig.VERSION_NAME}",
-                )
-                if (connection.responseCode !in 200..299) {
-                    error("Subscription server returned HTTP ${connection.responseCode}")
-                }
-                connection.inputStream.bufferedReader().use { it.readText() }
-            } finally {
-                connection.disconnect()
-            }
-        }
+        val body = JSONObject()
+            .put("action", "connection")
+            .put("id", profile.serviceId)
+        locationIndex
+            ?.takeIf { it >= 0 }
+            ?.let { body.put("location_index", it) }
 
-        val links = extractShareLinks(sourceText)
-        locationIndex?.takeIf { it >= 0 }?.let { index ->
-            links.getOrNull(index)?.let { return@withContext it }
-        }
-        sourceText
+        val data = request("connection", "POST", body, authenticated = true)
+        data.optString("source")
+            .takeIf { it.isNotBlank() && it != "null" }
+            ?: error("No connection route received")
     }
-
-    private fun extractShareLinks(sourceText: String): List<String> {
-        fun scan(text: String): List<String> = text
-            .lineSequence()
-            .flatMap { it.trim().split(Regex("\\s+")).asSequence() }
-            .map { it.trim() }
-            .filter { token ->
-                token.matches(
-                    Regex(
-                        "^(vless|vmess|trojan|ss|socks|hysteria2|hy2)://.+",
-                        RegexOption.IGNORE_CASE,
-                    ),
-                )
-            }
-            .toList()
-
-        val direct = scan(sourceText)
-        if (direct.isNotEmpty()) return direct
-
-        val compact = sourceText.filterNot(Char::isWhitespace)
-        val decoded = decodeBase64Text(compact) ?: return emptyList()
-        return scan(decoded)
-    }
-
-    private fun decodeBase64Text(raw: String): String? {
-        if (raw.isBlank()) return null
-        val normalized = raw.trim().replace('-', '+').replace('_', '/')
-        val padded = normalized + "=".repeat((4 - (normalized.length % 4)) % 4)
-        return runCatching {
-            String(Base64.decode(padded, Base64.DEFAULT), Charsets.UTF_8)
-        }.getOrNull()
-    }
-
-    private fun locationFromLink(index: Int, link: String): VpnLocation {
-        val rawLabel = when {
-            link.startsWith("vmess://", ignoreCase = true) -> {
-                val encoded = link.substringAfter("://").substringBefore('#').trim()
-                decodeBase64Text(encoded)?.let { payload ->
-                    runCatching { JSONObject(payload).optString("ps") }.getOrNull()
-                }.orEmpty()
-            }
-            else -> runCatching {
-                URI(link).rawFragment
-                    ?.let { URLDecoder.decode(it, StandardCharsets.UTF_8.name()) }
-                    .orEmpty()
-            }.getOrDefault("")
-        }.trim()
-
-        val flag = extractRegionalFlag(rawLabel)
-            ?: inferCountryFlag(rawLabel)
-            ?: "🌐"
-        val cleanName = stripRegionalFlags(rawLabel)
-            .replace(flag, "")
-            .replace(Regex("\\s{2,}"), " ")
-            .trim()
-            .trim('-', '_', '|', '•')
-            .trim()
-            .ifBlank { localizedCountryName(flag) ?: "لوکیشن ${index + 1}" }
-            .take(36)
-
-        return VpnLocation(index = index, name = cleanName, flag = flag)
-    }
-
-    private fun stripRegionalFlags(text: String): String {
-        val points = text.codePoints().toArray()
-        return buildString {
-            var cursor = 0
-            while (cursor < points.size) {
-                val first = points[cursor]
-                val second = points.getOrNull(cursor + 1)
-                val isFlagPair = second != null &&
-                    first in 0x1F1E6..0x1F1FF &&
-                    second in 0x1F1E6..0x1F1FF
-
-                if (isFlagPair) {
-                    cursor += 2
-                    continue
-                }
-
-                append(String(Character.toChars(first)))
-                cursor += 1
-            }
-        }
-    }
-
-    private fun extractRegionalFlag(text: String): String? {
-        val points = text.codePoints().toArray()
-        for (index in 0 until points.size - 1) {
-            val first = points[index]
-            val second = points[index + 1]
-            if (first in 0x1F1E6..0x1F1FF && second in 0x1F1E6..0x1F1FF) {
-                return buildString {
-                    append(String(Character.toChars(first)))
-                    append(String(Character.toChars(second)))
-                }
-            }
-        }
-        return null
-    }
-
-    private fun inferCountryFlag(label: String): String? {
-        val normalized = label.lowercase(Locale.ROOT)
-        val hints = listOf(
-            listOf("germany", "deutschland", "frankfurt", "آلمان") to "🇩🇪",
-            listOf("netherlands", "holland", "amsterdam", "هلند") to "🇳🇱",
-            listOf("finland", "helsinki", "فنلاند") to "🇫🇮",
-            listOf("france", "paris", "فرانسه") to "🇫🇷",
-            listOf("united kingdom", "england", "london", "britain", "انگلیس") to "🇬🇧",
-            listOf("united states", "america", "new york", "los angeles", "usa", "آمریکا") to "🇺🇸",
-            listOf("canada", "toronto", "montreal", "کانادا") to "🇨🇦",
-            listOf("turkey", "turkiye", "istanbul", "ترکیه") to "🇹🇷",
-            listOf("sweden", "stockholm", "سوئد") to "🇸🇪",
-            listOf("switzerland", "zurich", "سوئیس") to "🇨🇭",
-            listOf("poland", "warsaw", "لهستان") to "🇵🇱",
-            listOf("romania", "bucharest", "رومانی") to "🇷🇴",
-            listOf("russia", "moscow", "روسیه") to "🇷🇺",
-            listOf("united arab emirates", "dubai", "uae", "امارات") to "🇦🇪",
-            listOf("india", "mumbai", "هند") to "🇮🇳",
-            listOf("singapore", "سنگاپور") to "🇸🇬",
-            listOf("japan", "tokyo", "ژاپن") to "🇯🇵",
-            listOf("south korea", "korea", "seoul", "کره") to "🇰🇷",
-            listOf("hong kong", "هنگ کنگ") to "🇭🇰",
-            listOf("australia", "sydney", "استرالیا") to "🇦🇺",
-            listOf("armenia", "yerevan", "ارمنستان") to "🇦🇲",
-            listOf("azerbaijan", "baku", "آذربایجان") to "🇦🇿",
-            listOf("iran", "tehran", "ایران") to "🇮🇷",
-            listOf("iraq", "baghdad", "عراق") to "🇮🇶",
-            listOf("qatar", "doha", "قطر") to "🇶🇦",
-        )
-        hints.firstOrNull { (terms, _) -> terms.any { term -> normalized.contains(term) } }
-            ?.let { return it.second }
-
-        val codeFlags = mapOf(
-            "DE" to "🇩🇪", "NL" to "🇳🇱", "FI" to "🇫🇮", "FR" to "🇫🇷",
-            "GB" to "🇬🇧", "UK" to "🇬🇧", "US" to "🇺🇸", "CA" to "🇨🇦",
-            "TR" to "🇹🇷", "SE" to "🇸🇪", "CH" to "🇨🇭", "PL" to "🇵🇱",
-            "RO" to "🇷🇴", "RU" to "🇷🇺", "AE" to "🇦🇪", "IN" to "🇮🇳",
-            "SG" to "🇸🇬", "JP" to "🇯🇵", "KR" to "🇰🇷", "HK" to "🇭🇰",
-            "AU" to "🇦🇺", "AM" to "🇦🇲", "AZ" to "🇦🇿", "IR" to "🇮🇷",
-            "IQ" to "🇮🇶", "QA" to "🇶🇦",
-        )
-        return Regex("(^|[^A-Za-z])([A-Za-z]{2})(?=$|[^A-Za-z])")
-            .findAll(label)
-            .map { it.groupValues[2].uppercase(Locale.ROOT) }
-            .mapNotNull(codeFlags::get)
-            .firstOrNull()
-    }
-
-    private fun localizedCountryName(flag: String): String? = mapOf(
-        "🇩🇪" to "آلمان", "🇳🇱" to "هلند", "🇫🇮" to "فنلاند", "🇫🇷" to "فرانسه",
-        "🇬🇧" to "انگلیس", "🇺🇸" to "آمریکا", "🇨🇦" to "کانادا", "🇹🇷" to "ترکیه",
-        "🇸🇪" to "سوئد", "🇨🇭" to "سوئیس", "🇵🇱" to "لهستان", "🇷🇴" to "رومانی",
-        "🇷🇺" to "روسیه", "🇦🇪" to "امارات", "🇮🇳" to "هند", "🇸🇬" to "سنگاپور",
-        "🇯🇵" to "ژاپن", "🇰🇷" to "کره جنوبی", "🇭🇰" to "هنگ‌کنگ", "🇦🇺" to "استرالیا",
-        "🇦🇲" to "ارمنستان", "🇦🇿" to "آذربایجان", "🇮🇷" to "ایران", "🇮🇶" to "عراق",
-        "🇶🇦" to "قطر",
-    )[flag]
 
     private fun request(
         action: String,

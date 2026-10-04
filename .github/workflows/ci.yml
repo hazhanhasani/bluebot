@@ -85,6 +85,9 @@ jobs:
       - name: Android client request body tests
         run: php tests/client_request_body_test.php
 
+      - name: Smart location routing tests
+        run: php tests/client_location_routing_test.php
+
       - name: SMS panel contract
         run: php tests/sms_panel_contract.php
 
