@@ -1,5 +1,9 @@
 package com.bluepanel.client.data
 
+class ApiException(val statusCode: Int, message: String) : IllegalStateException(message)
+
+fun Throwable.isAuthenticationFailure(): Boolean = this is ApiException && statusCode == 401
+
 data class LoginResult(
     val accessToken: String,
     val username: String,

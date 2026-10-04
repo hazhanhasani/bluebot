@@ -55,6 +55,7 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
@@ -106,7 +107,9 @@ import com.bluepanel.client.data.StoreCatalog
 import com.bluepanel.client.data.StorePlan
 import com.bluepanel.client.data.TrafficInfo
 import com.bluepanel.client.data.VpnLocation
+import com.bluepanel.client.data.isAuthenticationFailure
 import com.bluepanel.client.ui.QrScannerOverlay
+import com.bluepanel.client.ui.selectServiceId
 import com.bluepanel.client.util.PersianDateTime
 import com.bluepanel.client.vpn.BluePanelVpnService
 import com.bluepanel.client.vpn.VpnConnectionState
@@ -115,6 +118,7 @@ import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.roundToInt
 import kotlin.math.sin
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -175,6 +179,19 @@ private fun BlueVpnApp() {
                 ActivityResultContracts.RequestPermission(),
             ) { }
 
+            fun expireSession() {
+                BluePanelVpnService.disconnect(context)
+                store.clear()
+                services = emptyList()
+                pendingServiceId = null
+                pendingLocationIndex = null
+                storeOpen = false
+                registerOpen = false
+                loggedIn = false
+                loading = false
+                error = "نشست شما منقضی شده است. دوباره وارد شوید."
+            }
+
             fun refreshServices() {
                 scope.launch {
                     loading = true
@@ -182,10 +199,10 @@ private fun BlueVpnApp() {
                     runCatching { api.services() }
                         .onSuccess { services = it }
                         .onFailure {
-                            error = it.message ?: "دریافت سرویس‌ها ناموفق بود"
-                            if ((it.message ?: "").contains("Authentication", ignoreCase = true)) {
-                                store.clear()
-                                loggedIn = false
+                            if (it.isAuthenticationFailure()) {
+                                expireSession()
+                            } else {
+                                error = it.message ?: "دریافت سرویس‌ها ناموفق بود"
                             }
                         }
                     loading = false
@@ -214,6 +231,12 @@ private fun BlueVpnApp() {
 
             LaunchedEffect(loggedIn) {
                 if (loggedIn) refreshServices()
+            }
+
+            LaunchedEffect(vpnState) {
+                if (loggedIn && (vpnState as? VpnConnectionState.Error)?.authenticationRequired == true) {
+                    expireSession()
+                }
             }
 
             LaunchedEffect(Unit) {
@@ -301,6 +324,7 @@ private fun BlueVpnApp() {
                                 }
                             },
                             onPurchased = ::refreshServices,
+                            onSessionExpired = ::expireSession,
                         )
                     }
 
@@ -317,6 +341,7 @@ private fun BlueVpnApp() {
                             onOpenStore = { storeOpen = true },
                             onConnect = ::connect,
                             onDisconnect = { BluePanelVpnService.disconnect(context) },
+                            onSessionExpired = ::expireSession,
                             onLogout = {
                                 BluePanelVpnService.disconnect(context)
                                 scope.launch {
@@ -645,6 +670,7 @@ private fun StoreScreen(
     onBack: () -> Unit,
     onRequireAccount: () -> Unit,
     onPurchased: () -> Unit,
+    onSessionExpired: () -> Unit,
 ) {
     val scope = rememberCoroutineScope()
     val uriHandler = LocalUriHandler.current
@@ -668,7 +694,10 @@ private fun StoreScreen(
                         else -> "wallet"
                     }
                 }
-                .onFailure { error = it.message ?: "دریافت فروشگاه ناموفق بود" }
+                .onFailure {
+                    if (it.isAuthenticationFailure()) onSessionExpired()
+                    else error = it.message ?: "دریافت فروشگاه ناموفق بود"
+                }
             loading = false
         }
     }
@@ -852,7 +881,8 @@ private fun StoreScreen(
                                             checkout.paymentUrl?.let(uriHandler::openUri)
                                         }
                                     }.onFailure {
-                                        error = it.message ?: "ایجاد سفارش ناموفق بود"
+                                        if (it.isAuthenticationFailure()) onSessionExpired()
+                                        else error = it.message ?: "ایجاد سفارش ناموفق بود"
                                     }
                                     loading = false
                                 }
@@ -883,7 +913,10 @@ private fun StoreScreen(
                                         statusMessage = "پرداخت هنوز تأیید نشده است."
                                     }
                                 }
-                                .onFailure { error = it.message ?: "بررسی پرداخت ناموفق بود" }
+                                .onFailure {
+                                    if (it.isAuthenticationFailure()) onSessionExpired()
+                                    else error = it.message ?: "بررسی پرداخت ناموفق بود"
+                                }
                             loading = false
                         }
                     },
@@ -970,17 +1003,15 @@ private fun PremiumDashboard(
     onConnect: (ServiceSummary, Int?) -> Unit,
     onDisconnect: () -> Unit,
     onLogout: () -> Unit,
+    onSessionExpired: () -> Unit,
 ) {
     var selectedId by remember { mutableStateOf<String?>(null) }
     var menuOpen by remember { mutableStateOf(false) }
+    var serviceMenuOpen by remember { mutableStateOf(false) }
 
     LaunchedEffect(services, vpnState) {
         val connectedId = (vpnState as? VpnConnectionState.Connected)?.serviceId
-        selectedId = when {
-            connectedId != null -> connectedId
-            services.any { it.id == selectedId } -> selectedId
-            else -> services.firstOrNull()?.id
-        }
+        selectedId = selectServiceId(services, selectedId, connectedId)
     }
 
     val selected = services.firstOrNull { it.id == selectedId } ?: services.firstOrNull()
@@ -1003,7 +1034,11 @@ private fun PremiumDashboard(
         if (service != null && service.supported) {
             locationsLoading = true
             val resolved = runCatching { api.serviceLocations(service.id) }
-                .getOrElse { listOf(automaticLocation) }
+                .onFailure { if (it.isAuthenticationFailure()) onSessionExpired() }
+                .getOrElse {
+                    if (it is CancellationException) throw it
+                    listOf(automaticLocation)
+                }
                 .ifEmpty { listOf(automaticLocation) }
             locations = resolved
             val connectedLocation = (vpnState as? VpnConnectionState.Connected)
@@ -1176,6 +1211,47 @@ private fun PremiumDashboard(
                 connecting = visualIsConnecting,
                 serviceCount = services.size,
             )
+
+            if (services.size > 1) {
+                Spacer(Modifier.height(8.dp))
+                Box {
+                    Text(
+                        text = "سرویس: ${selected?.let { it.productName.ifBlank { it.username } }.orEmpty()} ▾",
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(14.dp))
+                            .background(Color.Black.copy(alpha = 0.16f))
+                            .clickable(enabled = !isConnected && !isConnecting && !loading) {
+                                serviceMenuOpen = true
+                            }
+                            .padding(horizontal = 14.dp, vertical = 9.dp),
+                        fontSize = 12.sp,
+                        maxLines = 1,
+                    )
+                    DropdownMenu(
+                        expanded = serviceMenuOpen,
+                        onDismissRequest = { serviceMenuOpen = false },
+                    ) {
+                        services.forEach { service ->
+                            DropdownMenuItem(
+                                text = {
+                                    Column {
+                                        Text(service.productName.ifBlank { service.username })
+                                        Text(service.username, color = Muted, fontSize = 10.sp)
+                                    }
+                                },
+                                enabled = !isConnected && !isConnecting && !loading,
+                                onClick = {
+                                    selectedId = service.id
+                                    serviceMenuOpen = false
+                                },
+                            )
+                        }
+                    }
+                }
+                if (isConnected || isConnecting) {
+                    Text("برای تغییر سرویس، ابتدا اتصال را قطع کنید.", color = Muted, fontSize = 10.sp)
+                }
+            }
 
             Spacer(Modifier.height(8.dp))
 

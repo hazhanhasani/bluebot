@@ -50,7 +50,10 @@ function clientBody(): array
         clientResponse(false, 'Invalid JSON body', [], 400);
     }
 
-    return sanitize_recursive($decoded);
+    // Passwords and QR payloads must retain their exact bytes. HTML escaping
+    // changes credential verification and the fingerprints of subscription URLs.
+    // Actions validate fields and bind database values; rendering escapes output.
+    return $decoded;
 }
 
 function clientHeader(string $name): string

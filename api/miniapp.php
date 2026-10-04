@@ -81,36 +81,43 @@ $data = mini_request_data($data);
 
 $authorization = (string) (headerValue($headers, 'Authorization') ?? '');
 $tokencheck = preg_match('/^\s*Bearer\s+(\S+)\s*$/i', $authorization, $bearerMatch) ? $bearerMatch[1] : '';
-$usercheck = null;
+$telegramInitData = (string) (headerValue($headers, 'X-Telegram-Init-Data') ?? '');
 
-if ($tokencheck !== '') {
-    $candidate = select('user', "*", "token", $tokencheck, "select");
-    if (is_array($candidate)
-        && is_string($candidate['token'] ?? null)
-        && hash_equals((string) $candidate['token'], $tokencheck)) {
-        $usercheck = $candidate;
-    }
-}
-
-// The Digital Services storefront can authenticate directly with Telegram's
-// signed initData. This keeps it independent from the legacy React token cache
-// and never rotates/invalidates the existing app session token.
-if (!is_array($usercheck)) {
-    $telegramInitData = (string) (headerValue($headers, 'X-Telegram-Init-Data') ?? '');
-    if ($telegramInitData !== '') {
-        try {
-            $telegramUser = validateTelegramInitDataForMiniApp($telegramInitData, $APIKEY);
-            $candidate = select('user', "*", "id", (string) ($telegramUser['id'] ?? ''), "select");
-            if (is_array($candidate)) {
-                $usercheck = $candidate;
-            }
-        } catch (Throwable $e) {
-            bluebotLog('warning', 'Mini App Telegram authentication failed', [
-                'reason' => $e->getMessage(),
-            ]);
+function mini_authenticated_user(string $bearerToken, string $telegramInitData, string $botToken): ?array
+{
+    $user = null;
+    if ($bearerToken !== '') {
+        $candidate = select('user', '*', 'token', $bearerToken, 'select');
+        if (is_array($candidate)
+            && is_string($candidate['token'] ?? null)
+            && hash_equals($candidate['token'], $bearerToken)) {
+            $user = $candidate;
         }
     }
+
+    // A verified Telegram launch identifies the current account even if shared
+    // WebView storage still contains a bearer token from a different account.
+    // Existing bearer sessions remain usable when launch data has expired.
+    if ($telegramInitData !== '') {
+        try {
+            $telegramUser = validateTelegramInitDataForMiniApp($telegramInitData, $botToken);
+        } catch (Throwable $e) {
+            if ($user === null) {
+                bluebotLog('warning', 'Mini App Telegram authentication failed', [
+                    'reason' => $e->getMessage(),
+                ]);
+            }
+            return $user;
+        }
+
+        $candidate = select('user', '*', 'id', (string) ($telegramUser['id'] ?? ''), 'select');
+        return is_array($candidate) ? $candidate : null;
+    }
+
+    return $user;
 }
+
+$usercheck = mini_authenticated_user($tokencheck, $telegramInitData, $APIKEY);
 
 if (!is_array($usercheck)) {
     sendJsonResponse(false, 'Authentication required', [], 403);
@@ -376,7 +383,7 @@ function mini_service(array $data, string $method): void
 
 function mini_user_info(array $data, string $method): void
 {
-    global $pdo, $textbotlang, $tokencheck;
+    global $pdo, $textbotlang, $usercheck;
 
     if ($method !== "GET") {
         echo json_encode([
@@ -385,7 +392,7 @@ function mini_user_info(array $data, string $method): void
         ]);
         return;
     }
-    $user_info = select("user", "*", "token", $tokencheck, "select");
+    $user_info = $usercheck;
     if ($user_info) {
         if ($user_info['codeInvitation'] == null) {
             $randomString = bin2hex(random_bytes(4));
@@ -447,7 +454,7 @@ function mini_user_info(array $data, string $method): void
 
 function mini_countries(array $data, string $method): void
 {
-    global $pdo, $setting, $textbotlang, $tokencheck;
+    global $pdo, $setting, $textbotlang, $usercheck;
 
     if ($method !== "GET") {
         echo json_encode([
@@ -456,7 +463,7 @@ function mini_countries(array $data, string $method): void
         ]);
         return;
     }
-    $user_info = select("user", "*", "token", $tokencheck, "select");
+    $user_info = $usercheck;
     if ($user_info) {
         $stmt = $pdo->prepare("SELECT * FROM marzban_panel WHERE status = 'active' AND (agent = :agent OR agent = 'all') AND type != 'Manualsale'");
         $stmt->bindParam(':agent', $user_info['agent']);
@@ -508,7 +515,7 @@ function mini_countries(array $data, string $method): void
 
 function mini_categories(array $data, string $method): void
 {
-    global $pdo, $setting, $tokencheck;
+    global $pdo, $setting, $usercheck;
 
     if ($method !== "GET") {
         echo json_encode([
@@ -517,7 +524,7 @@ function mini_categories(array $data, string $method): void
         ]);
         return;
     }
-    $user_info = select("user", "*", "token", $tokencheck, "select");
+    $user_info = $usercheck;
     if ($user_info) {
         $runtimeSetting = select("setting", "*", null, null, "select");
         $runtimeSetting = is_array($runtimeSetting) ? $runtimeSetting : $setting;
@@ -570,7 +577,7 @@ function mini_categories(array $data, string $method): void
 
 function mini_time_ranges(array $data, string $method): void
 {
-    global $pdo, $setting, $textbotlang, $tokencheck;
+    global $pdo, $setting, $textbotlang, $usercheck;
 
     if ($method !== "GET") {
         echo json_encode([
@@ -579,7 +586,7 @@ function mini_time_ranges(array $data, string $method): void
         ]);
         return;
     }
-    $user_info = select("user", "*", "token", $tokencheck, "select");
+    $user_info = $usercheck;
     if ($user_info) {
         $runtimeSetting = select("setting", "*", null, null, "select");
         $runtimeSetting = is_array($runtimeSetting) ? $runtimeSetting : $setting;
@@ -720,7 +727,7 @@ function mini_time_ranges(array $data, string $method): void
 
 function mini_services(array $data, string $method): void
 {
-    global $pdo, $tokencheck;
+    global $pdo, $usercheck;
 
     if ($method !== "GET") {
         echo json_encode([
@@ -730,7 +737,7 @@ function mini_services(array $data, string $method): void
         return;
     }
     $product_list = [];
-    $user_info = select("user", "*", "token", $tokencheck, "select");
+    $user_info = $usercheck;
     if ($user_info) {
         $panel = select("marzban_panel", "*", "code_panel", $data['id_panel'], "select");
         if (!mini_panel_accessible($panel, $user_info)) {
@@ -816,7 +823,7 @@ function mini_services(array $data, string $method): void
 
 function mini_custom_price(array $data, string $method): void
 {
-    global $tokencheck;
+    global $usercheck;
 
     if ($method !== "GET") {
         echo json_encode([
@@ -825,7 +832,7 @@ function mini_custom_price(array $data, string $method): void
         ]);
         return;
     }
-    $user_info = select("user", "*", "token", $tokencheck, "select");
+    $user_info = $usercheck;
     if ($user_info) {
         $panel = select("marzban_panel", "*", "code_panel", $data['id_panel'], "select");
         if (!mini_panel_accessible($panel, $user_info)) {
@@ -846,6 +853,9 @@ function mini_custom_price(array $data, string $method): void
         $time_price = panelAgentValue($panel['pricecustomtime'], $agentKey);
         if (intval($statuscustomvolume) == 1 && $panel['type'] != "Manualsale") {
             $price = ($traffic_price * intval($data['traffic_gb'])) + ($time_price * intval($data['time_days']));
+            if (intval($user_info['pricediscount'] ?? 0) != 0) {
+                $price -= ($price * $user_info['pricediscount']) / 100;
+            }
         } else {
             $price = false;
         }

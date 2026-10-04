@@ -5,6 +5,7 @@ import android.content.pm.PackageManager
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.camera.core.CameraSelector
+import androidx.camera.core.ExperimentalGetImage
 import androidx.camera.core.ImageAnalysis
 import androidx.camera.core.Preview
 import androidx.camera.lifecycle.ProcessCameraProvider
@@ -56,6 +57,7 @@ import java.util.concurrent.atomic.AtomicBoolean
 private val ScannerAccent = Color(0xFF41D6DE)
 
 @Composable
+@androidx.annotation.OptIn(markerClass = [ExperimentalGetImage::class])
 fun QrScannerOverlay(
     onResult: (String) -> Unit,
     onClose: () -> Unit,
@@ -75,6 +77,7 @@ fun QrScannerOverlay(
 
     val analyzerExecutor = remember { Executors.newSingleThreadExecutor() }
     val consumed = remember { AtomicBoolean(false) }
+    val disposed = remember { AtomicBoolean(false) }
     val scanner = remember {
         val options = BarcodeScannerOptions.Builder()
             .setBarcodeFormats(Barcode.FORMAT_QR_CODE)
@@ -85,7 +88,7 @@ fun QrScannerOverlay(
     val galleryLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.GetContent(),
     ) { uri ->
-        if (uri == null) {
+        if (uri == null || disposed.get()) {
             return@rememberLauncherForActivityResult
         }
 
@@ -103,6 +106,7 @@ fun QrScannerOverlay(
 
         scanner.process(input)
             .addOnSuccessListener { barcodes ->
+                if (disposed.get()) return@addOnSuccessListener
                 val raw = barcodes
                     .firstOrNull { !it.rawValue.isNullOrBlank() }
                     ?.rawValue
@@ -116,18 +120,20 @@ fun QrScannerOverlay(
                 }
             }
             .addOnFailureListener {
-                scanError = "تشخیص QR از تصویر ناموفق بود."
+                if (!disposed.get()) scanError = "تشخیص QR از تصویر ناموفق بود."
             }
             .addOnCompleteListener {
-                galleryBusy = false
+                if (!disposed.get()) galleryBusy = false
             }
     }
 
     val permissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission(),
     ) { granted ->
-        permissionGranted = granted
-        permissionRequested = true
+        if (!disposed.get()) {
+            permissionGranted = granted
+            permissionRequested = true
+        }
     }
 
     LaunchedEffect(Unit) {
@@ -139,6 +145,8 @@ fun QrScannerOverlay(
 
     DisposableEffect(Unit) {
         onDispose {
+            disposed.set(true)
+            consumed.set(true)
             cameraProvider?.unbindAll()
             scanner.close()
             analyzerExecutor.shutdown()
@@ -218,7 +226,12 @@ fun QrScannerOverlay(
 
                                 val providerFuture = ProcessCameraProvider.getInstance(ctx)
                                 providerFuture.addListener({
-                                    val provider = providerFuture.get()
+                                    if (disposed.get()) return@addListener
+                                    val provider = runCatching { providerFuture.get() }
+                                        .getOrElse {
+                                            scanError = "راه‌اندازی دوربین ممکن نشد. از گالری استفاده کنید."
+                                            return@addListener
+                                        }
                                     cameraProvider = provider
 
                                     val preview = Preview.Builder().build().also {
@@ -233,32 +246,40 @@ fun QrScannerOverlay(
 
                                     analysis.setAnalyzer(analyzerExecutor) { imageProxy ->
                                         val mediaImage = imageProxy.image
-                                        if (mediaImage == null || consumed.get()) {
+                                        if (mediaImage == null || consumed.get() || disposed.get()) {
                                             imageProxy.close()
                                             return@setAnalyzer
                                         }
 
-                                        val image = InputImage.fromMediaImage(
-                                            mediaImage,
-                                            imageProxy.imageInfo.rotationDegrees,
-                                        )
+                                        // Disposal can close ML Kit between the guard above and
+                                        // process(), so close the proxy on synchronous failure too.
+                                        runCatching {
+                                            val image = InputImage.fromMediaImage(
+                                                mediaImage,
+                                                imageProxy.imageInfo.rotationDegrees,
+                                            )
+                                            scanner.process(image)
+                                        }
+                                            .onSuccess { task ->
+                                                task.addOnSuccessListener { barcodes ->
+                                                    if (disposed.get()) return@addOnSuccessListener
+                                                    val raw = barcodes
+                                                        .firstOrNull { !it.rawValue.isNullOrBlank() }
+                                                        ?.rawValue
+                                                        ?.trim()
+                                                        .orEmpty()
 
-                                        scanner.process(image)
-                                            .addOnSuccessListener { barcodes ->
-                                                val raw = barcodes
-                                                    .firstOrNull()
-                                                    ?.rawValue
-                                                    ?.trim()
-                                                    .orEmpty()
-
-                                                if (
-                                                    raw.isNotEmpty() &&
-                                                    consumed.compareAndSet(false, true)
-                                                ) {
-                                                    onResult(raw)
+                                                    if (
+                                                        raw.isNotEmpty() &&
+                                                        consumed.compareAndSet(false, true)
+                                                    ) {
+                                                        onResult(raw)
+                                                    }
+                                                }.addOnCompleteListener {
+                                                    imageProxy.close()
                                                 }
                                             }
-                                            .addOnCompleteListener {
+                                            .onFailure {
                                                 imageProxy.close()
                                             }
                                     }
@@ -271,6 +292,10 @@ fun QrScannerOverlay(
                                             preview,
                                             analysis,
                                         )
+                                    }.onFailure {
+                                        if (!disposed.get()) {
+                                            scanError = "راه‌اندازی دوربین ممکن نشد. از گالری استفاده کنید."
+                                        }
                                     }
                                 }, ContextCompat.getMainExecutor(ctx))
                             }

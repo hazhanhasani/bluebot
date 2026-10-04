@@ -1,9 +1,9 @@
 (()=>{"use strict";
-const API="../api/miniapp.php",rootId="bluebot-full-store";
+const API="/api/miniapp.php",rootId="bluebot-full-store";
 
 const esc=s=>String(s??"").replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[m]));
-const safeGet=(storage,key)=>{try{return storage&&storage.getItem(key)||""}catch(_){return""}};
-const token=()=>safeGet(window.localStorage,"token")||safeGet(window.sessionStorage,"token")||window.__BLUEBOT_SESSION_TOKEN__||"";
+const safeGet=(storageName,key)=>{try{const storage=window[storageName];return storage&&storage.getItem(key)||""}catch(_){return""}};
+const token=()=>typeof window.__BLUEBOT_SESSION_TOKEN__==="string"?window.__BLUEBOT_SESSION_TOKEN__:safeGet("localStorage","token")||safeGet("sessionStorage","token")||"";
 const telegramInitData=()=>window.Telegram&&window.Telegram.WebApp&&typeof window.Telegram.WebApp.initData==="string"?window.Telegram.WebApp.initData:"";
 async function waitForAuth(timeout=5000){
  if(token()||telegramInitData())return true;
@@ -86,5 +86,5 @@ function openProduct(id){const p=state.products.find(x=>x.id===id);if(!p)return;
 d.querySelector("[data-close]").onclick=()=>d.remove();d.querySelector("[data-quote]").onclick=async()=>{const target=d.querySelector('[name=target]').value,quantity=q.variable?Number(d.querySelector('[name=quantity]').value):q.fixed;const out=d.querySelector("[data-result]");try{out.textContent="در حال بررسی…";const quote=await call("digital_quote","POST",{product_id:p.id,target,quantity});out.innerHTML=`<p>مبلغ نهایی: <b>${Number(quote.amount).toLocaleString("fa-IR")} تومان</b></p><button class="bbs-btn" data-confirm>تأیید و ثبت سفارش</button>`;out.querySelector("[data-confirm]").onclick=async()=>{try{out.textContent="در حال ثبت سفارش…";const res=await call("digital_purchase","POST",{product_id:p.id,target:quote.target,quantity:quote.quantity});out.innerHTML=`<p>✅ سفارش ثبت شد.</p><p>کد: <b>${esc(res.order?.order_code||"")}</b></p>`}catch(e){out.textContent="❌ "+e.message}}}catch(e){out.textContent="❌ "+e.message}}}
 async function openOrders(){const d=modal("<h3>📋 سفارش‌های من</h3><div data-orders>در حال دریافت…</div>");try{const r=await call("digital_orders","GET",{page:1});d.querySelector("[data-orders]").innerHTML=(r.orders||[]).map(o=>`<div class="bbs-order"><b>${esc(o.service_name)}</b><br><span class="bbs-muted">${esc(o.order_code)} · ${esc(o.status)} · ${Number(o.amount||0).toLocaleString("fa-IR")} تومان</span></div>`).join("")||'<div class="bbs-empty">هنوز سفارشی ندارید.</div>'}catch(e){d.querySelector("[data-orders]").textContent="❌ "+e.message}}
 function init(){css();host();if(!ensureNavButton())ensureLauncher();if(navObserver)navObserver.disconnect();navObserver=new MutationObserver(()=>{if(!ensureNavButton())ensureLauncher()});navObserver.observe(document.body,{childList:true,subtree:true});window.setTimeout(()=>{if(!ensureNavButton())ensureLauncher()},1200)}
-function setSessionToken(value){if(typeof value==="string"&&value){window.__BLUEBOT_SESSION_TOKEN__=value;window.dispatchEvent(new CustomEvent("bluebot:session-ready",{detail:{token:value}}))}}
+function setSessionToken(value){if(typeof value==="string"){window.__BLUEBOT_SESSION_TOKEN__=value;window.dispatchEvent(new CustomEvent("bluebot:session-ready",{detail:{token:value}}))}}
 window.BlueBotFullStore={init,setSessionToken,open:openStore,close:closeStore,refresh:()=>loadCatalog(true)};})();

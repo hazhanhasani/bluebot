@@ -28,7 +28,7 @@ jobs:
         uses: shivammathur/setup-php@v2
         with:
           php-version: '8.2'
-          extensions: curl, mbstring, zip, gd, dom, simplexml, xmlwriter, xmlreader, fileinfo, iconv, bcmath, pdo_mysql
+          extensions: curl, mbstring, zip, gd, dom, simplexml, xmlwriter, xmlreader, fileinfo, iconv, bcmath, pdo_mysql, pdo_sqlite
           tools: composer
 
       - name: Validate Composer metadata
@@ -67,6 +67,9 @@ jobs:
       - name: Mini App target round-trip tests
         run: php tests/miniapp_target_test.php
 
+      - name: Mini App authenticated handler and custom price tests
+        run: php tests/miniapp_authenticated_handlers_test.php
+
       - name: Storefront panel visibility tests
         run: php tests/storefront_visibility_test.php
 
@@ -79,8 +82,14 @@ jobs:
       - name: App storefront account contract
         run: php tests/app_store_account_contract.php
 
+      - name: Android client request body tests
+        run: php tests/client_request_body_test.php
+
       - name: SMS panel contract
         run: php tests/sms_panel_contract.php
+
+      - name: SMS Unicode digits and OTP verification tests
+        run: php tests/sms_otp_test.php
 
       - name: Digital services contract
         run: php tests/digital_services_contract.php
@@ -94,6 +103,12 @@ jobs:
       - name: Telegram Mini App bootstrap tests
         run: node tests/telegram_bootstrap_test.js
 
+      - name: Mini App storefront authentication tests
+        run: node tests/miniapp_store_auth_test.js
+
+      - name: Mini App session identity tests
+        run: node tests/miniapp_session_test.js
+
       - name: Validate Mini App JavaScript syntax
         shell: bash
         run: |
@@ -104,6 +119,12 @@ jobs:
 
       - name: In-bot updater contracts
         run: php tests/inbot_updater_contract.php
+
+      - name: Mini App launch identity tests
+        run: php tests/miniapp_auth_identity_test.php
+
+      - name: Mini App nested-route bootstrap tests
+        run: node tests/miniapp_routes_test.js
 
       - name: Installed build version tests
         run: php tests/installed_build_version_test.php

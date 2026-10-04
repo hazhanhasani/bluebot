@@ -7,11 +7,11 @@
     <meta name="color-scheme" content="dark light" />
     <title>BlueBot Web App</title>
 
-    <link rel="preload" href="./js/telegram-web-app.js?v=0.2.6" as="script" />
-    <link rel="preload" href="./js/telegram-bootstrap.js?v=0.2.6" as="script" />
-    <link rel="modulepreload" crossorigin href="./assets/index-C-2a0Dur.js" />
-    <link rel="modulepreload" crossorigin href="./assets/vendor-CIGJ9g2q.js" />
-    <link rel="stylesheet" crossorigin href="./assets/index-BoHBsj0Z.css" />
+    <link rel="preload" href="/app/js/telegram-web-app.js?v=0.2.7" as="script" />
+    <link rel="preload" href="/app/js/telegram-bootstrap.js?v=0.2.7" as="script" />
+    <link rel="modulepreload" crossorigin href="/app/assets/index-C-2a0Dur.js" />
+    <link rel="modulepreload" crossorigin href="/app/assets/vendor-CIGJ9g2q.js" />
+    <link rel="stylesheet" crossorigin href="/app/assets/index-BoHBsj0Z.css" />
 
     <style>
       html,body,#root{min-height:100%;margin:0}
@@ -25,10 +25,10 @@
       @keyframes bluebot-spin{to{transform:rotate(360deg)}}
     </style>
 
-    <script defer src="./js/telegram-web-app.js?v=0.2.6"></script>
-    <script defer src="./js/telegram-bootstrap.js?v=0.2.6"></script>
-    <script defer src="./js/full-store.js?v=0.2.6"></script>
-    <script defer src="./js/app-loader.js?v=0.2.6"></script>
+    <script defer src="/app/js/telegram-web-app.js?v=0.2.7"></script>
+    <script defer src="/app/js/telegram-bootstrap.js?v=0.2.7"></script>
+    <script defer src="/app/js/full-store.js?v=0.2.7"></script>
+    <script defer src="/app/js/app-loader.js?v=0.2.7"></script>
   </head>
   <body>
     <div id="root">

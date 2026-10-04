@@ -9,24 +9,24 @@ $appIndex = @file_get_contents($root . '/app/index.php');
 if ($appIndex !== false && str_contains($appIndex, 'https://telegram.org/js/telegram-web-app.js')) {
     $failures[] = 'Mini App startup must not block on the external Telegram SDK.';
 }
-if ($appIndex === false || !str_contains($appIndex, './js/telegram-bootstrap.js?v=0.2.6')) {
+if ($appIndex === false || !str_contains($appIndex, '/app/js/telegram-bootstrap.js?v=0.2.7')) {
     $failures[] = 'Mini App compatibility bootstrap is not loaded with the current cache key.';
 }
-if ($appIndex === false || !str_contains($appIndex, './js/telegram-web-app.js?v=0.2.6')) {
+if ($appIndex === false || !str_contains($appIndex, '/app/js/telegram-web-app.js?v=0.2.7')) {
     $failures[] = 'Local Telegram SDK is not loaded first.';
 }
 
-if ($appIndex === false || !str_contains($appIndex, 'script defer src="./js/telegram-web-app.js?v=0.2.6"')) {
+if ($appIndex === false || !str_contains($appIndex, 'script defer src="/app/js/telegram-web-app.js?v=0.2.7"')) {
     $failures[] = 'Mini App Telegram SDK must load with defer for non-blocking first paint.';
 }
 if ($appIndex === false || !str_contains($appIndex, 'bluebot-boot')) {
     $failures[] = 'Mini App must provide an immediate boot/loading surface.';
 }
 
-if ($appIndex === false || !str_contains($appIndex, './js/app-loader.js?v=0.2.6')) {
+if ($appIndex === false || !str_contains($appIndex, '/app/js/app-loader.js?v=0.2.7')) {
     $failures[] = 'Mini App ordered application loader is missing.';
 }
-if ($appIndex === false || !str_contains($appIndex, './js/full-store.js?v=0.2.6')) {
+if ($appIndex === false || !str_contains($appIndex, '/app/js/full-store.js?v=0.2.7')) {
     $failures[] = 'Mini App full digital-services storefront is not mounted.';
 }
 $fullStore = @file_get_contents($root . '/app/js/full-store.js');
@@ -51,7 +51,7 @@ if ($appLoader !== false && str_contains($appLoader, "index-C-2a0Dur.js?v=")) {
 if ($appLoader === false || !str_contains($appLoader, '__BLUEBOT_MINIAPP_BOOT__')) {
     $failures[] = 'Mini App loader must reject duplicate bootstraps before React Router mounts twice.';
 }
-if ($appIndex !== false && preg_match('/<script[^>]+src="\.\/assets\/index-C-2a0Dur\.js[^"]*"/i', $appIndex) === 1) {
+if ($appIndex !== false && preg_match('/<script[^>]+src="\/app\/assets\/index-C-2a0Dur\.js[^"]*"/i', $appIndex) === 1) {
     $failures[] = 'Mini App bundle must be started only through the guarded application loader.';
 }
 
@@ -158,7 +158,7 @@ if ($verify === false || !str_contains($verify, "hash_equals")) {
 }
 
 $version = trim((string) @file_get_contents($root . '/app/version'));
-if ($version !== '0.2.6') {
+if ($version !== '0.2.7') {
     $failures[] = 'Unexpected Mini App version: ' . $version;
 }
 
