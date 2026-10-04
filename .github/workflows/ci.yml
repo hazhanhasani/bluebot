@@ -132,6 +132,9 @@ jobs:
       - name: Installed build version tests
         run: php tests/installed_build_version_test.php
 
+      - name: Android release version contract
+        run: php tests/android_release_version_contract.php
+
       - name: Security hardening contract
         run: php tests/security_hardening_contract.php
 
