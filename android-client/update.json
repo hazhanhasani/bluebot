@@ -1,8 +1,8 @@
 {
-  "latest_version_code": 19,
-  "latest_version_name": "0.5.1",
+  "latest_version_code": 20,
+  "latest_version_name": "0.5.2",
   "minimum_version_code": 4,
-  "download_url": "https://github.com/hazhanhasani/bluebot/releases/download/v0.7.7/blue-vpn-android-v0.7.7.apk",
-  "release_notes": "رابط انتخاب لوکیشن بازطراحی شد: حرکت کمانی پرچم‌ها پیوسته و نرم شده، اسنپ روی لوکیشن با انیمیشن spring انجام می‌شود، سایه‌های مربعی حذف شده و نام لوکیشن از پرچم‌های اضافی پاک‌سازی می‌شود.",
+  "download_url": "https://github.com/hazhanhasani/bluebot/releases/download/v0.7.8/blue-vpn-android-v0.7.8.apk",
+  "release_notes": "رفع مشکلات چرخه اتصال VPN، ورود اپ و نشست‌های Mini App؛ بهبود پایداری نسخه جدید.",
   "check_interval_seconds": 21600
 }
