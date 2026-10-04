@@ -181,6 +181,9 @@ function bluebotBuildDebugReport(PDO $pdo, array $setting, array $webhookSecret 
     $deliveryText = $diagnostics['delivery_errors'] < 0
         ? 'unknown'
         : (string) $diagnostics['delivery_errors'];
+    $deliveryReviewedText = $diagnostics['delivery_reviewed'] < 0
+        ? 'unknown'
+        : (string) $diagnostics['delivery_reviewed'];
 
     $digital = is_array($diagnostics['digital_services'] ?? null)
         ? $diagnostics['digital_services']
@@ -209,7 +212,7 @@ function bluebotBuildDebugReport(PDO $pdo, array $setting, array $webhookSecret 
         . 'Installer removed: ' . $status((bool) $diagnostics['installer_removed']) . "\n"
         . 'Dedicated API token: ' . $status((bool) $diagnostics['api_token_configured']) . "\n"
         . 'Delivery errors: <code>' . $escape($deliveryText) . "</code>\n"
-        . 'Reviewed delivery errors: <code>' . $escape((string) max(0, (int) $diagnostics['delivery_reviewed'])) . "</code>\n"
+        . 'Reviewed delivery errors: <code>' . $escape($deliveryReviewedText) . "</code>\n"
         . 'Free disk: <code>' . $escape((string) $diagnostics['free_disk']) . "</code>\n"
         . 'Bot status: <code>' . $escape((string) $diagnostics['bot_status']) . "</code>\n"
         . 'Time: <code>' . $escape((string) $diagnostics['time']) . "</code>\n\n"
@@ -272,11 +275,12 @@ function bluebotHealthSnapshot(array $diagnostics): array
     $securityHealthy = (bool) ($diagnostics['webhook_protected'] ?? false)
         && (bool) ($diagnostics['api_token_configured'] ?? false);
 
-    $deliveryErrors = max(0, (int) ($diagnostics['delivery_errors'] ?? 0));
+    $deliveryErrors = (int) ($diagnostics['delivery_errors'] ?? -1);
+    $deliveryReviewed = (int) ($diagnostics['delivery_reviewed'] ?? -1);
 
     return [
         'time' => date(DATE_ATOM),
-        'overall_healthy' => $coreHealthy && $securityHealthy && $deliveryErrors === 0,
+        'overall_healthy' => $coreHealthy && $securityHealthy && $deliveryErrors === 0 && $deliveryReviewed >= 0,
         'core_healthy' => $coreHealthy,
         'security_healthy' => $securityHealthy,
         'database_ok' => (bool) ($diagnostics['database_ok'] ?? false),
@@ -286,7 +290,7 @@ function bluebotHealthSnapshot(array $diagnostics): array
         'webhook_protected' => (bool) ($diagnostics['webhook_protected'] ?? false),
         'api_token_configured' => (bool) ($diagnostics['api_token_configured'] ?? false),
         'delivery_errors' => $deliveryErrors,
-        'delivery_reviewed' => max(0, (int) ($diagnostics['delivery_reviewed'] ?? 0)),
+        'delivery_reviewed' => $deliveryReviewed,
         'version' => (string) ($diagnostics['version'] ?? 'unknown'),
         'mini_version' => (string) ($diagnostics['mini_version'] ?? 'unknown'),
         'php_version' => (string) ($diagnostics['php_version'] ?? PHP_VERSION),
@@ -363,9 +367,13 @@ function bluebotReadHealthHistory(int $limit = 20): array
             continue;
         }
 
+        $deliveryErrors = (int) ($decoded['delivery_errors'] ?? -1);
+        $deliveryReviewed = (int) ($decoded['delivery_reviewed'] ?? -1);
+
         $history[] = [
             'time' => (string) ($decoded['time'] ?? ''),
-            'overall_healthy' => (bool) ($decoded['overall_healthy'] ?? false),
+            'overall_healthy' => (bool) ($decoded['overall_healthy'] ?? false)
+                && $deliveryErrors === 0 && $deliveryReviewed >= 0,
             'core_healthy' => (bool) ($decoded['core_healthy'] ?? false),
             'security_healthy' => (bool) ($decoded['security_healthy'] ?? false),
             'database_ok' => (bool) ($decoded['database_ok'] ?? false),
@@ -374,8 +382,8 @@ function bluebotReadHealthHistory(int $limit = 20): array
             'installer_removed' => (bool) ($decoded['installer_removed'] ?? false),
             'webhook_protected' => (bool) ($decoded['webhook_protected'] ?? false),
             'api_token_configured' => (bool) ($decoded['api_token_configured'] ?? false),
-            'delivery_errors' => max(0, (int) ($decoded['delivery_errors'] ?? 0)),
-            'delivery_reviewed' => max(0, (int) ($decoded['delivery_reviewed'] ?? 0)),
+            'delivery_errors' => $deliveryErrors,
+            'delivery_reviewed' => $deliveryReviewed,
             'version' => (string) ($decoded['version'] ?? 'unknown'),
             'mini_version' => (string) ($decoded['mini_version'] ?? 'unknown'),
             'php_version' => (string) ($decoded['php_version'] ?? 'unknown'),

@@ -26,7 +26,8 @@ try {
         || !(bool) ($dashboardDiagnostics['installer_removed'] ?? false)
         || !(bool) ($dashboardDiagnostics['webhook_protected'] ?? false)
         || !(bool) ($dashboardDiagnostics['api_token_configured'] ?? false)
-        || (int) ($dashboardDiagnostics['delivery_errors'] ?? 0) > 0;
+        || (int) ($dashboardDiagnostics['delivery_errors'] ?? -1) !== 0
+        || (int) ($dashboardDiagnostics['delivery_reviewed'] ?? -1) < 0;
 } catch (Throwable $healthError) {
     $dashboardHealthNeedsReview = true;
     bluebotLog('warning', 'Dashboard health check failed', [

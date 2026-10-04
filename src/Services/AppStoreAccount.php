@@ -449,6 +449,12 @@ final class AppStoreAccount
             throw new InvalidArgumentException('پلن یا موقعیت انتخاب‌شده در دسترس نیست.');
         }
 
+        $hiddenUsers = json_decode((string) ($panel['hide_user'] ?? '[]'), true);
+        $hiddenUsers = is_array($hiddenUsers) ? array_map('strval', $hiddenUsers) : [];
+        if (in_array($userId, $hiddenUsers, true)) {
+            throw new InvalidArgumentException('پلن یا موقعیت انتخاب‌شده در دسترس نیست.');
+        }
+
         $productStmt = $pdo->prepare(
             "SELECT * FROM product
              WHERE code_product=?

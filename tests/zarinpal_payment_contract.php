@@ -21,7 +21,7 @@ zarinpalContractContains(
 );
 zarinpalContractContains($helper, "'currency' => 'IRT'", 'ZarinPal checkout must declare IRT currency.', $failures);
 zarinpalContractContains($helper, "function zarinpalCallbackUrl(): ?string", 'ZarinPal callback URL helper is missing.', $failures);
-zarinpalContractContains($helper, "'callback_url' => $callbackUrl", 'ZarinPal checkout must use the resolved callback URL.', $failures);
+zarinpalContractContains($helper, "'callback_url' => \$callbackUrl", 'ZarinPal checkout must use the resolved callback URL.', $failures);
 zarinpalContractContains($helper, "zarinpal_callback_domain", 'ZarinPal callback domain override is missing.', $failures);
 zarinpalContractContains($helper, "CURLOPT_PROTOCOLS => CURLPROTO_HTTPS", 'ZarinPal client must restrict transport to HTTPS.', $failures);
 zarinpalContractContains($helper, "CURLOPT_SSL_VERIFYPEER => true", 'ZarinPal TLS peer verification must remain enabled.', $failures);

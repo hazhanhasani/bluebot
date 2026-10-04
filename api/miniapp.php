@@ -62,7 +62,22 @@ if (!is_array($data)) {
     sendJsonResponse(false, 'Data invalid', [], 400);
 }
 
-$data = sanitize_recursive($data);
+function mini_request_data(array $data): array
+{
+    $sanitized = sanitize_recursive($data);
+
+    // Digital targets are provider data, including URLs with query strings.
+    // HTML escaping here changes the quoted target again when it is submitted
+    // for purchase; escape values only when rendering them in HTML.
+    if (in_array($data['actions'] ?? '', ['digital_quote', 'digital_purchase'], true)
+        && isset($data['target']) && is_string($data['target'])) {
+        $sanitized['target'] = $data['target'];
+    }
+
+    return $sanitized;
+}
+
+$data = mini_request_data($data);
 
 $authorization = (string) (headerValue($headers, 'Authorization') ?? '');
 $tokencheck = preg_match('/^\s*Bearer\s+(\S+)\s*$/i', $authorization, $bearerMatch) ? $bearerMatch[1] : '';
@@ -120,6 +135,12 @@ function mini_panel_accessible($panel, array $user, bool $allowManualSale = fals
     $panelAgent = (string) ($panel['agent'] ?? 'all');
     $userAgent = (string) ($user['agent'] ?? '');
     if ($panelAgent !== 'all' && $panelAgent !== $userAgent) {
+        return false;
+    }
+
+    $hiddenUsers = json_decode((string) ($panel['hide_user'] ?? '[]'), true);
+    $hiddenUsers = is_array($hiddenUsers) ? array_map('strval', $hiddenUsers) : [];
+    if (in_array((string) ($user['id'] ?? ''), $hiddenUsers, true)) {
         return false;
     }
 
@@ -460,9 +481,7 @@ function mini_countries(array $data, string $method): void
             } else {
                 $is_custom = false;
             }
-            $hidden_users = json_decode((string) ($result['hide_user'] ?? '[]'), true);
-            $hidden_users = is_array($hidden_users) ? array_map('strval', $hidden_users) : [];
-            if (in_array((string) $user_info['id'], $hidden_users, true)) {
+            if (!mini_panel_accessible($result, $user_info)) {
                 continue;
             }
             $panel_list[] = [
@@ -1405,4 +1424,3 @@ match ($action) {
     'digital_purchase' => mini_digital_purchase($data, $method),
     default => sendJsonResponse(false, "Action Invalid", []),
 };
-

@@ -447,6 +447,12 @@ if ($storedWebhookSecret === '') {
     $webhookSecret = ['secret' => $storedWebhookSecret, 'created' => false];
 }
 #-----------end telegram_webhook_auth------------#
+// Consume update IDs only after webhook authentication. botapi.php is also
+// included by payment callbacks and jobs, which must not consume Telegram IDs.
+if (isDuplicateUpdate($update_id)) {
+    http_response_code(200);
+    exit;
+}
 if ($is_bot)
     return;
 if (isset($update['chat_member'])) {
@@ -6951,7 +6957,10 @@ if ($text == "/start" || $datain == "start" || $text == "start") {
         $dateacc = date('Y/m/d H:i:s');
         $randomString = bin2hex(random_bytes(5));
         $pay = createPayaqayepardakht($user['Processing_value'], $randomString);
-        if ($pay['status'] != "success") {
+        $transactionId = is_scalar($pay['transid'] ?? null)
+            ? trim((string) $pay['transid'])
+            : '';
+        if (($pay['status'] ?? '') !== 'success' || $transactionId === '' || strlen($transactionId) > 255) {
             $text_error = json_encode($pay);
             sendmessage($from_id, $textbotlang['users']['Balance']['errorLinkPayment'], $keyboard, 'HTML');
             step('home', $from_id);
@@ -6966,14 +6975,14 @@ if ($text == "/start" || $datain == "start" || $text == "start") {
             }
             return;
         }
-        $stmt = $pdo->prepare("INSERT INTO Payment_report (id_user,id_order,time,price,payment_Status,Payment_Method,id_invoice) VALUES (?,?,?,?,?,?,?)");
+        $stmt = $pdo->prepare("INSERT INTO Payment_report (id_user,id_order,time,price,payment_Status,Payment_Method,id_invoice,dec_not_confirmed) VALUES (?,?,?,?,?,?,?,?)");
         $payment_Status = "Unpaid";
         $Payment_Method = "aqayepardakht";
-        $stmt->execute([$from_id, $randomString, $dateacc, $user['Processing_value'], $payment_Status, $Payment_Method, $invoice]);
+        $stmt->execute([$from_id, $randomString, $dateacc, $user['Processing_value'], $payment_Status, $Payment_Method, $invoice, $transactionId]);
         $paymentkeyboard = json_encode([
             'inline_keyboard' => [
                 [
-                    ['text' => $textbotlang['users']['Balance']['payments'], 'url' => "https://panel.aqayepardakht.ir/startpay/" . $pay['transid']],
+                    ['text' => $textbotlang['users']['Balance']['payments'], 'url' => "https://panel.aqayepardakht.ir/startpay/" . $transactionId],
                 ]
             ]
         ]);

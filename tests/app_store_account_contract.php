@@ -28,7 +28,7 @@ $checks = [
     [$account, "UPDATE app_mobile_accounts\n                 SET user_id=?,linked_telegram_id=?", 'Mobile account is not rebound to Telegram after verification.'],
     [$account, 'public static function catalog', 'Store catalog service is missing.'],
     [$account, 'public static function createCheckout', 'Store checkout service is missing.'],
-    [$account, "'getconfigafterpay|' . $username", 'Checkout does not reuse the production DirectPayment delivery state.'],
+    [$account, "'getconfigafterpay|' . \$username", 'Checkout does not reuse the production DirectPayment delivery state.'],
     [$account, 'markPaymentDeliveryError', 'Paid checkout delivery failures must be marked for review.'],
     [$account, "\$paymentState === '' || \$paymentState === 'unpaid'", 'Checkout cleanup must preserve paid delivery errors.'],
     [$client, "if (\$action === 'mobile-otp-request')", 'Android API does not expose mobile OTP request.'],

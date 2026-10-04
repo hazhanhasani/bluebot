@@ -110,7 +110,7 @@ function bluebotReadRuntimeIdentity(): array
     return $decoded;
 }
 
-function bluebotWriteRuntimeIdentity(string $domain, string $username): bool
+function bluebotWriteRuntimeIdentity(string $domain, string $username, int $telegramCheckedAt = 0, int $telegramAttemptedAt = 0): bool
 {
     $domain = bluebotNormalizePublicHost($domain);
     $username = ltrim(trim($username), '@');
@@ -135,6 +135,8 @@ function bluebotWriteRuntimeIdentity(string $domain, string $username): bool
         'domain' => $domain,
         'username' => $username,
         'updated_at' => time(),
+        'telegram_checked_at' => $telegramCheckedAt,
+        'telegram_attempted_at' => $telegramAttemptedAt,
     ], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE), LOCK_EX) !== false;
 }
 
@@ -244,17 +246,26 @@ function bluebotAdoptRuntimeIdentity(bool $refreshTelegram = false, bool $persis
 
     $username = ltrim(trim((string) ($cached['username'] ?? $usernamebot ?? '')), '@');
 
-    $identityFresh = !empty($cached['updated_at'])
-        && (time() - (int) $cached['updated_at']) < 21600
+    // Host/cache writes happen on every webhook; only a successful getMe may
+    // extend the bot username's freshness window.
+    $telegramCheckedAt = (int) ($cached['telegram_checked_at'] ?? 0);
+    $telegramAttemptedAt = (int) ($cached['telegram_attempted_at'] ?? 0);
+    $identityFresh = $telegramCheckedAt > 0
+        && (time() - $telegramCheckedAt) < 21600
         && $username !== ''
         && preg_match('/^[A-Za-z0-9_]{5,32}$/', $username);
 
-    if ($refreshTelegram && !$identityFresh && function_exists('telegram')) {
+    // A temporary Telegram outage must not add a network timeout to every
+    // incoming update. Failed attempts remain stale and retry after one minute.
+    $telegramRetryReady = $telegramAttemptedAt <= 0 || (time() - $telegramAttemptedAt) >= 60;
+    if ($refreshTelegram && !$identityFresh && $telegramRetryReady && function_exists('telegram')) {
+        $telegramAttemptedAt = time();
         try {
             $me = telegram('getMe');
             $remoteUsername = ltrim(trim((string) ($me['result']['username'] ?? '')), '@');
             if (!empty($me['ok']) && preg_match('/^[A-Za-z0-9_]{5,32}$/', $remoteUsername)) {
                 $username = $remoteUsername;
+                $telegramCheckedAt = time();
             }
         } catch (Throwable $error) {
             if (function_exists('bluebotLog')) {
@@ -274,7 +285,7 @@ function bluebotAdoptRuntimeIdentity(bool $refreshTelegram = false, bool $persis
     }
 
     if ($domain !== '') {
-        bluebotWriteRuntimeIdentity($domain, $username);
+        bluebotWriteRuntimeIdentity($domain, $username, $telegramCheckedAt, $telegramAttemptedAt);
         if ($persistConfig) {
             bluebotPersistRuntimeIdentityToConfig($domain, $username);
         }
