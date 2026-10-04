@@ -39,6 +39,22 @@ if (($payment['payment_Status'] ?? '') === 'expire') {
     exit('order expired');
 }
 
+$expectedTransid = trim((string) ($payment['dec_not_confirmed'] ?? ''));
+if ($expectedTransid === '') {
+    bluebotLog('warning', 'AqayePardakht order has no stored transaction binding', [
+        'order_id' => $invoice_id,
+    ]);
+    http_response_code(409);
+    exit('این فاکتور قدیمی شناسه تراکنش ثبت‌شده ندارد. لطفاً یک فاکتور جدید ایجاد کنید؛ اگر پرداخت کرده‌اید با پشتیبانی تماس بگیرید.');
+}
+if (!hash_equals($expectedTransid, $transid)) {
+    bluebotLog('warning', 'AqayePardakht callback transaction does not match order', [
+        'order_id' => $invoice_id,
+    ]);
+    http_response_code(400);
+    exit('invalid transaction');
+}
+
 $price = (int) ($payment['price'] ?? 0);
 if ($price <= 0) {
     bluebotLog('warning', 'AqayePardakht rejected invalid order amount', [

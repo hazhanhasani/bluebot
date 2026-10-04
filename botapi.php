@@ -415,10 +415,6 @@ function isDuplicateUpdate($updateId)
 // #-----------------------------#
 $update = json_decode(file_get_contents("php://input"), true);
 $update_id = $update['update_id'] ?? 0;
-if (isDuplicateUpdate($update_id)) {
-    http_response_code(200);
-    exit;
-}
 $from_id = $update['message']['from']['id'] ?? $update['callback_query']['from']['id'] ?? $update["inline_query"]['from']['id'] ?? 0;
 $time_message = $update['message']['date'] ?? $update['callback_query']['date'] ?? $update["inline_query"]['date'] ?? 0;
 $is_bot = $update['message']['from']['is_bot'] ?? false;

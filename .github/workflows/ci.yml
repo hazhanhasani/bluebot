@@ -64,6 +64,12 @@ jobs:
       - name: Telegram Mini App contract
         run: php tests/telegram_miniapp_contract.php
 
+      - name: Mini App target round-trip tests
+        run: php tests/miniapp_target_test.php
+
+      - name: Storefront panel visibility tests
+        run: php tests/storefront_visibility_test.php
+
       - name: Service selection contract
         run: php tests/service_selection_contract.php
 
@@ -108,14 +114,23 @@ jobs:
       - name: Runtime debug contract
         run: php tests/runtime_debug_contract.php
 
+      - name: Diagnostics failure and history tests
+        run: php tests/diagnostics_test.php
+
       - name: Panel QR resolver logic
         run: php tests/panel_qr_resolver_test.php
 
       - name: Trusted proxy webhook tests
         run: php tests/trusted_proxy_test.php
 
+      - name: Webhook authentication and deduplication tests
+        run: php tests/webhook_dedup_test.php
+
       - name: Runtime bot identity tests
         run: php tests/runtime_identity_test.php
+
+      - name: Runtime bot identity cache tests
+        run: php tests/runtime_identity_cache_test.php
 
       - name: Validate update worker syntax
         run: bash -n scripts/bluebot-update-worker.sh
@@ -223,6 +238,9 @@ jobs:
           grep -Fq "statusDeliveryFailed" payment/aqayepardakht.php
           grep -Fq "deliveryFailed" payment/aqayepardakht.php
           echo "AqayePardakht callback contract OK."
+
+      - name: AqayePardakht transaction binding tests
+        run: php tests/aqayepardakht_binding_test.php
 
       - name: Blupal payment contract
         run: php tests/blupal_payment_contract.php

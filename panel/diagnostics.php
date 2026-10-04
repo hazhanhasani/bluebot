@@ -36,6 +36,9 @@ if (!empty($_SESSION['diagnostics_api_token_error'])) {
 $diagnostics = bluebotCollectDiagnostics($pdo, is_array($setting ?? null) ? $setting : (select("setting", "*") ?: []));
 bluebotRecordHealthSnapshot($diagnostics);
 $healthHistory = bluebotReadHealthHistory(20);
+$formatDeliveryCount = static fn(int $count): string => $count < 0
+    ? htmlspecialchars((string) ($textbotlang['common']['labels']['unknown'] ?? 'unknown'), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8')
+    : number_format($count);
 
 $pageTitle = $textbotlang['panel']['diagnosticsTitle'];
 $pageLede = $textbotlang['panel']['diagnosticsSubtitle'];
@@ -93,10 +96,10 @@ include __DIR__ . '/inc/layout_head.php';
     <div class="stat-num" style="font-size:1.35rem"><?= htmlspecialchars((string) $diagnostics['php_version']) ?></div>
     <div class="stat-meta">Runtime</div>
   </div>
-  <div class="stat <?= ((int) $diagnostics['delivery_errors']) > 0 ? 'no' : 'ok' ?>">
+  <div class="stat <?= ((int) $diagnostics['delivery_errors']) !== 0 ? 'no' : 'ok' ?>">
     <div class="stat-label"><?= htmlspecialchars($textbotlang['panel']['diagnosticsDeliveryErrors']) ?></div>
-    <div class="stat-num"><?= number_format(max(0, (int) $diagnostics['delivery_errors'])) ?></div>
-    <div class="stat-meta"><?= ((int) $diagnostics['delivery_errors']) > 0
+    <div class="stat-num"><?= $formatDeliveryCount((int) $diagnostics['delivery_errors']) ?></div>
+    <div class="stat-meta"><?= ((int) $diagnostics['delivery_errors']) !== 0
       ? htmlspecialchars($textbotlang['panel']['diagnosticsProblem'])
       : htmlspecialchars($textbotlang['panel']['diagnosticsHealthy']) ?></div>
   </div>
@@ -187,7 +190,7 @@ include __DIR__ . '/inc/layout_head.php';
           <tr>
             <td><?= htmlspecialchars($textbotlang['panel']['diagnosticsReviewed']) ?></td>
             <td style="text-align:end">
-              <span class="tag tag-plain"><?= number_format(max(0, (int) $diagnostics['delivery_reviewed'])) ?></span>
+              <span class="tag tag-plain"><?= $formatDeliveryCount((int) $diagnostics['delivery_reviewed']) ?></span>
             </td>
           </tr>
           <tr>
@@ -197,6 +200,8 @@ include __DIR__ . '/inc/layout_head.php';
                 <a class="tag tag-no" href="payment.php?status=delivery_error">
                   <?= number_format((int) $diagnostics['delivery_errors']) ?>
                 </a>
+              <?php elseif ((int) $diagnostics['delivery_errors'] < 0): ?>
+                <span class="tag tag-warn"><?= $formatDeliveryCount((int) $diagnostics['delivery_errors']) ?></span>
               <?php else: ?>
                 <span class="tag tag-ok">0</span>
               <?php endif; ?>
@@ -264,8 +269,8 @@ include __DIR__ . '/inc/layout_head.php';
                 </span>
               </td>
               <td>
-                <span class="tag <?= ((int) $snapshot['delivery_errors']) > 0 ? 'tag-no' : 'tag-ok' ?>">
-                  <?= number_format((int) $snapshot['delivery_errors']) ?>
+                <span class="tag <?= ((int) $snapshot['delivery_errors']) !== 0 ? 'tag-no' : 'tag-ok' ?>">
+                  <?= $formatDeliveryCount((int) $snapshot['delivery_errors']) ?>
                 </span>
               </td>
               <td class="cell-mono"><?= htmlspecialchars((string) $snapshot['version']) ?></td>
