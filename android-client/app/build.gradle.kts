@@ -10,6 +10,23 @@ plugins {
 val blueBotApi = providers.gradleProperty("BLUEBOT_API_BASE")
     .orElse("https://bot.blluepanel.ir/api/client.php")
 
+val stableVersion = rootProject.projectDir.parentFile
+    .resolve("version")
+    .readText()
+    .trim()
+require(Regex("^\\d+\\.\\d+\\.\\d+$").matches(stableVersion)) {
+    "Invalid stable version: $stableVersion"
+}
+
+val updateManifestText = rootProject.file("update.json").readText()
+val androidVersionCode = Regex("""latest_version_code"\s*:\s*(\d+)""")
+    .find(updateManifestText)
+    ?.groupValues
+    ?.get(1)
+    ?.toInt()
+    ?.takeIf { it > 0 }
+    ?: error("android-client/update.json has no valid latest_version_code")
+
 val libXrayVersion = "26.9.9"
 val libXraySha256 = "4998a8b56e4a78a164b5359d5690036f83da3b575465cea57ddf29c0149c345f"
 val libXrayArchive = layout.buildDirectory.file("downloads/libxray-android.zip")
@@ -79,8 +96,8 @@ android {
         applicationId = "com.bluepanel.bluevpn"
         minSdk = 26
         targetSdk = 37
-        versionCode = 20
-        versionName = "0.5.2"
+        versionCode = androidVersionCode
+        versionName = stableVersion
 
         buildConfigField("String", "BLUEBOT_API_BASE", "\"${blueBotApi.get()}\"")
         buildConfigField("String", "XRAY_CORE_VERSION", "\"$libXrayVersion\"")

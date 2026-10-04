@@ -289,17 +289,11 @@ function clientAndroidUpdateManifest(): array
     }
 
     $tag = 'v' . $releaseVersion;
-    $downloadUrl = trim((string) ($manifest['download_url'] ?? ''));
-    $downloadParts = $downloadUrl !== '' ? parse_url($downloadUrl) : false;
-    if (!is_array($downloadParts)
-        || strtolower((string) ($downloadParts['scheme'] ?? '')) !== 'https'
-        || strtolower((string) ($downloadParts['host'] ?? '')) !== 'github.com') {
-        $downloadUrl = "https://github.com/hazhanhasani/bluebot/releases/download/{$tag}/blue-vpn-android-{$tag}.apk";
-    }
+    $downloadUrl = "https://github.com/hazhanhasani/bluebot/releases/download/{$tag}/blue-vpn-android-{$tag}.apk";
 
     return [
         'latest_version_code' => max(1, (int) ($manifest['latest_version_code'] ?? 1)),
-        'latest_version_name' => (string) ($manifest['latest_version_name'] ?? '0.1.0'),
+        'latest_version_name' => $releaseVersion,
         'minimum_version_code' => max(1, (int) ($manifest['minimum_version_code'] ?? 1)),
         'release_tag' => $tag,
         'download_url' => $downloadUrl,
